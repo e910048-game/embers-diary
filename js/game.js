@@ -398,10 +398,11 @@ const ISO_ASSETS = {
   furn_sleeping_bag: 1, furn_bench: 1, furn_sofa: 1, furn_radio: 1,
   furn_appearance_mirror: 1, furn_photo_frame: 1, furn_flag: 1, furn_turret: 1,
   furn_egg_nest: 1, furn_diary: 1, furn_potted_plant: 1,
-  furn_couple_wall: 1, furn_vines: 1, door_explore: 1, door_gather: 1,
+  furn_couple_wall: 1, door_explore: 1, door_gather: 1,
+  // furn_vines：2026-06-21確認背後黏了多餘的牆角背景，已撤回退回SVG佔位，待重新產圖
 };
 function isoIconHtml(itemId, fallbackCategory) {
-  if (ISO_ASSETS[itemId]) return `<img class="pixelImg isoImg" src="assets/iso/${itemId}.png?v=151" alt="${itemId}">`;
+  if (ISO_ASSETS[itemId]) return `<img class="pixelImg isoImg" src="assets/iso/${itemId}.png?v=152" alt="${itemId}">`;
   return pixelIconSvg(itemId, fallbackCategory);
 }
 const GRID_TILE_W = 10.5, GRID_ORIGIN_LEFT = 6;
@@ -517,14 +518,14 @@ function homeSceneHtml(state) {
   const defaultPos = gridPos(5, 5);
   const pos = state.homePos || { left: defaultPos.left, top: defaultPos.top };
   const pRow = Math.round(((parseFloat(pos.top) || 0) - WALL_PX) / ROW_PX);
-  items.push(`<div class="roomCell player" id="homePlayerCell" style="left:${pos.left};top:${pos.top};z-index:${cellZ(pRow, 4)}" title="拖曳可移動位置"><div class="icon"><img class="pixelImg" src="assets/characters/${state.appearance || "char_1"}.png?v=151" alt="玩家"></div><div class="homeLabel${labelCls(pRow)}">${state.playerName || "旅人"}</div></div>`);
+  items.push(`<div class="roomCell player" id="homePlayerCell" style="left:${pos.left};top:${pos.top};z-index:${cellZ(pRow, 4)}" title="拖曳可移動位置"><div class="icon"><img class="pixelImg" src="assets/characters/${state.appearance || "char_1"}.png?v=152" alt="玩家"></div><div class="homeLabel${labelCls(pRow)}">${state.playerName || "旅人"}</div></div>`);
   if (state.companion) {
     const task = COMPANION_TASK_LABELS[state.companionTask] || state.companionTask || "";
     // #22-2：同伴來源差異化文案，依劇情分支顯示不同描述
         const origin = state.flags && state.flags.companion ? "（在末日中與你相遇，選擇留在你身邊）" : "";
     const cPos = state.companionPos || gridPos(6, 2);
     const cRow = posToGrid(cPos).gy;
-        items.push(`<div class="roomCell companion${state.companionTask ? ' task-active' : ''}" id="homeCompanionCell" style="left:${cPos.left};top:${cPos.top};z-index:${cellZ(cRow, 2)}" title="同伴：${state.companionName || "同伴"}（目前任務：${task}）${origin}"><div class="icon" style="position:relative">${state.companionTask ? '<span class="taskBadge">' + (COMPANION_TASK_LABELS[state.companionTask] || state.companionTask) + '</span>' : ''}<img class="pixelImg" src="assets/characters/companion_default.png?v=151" alt="同伴"></div><div class="homeLabel${labelCls(cRow)}">${state.companionName || "同伴"}${task ? `（${task}）` : ""}</div></div>`);
+        items.push(`<div class="roomCell companion${state.companionTask ? ' task-active' : ''}" id="homeCompanionCell" style="left:${cPos.left};top:${cPos.top};z-index:${cellZ(cRow, 2)}" title="同伴：${state.companionName || "同伴"}（目前任務：${task}）${origin}"><div class="icon" style="position:relative">${state.companionTask ? '<span class="taskBadge">' + (COMPANION_TASK_LABELS[state.companionTask] || state.companionTask) + '</span>' : ''}<img class="pixelImg" src="assets/characters/companion_default.png?v=152" alt="同伴"></div><div class="homeLabel${labelCls(cRow)}">${state.companionName || "同伴"}${task ? `（${task}）` : ""}</div></div>`);
     // v122：同伴互動氣泡選單(7.6-C)，取代全螢幕文字流程
     if (companionBubbleOpen) {
       const cLeftPct = parseFloat(cPos.left) || 50;
@@ -550,7 +551,7 @@ function homeSceneHtml(state) {
       const sRow = posToGrid(sPos).gy;
       const sTaskLabel = TASK_LABELS[sStatus] || sStatus;
       const sColor = SQUAD_COLOR[sName] || "#8a9099";
-      items.push(`<div class="roomCell companion squadCompanion${sStatus !== "standby" ? " task-active" : ""}" id="squadCell_${sName}" style="left:${sPos.left};top:${sPos.top};z-index:${cellZ(sRow, 2)};--squadColor:${sColor}" title="${COMPANION_NAME_LABELS[sName] || sName}：${sTaskLabel}"><div class="icon" style="position:relative">${sStatus !== "standby" ? `<span class="taskBadge">${sTaskLabel}</span>` : ""}<img class="pixelImg" src="assets/characters/companion_default.png?v=151" alt="${sName}"></div><div class="homeLabel${labelCls(sRow)}">${sName}（${sTaskLabel}）</div></div>`);
+      items.push(`<div class="roomCell companion squadCompanion${sStatus !== "standby" ? " task-active" : ""}" id="squadCell_${sName}" style="left:${sPos.left};top:${sPos.top};z-index:${cellZ(sRow, 2)};--squadColor:${sColor}" title="${COMPANION_NAME_LABELS[sName] || sName}：${sTaskLabel}"><div class="icon" style="position:relative">${sStatus !== "standby" ? `<span class="taskBadge">${sTaskLabel}</span>` : ""}<img class="pixelImg" src="assets/characters/companion_default.png?v=152" alt="${sName}"></div><div class="homeLabel${labelCls(sRow)}">${sName}（${sTaskLabel}）</div></div>`);
       if (squadBubbleOpen === sName) {
         const taskOptions = ["standby", ...(COMPANION_TASKS[sName] || [])];
         const nextTask = taskOptions[(taskOptions.indexOf(sStatus) + 1) % taskOptions.length];
@@ -633,12 +634,12 @@ const windowCls = `homeWindow ${state.phase === "night" ? "is-night" : "is-day"}
   </div>`;
 const avatarRow = `<div class="homeAvatarRow">
     <div class="homeAvatar">
-      <div class="homeAvatarImg"><img class="pixelImg" src="assets/characters/${state.appearance || "char_1"}.png?v=151" alt="玩家"></div>
+      <div class="homeAvatarImg"><img class="pixelImg" src="assets/characters/${state.appearance || "char_1"}.png?v=152" alt="玩家"></div>
       <div class="homeAvatarName">${state.playerName || "旅人"}</div>
       <div class="homeAvatarBar"><div class="homeAvatarBarFill" style="width:${Math.max(0, Math.min(100, state.stamina / state.staminaMax * 100))}%"></div></div>
     </div>
     ${state.companion ? `<div class="homeAvatar">
-      <div class="homeAvatarImg"><img class="pixelImg" src="assets/characters/companion_default.png?v=151" alt="同伴"></div>
+      <div class="homeAvatarImg"><img class="pixelImg" src="assets/characters/companion_default.png?v=152" alt="同伴"></div>
       <div class="homeAvatarName">${state.companionName || "同伴"}</div>
       <!-- v103：homeAvatarBar需要width:100%搭配相對定位的父層容器，才能正確顯示同伴體力條比例 -->
       <div class="homeAvatarTask">${COMPANION_TASK_LABELS[state.companionTask] || ""}</div>
@@ -844,12 +845,11 @@ function playerAnim(cls, callback) {
 // 2026-06-21：assets/icons/已被整個清空，dict暫時清空避免<img>指向不存在的檔案造成破圖。
 // 新美術規格見美術文件/產圖規格/ART_主規格.md+ART_批次2/3，產圖驗收完成後再把對應itemId加回這個dict。
 const ICON_ASSETS = {
-  // 2026-06-21（補件批）：批次2群組A/B完成
-  knife_01: 1, pipe_01: 1, bat_01: 1, machete_01: 1,
+  // 2026-06-21（補件批）：批次2群組A確認全部有問題(stray碎塊/造型錯誤/裁切缺角)已撤回退回SVG；群組B完成
   pistol_01: 1, scrap_chainsaw: 1, military_shovel: 1, jacket_01: 1,
 };
 function itemIconHtml(itemId, type) {
-  if (ICON_ASSETS[itemId]) return `<span class="icon inline"><img class="pixelImg" src="assets/icons/${itemId}.png?v=151" alt="${itemId}"></span>`;
+  if (ICON_ASSETS[itemId]) return `<span class="icon inline"><img class="pixelImg" src="assets/icons/${itemId}.png?v=152" alt="${itemId}"></span>`;
   return `<span class="icon inline">${pixelIconSvg(itemId, type)}</span>`;
 }
 
@@ -857,7 +857,7 @@ function chooseStartAppearance() {
   statusBar.innerHTML = "";
   const cardsHtml = CHARACTER_OPTIONS.map(c => `
     <div class="charCard" data-id="${c.id}">
-      <img class="pixelImg" src="assets/characters/${c.id}.png?v=151" alt="${c.name}">
+      <img class="pixelImg" src="assets/characters/${c.id}.png?v=152" alt="${c.name}">
       <div class="homeLabel">${c.name}</div>
         </div>`).join("");
   renderText(`<div class="subtitle">在末日來臨之前的最後一晚，你想以什麼樣的面貌活下去？選擇你的外觀造型：</div><div class="charGrid">${cardsHtml}</div>`, { kind: "event" });
@@ -878,7 +878,7 @@ function showAppearancePicker() {
   const unlocked = state.unlockedAppearances || [state.appearance || "char_1"];
   const cardsHtml = CHARACTER_OPTIONS.filter(c => unlocked.includes(c.id)).map(c => `
     <div class="charCard${c.id === state.appearance ? " selected" : ""}" data-id="${c.id}">
-      <img class="pixelImg" src="assets/characters/${c.id}.png?v=151" alt="${c.name}">
+      <img class="pixelImg" src="assets/characters/${c.id}.png?v=152" alt="${c.name}">
       <div class="homeLabel">${c.name}</div>
         </div>`).join("");
   // v93：選擇造型後立即套用並返回主畫面，無需額外確認步驟
@@ -1937,7 +1937,7 @@ function renderBattle(message) {
   const enemyDef = getShreddedDef(b.enemy);
   renderText(`
     <div class="enemyCard">
-      <div class="icon" title="${b.enemy.icon}">${ENEMY_ASSETS[b.enemy.id] ? `<img class="pixelImg enemyImg" src="assets/enemies/${b.enemy.id}.png?v=151" alt="${b.enemy.name}">` : pixelIconSvg(b.enemy.id || b.enemy.name, "enemy")}</div>
+      <div class="icon" title="${b.enemy.icon}">${ENEMY_ASSETS[b.enemy.id] ? `<img class="pixelImg enemyImg" src="assets/enemies/${b.enemy.id}.png?v=152" alt="${b.enemy.name}">` : pixelIconSvg(b.enemy.id || b.enemy.name, "enemy")}</div>
       <div class="info">
         <div class="name">${b.enemy.name}</div>
         <div class="enemyHpTrack"><div class="enemyHpFill" style="width:${pct}%"></div></div>
