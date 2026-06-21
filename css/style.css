@@ -394,7 +394,7 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
   position: relative; width: 100%; height: 360px;
   margin-top: 12px; margin-bottom: 12px;
   overflow: hidden; cursor: pointer; box-sizing: border-box;
-  border: 3px solid rgba(40,30,22,0.45);
+  border: 3px solid rgba(30,34,38,0.55);
   transition: filter 0.8s ease;
 }
 /* v127：夜晚小屋深色藍調 */
@@ -425,12 +425,14 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
   color: #f0f0f0; font-size: 10.5px; max-width: 160px; white-space: normal; text-align: center;
 }
 /* v83：上/下緣各一整排「牆面格」(12.5%≈一格高)，用磚牆紋路與地板區隔；門/牆面家具固定塞在這排格子內 */
+/* 2026-06-21：原本木紋牆面跟探索/採集門的科幻警示燈框風格衝突，改為深鋼灰金屬牆板，呼應門框與家具的科技感配色 */
 .wallBand {
   position: absolute; left: 0; right: 0; height: 12.5%; z-index: 0; pointer-events: none;
-  background-color: #5a4a3c;
+  background-color: #2b2f36;
   background-image:
-    repeating-linear-gradient(to right, rgba(0,0,0,0.18) 0 2px, transparent 2px 40px),
-    linear-gradient(to bottom, rgba(255,255,255,0.06), transparent);
+    repeating-linear-gradient(to right, rgba(0,0,0,0.3) 0 2px, transparent 2px 40px),
+    repeating-linear-gradient(to bottom, rgba(0,0,0,0.25) 0 1px, transparent 1px 8px),
+    linear-gradient(to bottom, rgba(255,255,255,0.05), transparent);
 }
 .wallBandTop {
   top: 0; border-bottom: 2px solid rgba(0,0,0,0.35);
@@ -442,7 +444,7 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 .homeWindow {
   position: absolute; left: 14px; top: 4px; width: 48px; height: 30px;
   border-radius: 2px; overflow: hidden;
-  border: 3px solid #3a2e24; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.3);
+  border: 3px solid #1c2024; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.3);
   transition: background 1.2s ease;
 }
 .homeWindow.is-day { background: linear-gradient(to bottom, #8fd3f4, #c8f0c8); }
@@ -459,8 +461,8 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 .homeWindowFrame {
   position: absolute; inset: 0; pointer-events: none;
   background:
-    linear-gradient(to right, transparent calc(50% - 1px), rgba(58,46,36,0.9) calc(50% - 1px), rgba(58,46,36,0.9) calc(50% + 1px), transparent calc(50% + 1px)),
-    linear-gradient(to bottom, transparent calc(50% - 1px), rgba(58,46,36,0.9) calc(50% - 1px), rgba(58,46,36,0.9) calc(50% + 1px), transparent calc(50% + 1px));
+    linear-gradient(to right, transparent calc(50% - 1px), rgba(28,32,36,0.9) calc(50% - 1px), rgba(28,32,36,0.9) calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom, transparent calc(50% - 1px), rgba(28,32,36,0.9) calc(50% - 1px), rgba(28,32,36,0.9) calc(50% + 1px), transparent calc(50% + 1px));
 }
 /* 比照Peeps：正方形像素網格線(40x40px)疊加在地板上，強化「正俯視棋盤格」感 */
 .roomCanvas::after {
