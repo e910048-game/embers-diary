@@ -27,7 +27,7 @@ const ITEMS = {
   floor_sample: { id: "floor_sample", name: "地板樣品券", type: "consumable", icon: "🧵", useEffect: { unlockFloor: "random" }, useLimitPerGame: 2, rarity: "uncommon", shopPrice: { embers: 18 }, desc: "隨機解鎖一款新地板樣式，可於睡袋前切換（每款僅需解鎖一次）" },
 
   // 27.2 家具池(14款)：type="furniture"，slot="wall"|"table"|"floor"，陳列於state.baseSlots
-  furn_photo_frame: { id: "furn_photo_frame", name: "時空相片展示壁框", type: "furniture", icon: "🖼️", slot: "wall", rarity: "rare", factionTag: "none", desc: "解鎖29.2「相片裂縫任務」；每同步一張現實照片，休息時SAN回復效率永久+5%" },
+  furn_photo_frame: { id: "furn_photo_frame", name: "時空相片展示壁框", type: "furniture", icon: "🖼️", slot: "wall", rarity: "rare", factionTag: "none", desc: "陳設用家具，呼應29.2「相片裂縫任務」（該任務系統尚未實作，目前僅為裝飾）" },
   furn_fridge: { id: "furn_fridge", name: "Peeps物資共享大冰箱", type: "furniture", icon: "🧊", slot: "floor", rarity: "rare", factionTag: "none", desc: "陳設用家具，呼應29.2聯機共用冰箱功能（該功能不論是否擺放本家具皆可使用）" },
   furn_turret: { id: "furn_turret", name: "電磁防禦自動槍塔", type: "furniture", icon: "🗼", slot: "wall", rarity: "epic", factionTag: "none", desc: "防禦+25，夜襲開局對全體電擊30", effects: { defBonus: 25 } },
   furn_flag: { id: "furn_flag", name: "兄弟會戰術軍旗", type: "furniture", icon: "🚩", slot: "wall", rarity: "common", factionTag: "none", desc: "防禦+5，探索初始atk+2", effects: { defBonus: 5 } },

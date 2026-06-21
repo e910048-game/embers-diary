@@ -1,4 +1,3 @@
-// ===== 擗?亥? MVP1 - ?詨???摩 =====
 
 // ========================================================
 // TODO V3 後續更新：四大系統擴充
@@ -30,15 +29,12 @@
 const SAVE_KEY = "embers_diary_save_v1";
 
 // defaultState/clamp/applyEffect/pickWeighted/pickEvent/applyPhaseDecay/advancePhase
-// ??js/logic.js ??嚗?冽皜祈岫嚗?
 let state = null;
 let pendingBattle = null; // { enemy, hpLeft, onEnd }
 
-// ---------- 摮? ----------
 function saveGame() {
   localStorage.setItem(SAVE_KEY, JSON.stringify(state));
 }
-// 撌Ｙ??拐辣甈?嚗?雿菜??惜鋆?defaultState()?啣???甈?嚗??湧?閬?嚗??摮?蝻箏??啣?摮?雿?resources.ammo嚗?
 const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions"];
 function loadGame() {
   const raw = localStorage.getItem(SAVE_KEY);
@@ -51,7 +47,6 @@ function loadGame() {
       merged[key] = { ...defaults[key], ...saved[key] };
     }
   }
-  // #34嚗耨甇??摮?baseSlots.floor?槃ull/undefined??撅??鋡???
   if (!merged.baseSlots.floor) merged.baseSlots.floor = "furn_sleeping_bag";
   return merged;
 }
@@ -59,12 +54,10 @@ function hasSave() {
   return !!localStorage.getItem(SAVE_KEY);
 }
 
-// ---------- ??嚗tate蝬???applyEffect/pickEvent/pickWeighted ----------
 function applyEffect(effect) { return _applyEffect(state, effect); }
 function pickEvent() { return _pickEvent(state); }
 function pickWeighted(list) { return _pickWeighted(list); }
 
-// ---------- ?恍皜脫? ----------
 const screen = document.getElementById("screen");
 const statusBar = document.getElementById("statusBar");
 
@@ -74,7 +67,6 @@ function bar(cls, icon, val, max, label, danger = false) {
   const dangerCls = danger ? " status-danger" : "";
   return `<span class="statBar ${cls}${dangerCls}"${title}>${icon}<span class="barTrack"><span class="barFill" style="width:${pct}%"></span></span><span class="num">${val}</span></span>`;
 }
-// v124嚗SCII?脣漲璇??冽?啁拳/鞈?蝑?摮?憿舐內
 function asciiBar(val, max, len = 8) {
   const filled = Math.round(Math.max(0, Math.min(len, (val / Math.max(1, max)) * len)));
   return "[" + "█".repeat(filled) + "░".repeat(len - filled) + "]";
@@ -92,11 +84,9 @@ function renderStatusBar() {
     <button id="statusHelpBtn" class="iconBtn" title="圖示說明">❓</button>
     <button id="invBtn" class="iconBtn">🎒</button>
     <button id="shopBtn" class="iconBtn">🏪</button>
-    <button id="peepsBtn" class="iconBtn">👥</button>
   `;
   document.getElementById("invBtn").onclick = () => togglePanel("inventory", showInventory);
   document.getElementById("shopBtn").onclick = () => togglePanel("shop", () => showShop());
-  document.getElementById("peepsBtn").onclick = () => togglePanel("peeps", showPeepsPanel);
   document.getElementById("statusMoreBtn").onclick = toggleStatusExtra;
   document.getElementById("statusHelpBtn").onclick = showStatusHelp;
   // v125：HP/體力數字 count-up 動畫
@@ -142,7 +132,10 @@ function renderStatusExtra() {
     ${bar("food", "🍎", r.food, foodCap, "食物：缺乏時持續扣HP", r.food <= 1)}
     ${bar("water", "💧", r.water, waterCap, "飲水：缺乏時持續扣HP", r.water <= 1)}
     <span class="dayBadge embers" title="晶燼：用於強化據點/物資轉換">🔥${state.currency.embers}</span>
+    <button id="statusPeepsBtn" class="dayBadge" title="另一半QR同步：心情簽到/留言板/共用冰箱（只能連結一人）">💌 另一半</button>
   `;
+  const peepsBtn = document.getElementById("statusPeepsBtn");
+  if (peepsBtn) peepsBtn.onclick = () => togglePanel("peeps", showPeepsPanel);
 }
 
 function toggleStatusExtra() {
@@ -233,7 +226,6 @@ function formatEffectInline(effect) {
 }
 
 let _twFrame = null;
-// v125嚗ount-up ??剁?閮?銝?甈⊥葡???詨?
 let _prevHp = null, _prevStamina = null;
 function animateNumber(el, from, to, duration = 350) {
   const start = performance.now();
@@ -254,7 +246,6 @@ function renderText(text, opts = {}) {
   el.className = cls.join(" ");
   screen.innerHTML = "";
   screen.appendChild(el);
-  // v124嚗???鈭辣?冽?摮???憿舐嚗??歲??
   if (opts.kind === "event" && !text.includes("<")) {
     let i = 0;
     const step = () => {
@@ -268,7 +259,6 @@ function renderText(text, opts = {}) {
   }
 }
 
-// V2.0嚗??捱?訊urbo Click?????????嚗?瘚?50ms/甈∴?
 let turboInterval = null;
 function clearTurbo() {
   if (turboInterval) { clearInterval(turboInterval); turboInterval = null; }
@@ -303,13 +293,11 @@ function renderOptions(options) {
 
 // ---------- 同伴互動 ----------
 const COMPANION_TASK_LABELS = { gather: "採集", guard: "守衛", care: "照護" };
-// v101嚗?瘣曉?隡港遙????銝?亦陛?剛牧??霈摰嗥???遙????
 const COMPANION_TASK_DESCS = {
     gather: "每階段自動執行一次採集，不消耗玩家體力",
     guard: "降低夜襲發生機率",
   care: "照護：休息時HP額外回復+5"
 };
-// v99嚗???撅ㄐ??隡湔?嚗??桀?隞餃??冽?隤芯??亦泵?澈隞賜?閰梧?????
 const COMPANION_TASK_LINES = {
     gather: ["（剛從附近採集回來，整理著戰利品）", "「附近的資源都被我清乾淨了。」", "「明天我再去看看其他地方。」"],
     guard: ["（警戒地注視著四周）", "「有什麼風聲都逃不過我的耳朵。」", "「夜襲？儘管來，我會守住這裡。」"],
@@ -343,7 +331,6 @@ function greenhouseSvg() {
   return `<svg viewBox="0 0 8 8" xmlns="http://www.w3.org/2000/svg">${r}</svg>`;
 }
 
-// #29-4嚗暺con??銝?湔把飛???砍?/?澈?寧?芾ˊ銝駁????內嚗?隞μenerative?芰/?孵???蝷?
 function cellsSvg(cells) {
   let r = "";
   for (const k in cells) {
@@ -353,7 +340,6 @@ function cellsSvg(cells) {
   return `<svg viewBox="0 0 8 8" xmlns="http://www.w3.org/2000/svg">${r}</svg>`;
 }
 const LOCATION_ICON_SVGS = {
-  // 撱Ｘ?暺/?∟?嚗??脫獢?暺嚗?脩?蝑?頝?
   loc_school: () => cellsSvg({
     "0,0": "#5a3a20", "1,0": "#5a3a20", "2,0": "#5a3a20", "3,0": "#5a3a20", "4,0": "#5a3a20", "5,0": "#5a3a20", "6,0": "#5a3a20", "7,0": "#5a3a20",
     "0,1": "#5a3a20", "1,1": "#1c2a22", "2,1": "#1c2a22", "3,1": "#1c2a22", "4,1": "#1c2a22", "5,1": "#1c2a22", "6,1": "#1c2a22", "7,1": "#5a3a20",
@@ -364,7 +350,6 @@ const LOCATION_ICON_SVGS = {
     "0,6": "#5a3a20", "1,6": "#1c2a22", "2,6": "#1c2a22", "3,6": "#1c2a22", "4,6": "#1c2a22", "5,6": "#1c2a22", "6,6": "#1c2a22", "7,6": "#5a3a20",
     "0,7": "#5a3a20", "1,7": "#5a3a20", "2,7": "#5a3a20", "3,7": "#5a3a20", "4,7": "#5a3a20", "5,7": "#5a3a20", "6,7": "#5a3a20", "7,7": "#5a3a20",
   }),
-  // ?航??瑟?/?舀邦嚗?冽??ｇ??江璅寞?
   loc_park: () => cellsSvg({
     "1,0": "#6a5a4a", "6,1": "#6a5a4a", "1,1": "#6a5a4a", "2,2": "#6a5a4a", "5,2": "#6a5a4a", "6,2": "#6a5a4a",
     "2,3": "#6a5a4a", "1,3": "#6a5a4a", "6,3": "#6a5a4a",
@@ -373,7 +358,6 @@ const LOCATION_ICON_SVGS = {
     "1,6": "#4a3a2c", "6,6": "#4a3a2c", "1,7": "#4a3a2c", "6,7": "#4a3a2c",
     "3,6": "#4a3a2c", "4,6": "#4a3a2c", "3,7": "#4a3a2c", "4,7": "#4a3a2c",
   }),
-  // ??菜?/??蝞梧??啗瘜Ｙ??菟?嚗郎蝷箸?蝝?
   loc_warehouse: () => cellsSvg({
     "0,0": "#3a4248", "1,0": "#3a4248", "2,0": "#3a4248", "3,0": "#3a4248", "4,0": "#3a4248", "5,0": "#3a4248", "6,0": "#3a4248", "7,0": "#3a4248",
     "0,1": "#4a5258", "1,1": "#4a5258", "2,1": "#4a5258", "3,1": "#4a5258", "4,1": "#4a5258", "5,1": "#4a5258", "6,1": "#4a5258", "7,1": "#4a5258",
@@ -404,20 +388,23 @@ const FLOOR_STYLES = {
   tile: { name: "磁磚地板", cls: "floor-tile" },
   rug: { name: "地毯", cls: "floor-rug" },
 };
-// V2.0嚗歇?Ｗ??閫?銵?皞?assets/iso/)嚗?撠?瑼???＊蝷綽??血??pixelIconSvg
 const ENEMY_ASSETS = { enemy_walker_weak: 1, enemy_walker_armed: 1, enemy_walker_brute: 1, enemy_cyborg_nemesis: 1 };
-const ISO_ASSETS = { furn_greenhouse: 1, furn_fridge: 1, furn_whiteboard: 1, furn_jelly_lamp: 1 };
+const ISO_ASSETS = {
+  furn_greenhouse: 1, furn_fridge: 1, furn_whiteboard: 1, furn_jelly_lamp: 1,
+  // 2026-06-21：設計稿補件，13項家具圖核對內容與itemId相符後登記（furn_mirror仍缺圖，未登記）
+  furn_sleeping_bag: 1, furn_sofa: 1, furn_bench: 1, furn_radio: 1,
+  furn_sandbags: 1, furn_dreamcatcher: 1, furn_generator: 1, furn_toolbox: 1,
+  furn_appearance_mirror: 1, furn_photo_frame: 1, furn_flag: 1,
+  furn_turret: 1, furn_egg_nest: 1, furn_diary: 1,
+  furn_potted_plant: 1, furn_couple_wall: 1, furn_vines: 1,
+};
 function isoIconHtml(itemId, fallbackCategory) {
-  if (ISO_ASSETS[itemId]) return `<img class="pixelImg isoImg" src="assets/iso/${itemId}.png?v=142" alt="${itemId}">`;
+  if (ISO_ASSETS[itemId]) return `<img class="pixelImg isoImg" src="assets/iso/${itemId}.png?v=146" alt="${itemId}">`;
   return pixelIconSvg(itemId, fallbackCategory);
 }
-// V2.0 7.5嚗??嚗迤靽航??寞摨扳????判eeps?滓?脫?澆?選?(x,y)?箇雯?澆漣璅?撌虫??箏?暺?嚗?????蝘?// left% = ?? + x*?澆祝, top% = ?? + y*?潮?
-// V2.0 7.6嚗迤靽航?甇??潑??oomCanvas?寧320px擃遛?祝嚗摮閬死銝餈迤?孵耦(40px?40px)
-// v87嚗?歉x蝎曄Ⅱ蝬脫?oomCanvas?箏?360px擃?銝????澆?45px嚗葉???70px??6????5px)
 const GRID_TILE_W = 10.5, GRID_ORIGIN_LEFT = 6;
 const ROOM_H_PX = 360, WALL_PX = 45, ROW_PX = 45, ICON_PX = 40;
 const GRID_FLOOR_ROW_MIN = 0, GRID_FLOOR_ROW_MAX = 5;
-// ??拐辣(?/?ˇ)??5px???澆?撅葉40px?內??蝘駁?
 const WALL_ICON_OFFSET = (WALL_PX - ICON_PX) / 2; // 2.5px
 function gridPos(x, y) {
   return {
@@ -425,16 +412,12 @@ function gridPos(x, y) {
     top: (WALL_PX + y * ROW_PX) + "px"
   };
 }
-// ?拐辣?臬鞎潸????唳??y===GRID_FLOOR_ROW_MAX)嚗?蝐日??寥＊蝷箏?內銝?踹?皞Ｗ?怠?
 function labelCls(y) {
   return y === GRID_FLOOR_ROW_MAX ? " lbl-above" : "";
 }
-// v90嚗?Y頠豢摨扳???閮?z-index????(gy頞之)?隞嗉???箝?閬箔?頞?
-// v91嚗?銝??嚗摰?+4)/?撈(+2)???振??+0)嚗???Ｗ???蝑??祉?)??雿犖??
 function cellZ(gy, roleOffset) {
   return Math.max(0, gy) * 10 + 1 + (roleOffset || 0);
 }
-// v89嚗?gridPos?Ｙ??left,top}???摨扳?(gx,gy)嚗?蝣唳?瑼Ｘ雿輻
 function posToGrid(pos) {
   return {
     gx: Math.round((parseFloat(pos.left) - GRID_ORIGIN_LEFT) / GRID_TILE_W),
@@ -442,10 +425,7 @@ function posToGrid(pos) {
   };
 }
 function tileKey(gx, gy) { return gx + "," + gy; }
-// v91嚗?踵?頠豢?雿???靘FS蝜楝??隡港?韏唬蝙??
 const GRID_COL_MIN = 0, GRID_COL_MAX = 8;
-// v89嚗?敺??Ｖ????航粥??銝?曄蔭???澆???(?撈???Ｗ振?瑯?Ｗ振??
-// excludeKey ?舀?摰?敹賜?隞鄂ey(靘??銝剔?摰嗅?祈澈)
 function getOccupiedTileKeys(state, excludeKey) {
   const occupied = new Set();
   if (state.companion && excludeKey !== "companion") {
@@ -479,8 +459,6 @@ function getOccupiedTileKeys(state, excludeKey) {
   }
   return occupied;
 }
-// v91嚗陛??頝胼FS?曉敺tart?舫?????踵(?輸?occupied)嚗?// ?另arget?舫??湔?target嚗???喲target?餈??舫???鞎潸????拍?摰?
-// v92嚗????喲頝臬?(path)嚗??粥頝臬??怒蝘餃?雿輻嚗???甈⊥折?蝘餃蝯?
 function findReachablePos(start, target, occupied) {
   if (start.gx === target.gx && start.gy === target.gy) return null;
   const visited = new Set([tileKey(start.gx, start.gy)]);
@@ -514,7 +492,6 @@ function findReachablePos(start, target, occupied) {
   if (!best || (best.gx === start.gx && best.gy === start.gy)) return null;
   return { gx: best.gx, gy: best.gy, path: buildPath(best) };
 }
-// v92嚗窒?ath??剜?粥頝胯??徉??潛頛???折?皜⊥????銝甇乩?甇亦宏???格活皛?
 function animateWalk(el, path, onStep) {
   el.classList.add("walking");
   let i = 0;
@@ -538,14 +515,14 @@ function homeSceneHtml(state) {
   const defaultPos = gridPos(5, 5);
   const pos = state.homePos || { left: defaultPos.left, top: defaultPos.top };
   const pRow = Math.round(((parseFloat(pos.top) || 0) - WALL_PX) / ROW_PX);
-  items.push(`<div class="roomCell player" id="homePlayerCell" style="left:${pos.left};top:${pos.top};z-index:${cellZ(pRow, 4)}" title="拖曳可移動位置"><div class="icon"><img class="pixelImg" src="assets/characters/${state.appearance || "char_1"}.png?v=142" alt="玩家"></div><div class="homeLabel${labelCls(pRow)}">${state.playerName || "旅人"}</div></div>`);
+  items.push(`<div class="roomCell player" id="homePlayerCell" style="left:${pos.left};top:${pos.top};z-index:${cellZ(pRow, 4)}" title="拖曳可移動位置"><div class="icon"><img class="pixelImg" src="assets/characters/${state.appearance || "char_1"}.png?v=146" alt="玩家"></div><div class="homeLabel${labelCls(pRow)}">${state.playerName || "旅人"}</div></div>`);
   if (state.companion) {
     const task = COMPANION_TASK_LABELS[state.companionTask] || state.companionTask || "";
     // #22-2：同伴來源差異化文案，依劇情分支顯示不同描述
         const origin = state.flags && state.flags.companion ? "（在末日中與你相遇，選擇留在你身邊）" : "";
     const cPos = state.companionPos || gridPos(6, 2);
     const cRow = posToGrid(cPos).gy;
-        items.push(`<div class="roomCell companion${state.companionTask ? ' task-active' : ''}" id="homeCompanionCell" style="left:${cPos.left};top:${cPos.top};z-index:${cellZ(cRow, 2)}" title="同伴：${state.companionName || "同伴"}（目前任務：${task}）${origin}"><div class="icon" style="position:relative">${state.companionTask ? '<span class="taskBadge">' + (COMPANION_TASK_LABELS[state.companionTask] || state.companionTask) + '</span>' : ''}<img class="pixelImg" src="assets/characters/companion_default.png?v=142" alt="同伴"></div><div class="homeLabel${labelCls(cRow)}">${state.companionName || "同伴"}${task ? `（${task}）` : ""}</div></div>`);
+        items.push(`<div class="roomCell companion${state.companionTask ? ' task-active' : ''}" id="homeCompanionCell" style="left:${cPos.left};top:${cPos.top};z-index:${cellZ(cRow, 2)}" title="同伴：${state.companionName || "同伴"}（目前任務：${task}）${origin}"><div class="icon" style="position:relative">${state.companionTask ? '<span class="taskBadge">' + (COMPANION_TASK_LABELS[state.companionTask] || state.companionTask) + '</span>' : ''}<img class="pixelImg" src="assets/characters/companion_default.png?v=146" alt="同伴"></div><div class="homeLabel${labelCls(cRow)}">${state.companionName || "同伴"}${task ? `（${task}）` : ""}</div></div>`);
     // v122：同伴互動氣泡選單(7.6-C)，取代全螢幕文字流程
     if (companionBubbleOpen) {
       const cLeftPct = parseFloat(cPos.left) || 50;
@@ -571,7 +548,7 @@ function homeSceneHtml(state) {
       const sRow = posToGrid(sPos).gy;
       const sTaskLabel = TASK_LABELS[sStatus] || sStatus;
       const sColor = SQUAD_COLOR[sName] || "#8a9099";
-      items.push(`<div class="roomCell companion squadCompanion${sStatus !== "standby" ? " task-active" : ""}" id="squadCell_${sName}" style="left:${sPos.left};top:${sPos.top};z-index:${cellZ(sRow, 2)};--squadColor:${sColor}" title="${COMPANION_NAME_LABELS[sName] || sName}：${sTaskLabel}"><div class="icon" style="position:relative">${sStatus !== "standby" ? `<span class="taskBadge">${sTaskLabel}</span>` : ""}<img class="pixelImg" src="assets/characters/companion_default.png?v=142" alt="${sName}"></div><div class="homeLabel${labelCls(sRow)}">${sName}（${sTaskLabel}）</div></div>`);
+      items.push(`<div class="roomCell companion squadCompanion${sStatus !== "standby" ? " task-active" : ""}" id="squadCell_${sName}" style="left:${sPos.left};top:${sPos.top};z-index:${cellZ(sRow, 2)};--squadColor:${sColor}" title="${COMPANION_NAME_LABELS[sName] || sName}：${sTaskLabel}"><div class="icon" style="position:relative">${sStatus !== "standby" ? `<span class="taskBadge">${sTaskLabel}</span>` : ""}<img class="pixelImg" src="assets/characters/companion_default.png?v=146" alt="${sName}"></div><div class="homeLabel${labelCls(sRow)}">${sName}（${sTaskLabel}）</div></div>`);
       if (squadBubbleOpen === sName) {
         const taskOptions = ["standby", ...(COMPANION_TASKS[sName] || [])];
         const nextTask = taskOptions[(taskOptions.indexOf(sStatus) + 1) % taskOptions.length];
@@ -588,20 +565,18 @@ function homeSceneHtml(state) {
     });
   }
 
-  // #28嚗身???銝剖?/皞怠恕/撌亙?/?琿?蝡?蝘餉??暺身?賬銝璉遣蝭?撠??芯??摰嗅?芾??箸?振??  // ?摰嗅嚗票?函撣?蝺???荔?蝛箏摰嗅嚗犖?拇?敺(隡暺?
   const wallItemId = state.baseSlots && state.baseSlots.wall;
   if (wallItemId) {
     const item = ITEMS[wallItemId];
     const isMirror = wallItemId === "furn_appearance_mirror";
     const wallCellId = isMirror ? "homeMirrorCell" : (wallItemId === "furn_couple_wall" ? "homeWallCell" : "");
-    items.push(`<div class="roomCell wallDeco${isMirror ? " clickable" : wallItemId === "furn_couple_wall" ? " clickable" : ""}" id="${wallCellId}" style="left:78%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="${item.name}${item.desc ? "嚗?" + item.desc : ""}><div class="icon">${isoIconHtml(wallItemId, "furniture")}</div><div class="homeLabel">${item.name}</div></div>`);
+    items.push(`<div class="roomCell wallDeco${isMirror ? " clickable" : wallItemId === "furn_couple_wall" ? " clickable" : ""}" id="${wallCellId}" style="left:78%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="${item.name}${item.desc ? "：" + item.desc : ""}"><div class="icon">${isoIconHtml(wallItemId, "furniture")}</div><div class="homeLabel">${item.name}</div></div>`);
   }
-  // v112嚗洵鈭??Ｘ
   const wall2ItemId = state.baseSlots && state.baseSlots.wall2;
   if (wall2ItemId) {
     const item2 = ITEMS[wall2ItemId];
     const isMirror2 = wall2ItemId === "furn_appearance_mirror";
-    items.push(`<div class="roomCell wallDeco${isMirror2 ? " clickable" : ""}" id="${isMirror2 ? "homeMirror2Cell" : "homeWall2Cell"}" style="left:22%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="${item2.name}${item2.desc ? "嚗? + item2.desc" : ""}><div class="icon">${isoIconHtml(wall2ItemId, "furniture")}</div><div class="homeLabel">${item2.name}</div></div>`);
+    items.push(`<div class="roomCell wallDeco${isMirror2 ? " clickable" : ""}" id="${isMirror2 ? "homeMirror2Cell" : "homeWall2Cell"}" style="left:22%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="${item2.name}${item2.desc ? "：" + item2.desc : ""}"><div class="icon">${isoIconHtml(wall2ItemId, "furniture")}</div><div class="homeLabel">${item2.name}</div></div>`);
   }
   const tableItemId = state.baseSlots && state.baseSlots.table;
   if (tableItemId) {
@@ -644,28 +619,28 @@ function homeSceneHtml(state) {
   // v108：依state.phase(白天/夜晚)切換窗戶樣式，血月期間額外套用警示外觀
 const windowCls = `homeWindow ${state.phase === "night" ? "is-night" : "is-day"}${isThreatDue(state) ? " is-bloodmoon" : ""}`;
   items.unshift(`<div class="wallBand wallBandTop"><div class="${windowCls}"><div class="homeWindowFrame"></div></div></div><div class="wallBand wallBandBottom"></div>`);
-  items.push(`<div class="roomCell doorCell clickable" id="homeExploreDoorCell" style="left:50%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="探索門（點擊探索）"><div class="icon"><img class="pixelImg isoImg" src="assets/iso/door_explore.png?v=142" alt="探索門"></div><div class="homeLabel">探索</div></div>`);
-  items.push(`<div class="roomCell doorCell clickable" id="homeGatherDoorCell" style="left:50%;top:${ROOM_H_PX - WALL_PX + WALL_ICON_OFFSET}px;z-index:${cellZ(GRID_FLOOR_ROW_MAX)}" title="採集門（點擊採集）"><div class="icon"><img class="pixelImg isoImg" src="assets/iso/door_gather.png?v=142" alt="採集門"></div><div class="homeLabel lbl-above">採集</div></div>`);
+  items.push(`<div class="roomCell doorCell clickable" id="homeExploreDoorCell" style="left:50%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="探索門（點擊探索）"><div class="icon"><img class="pixelImg isoImg" src="assets/iso/door_explore.png?v=146" alt="探索門"></div><div class="homeLabel">探索</div></div>`);
+  items.push(`<div class="roomCell doorCell clickable" id="homeGatherDoorCell" style="left:50%;top:${ROOM_H_PX - WALL_PX + WALL_ICON_OFFSET}px;z-index:${cellZ(GRID_FLOOR_ROW_MAX)}" title="採集門（點擊採集）"><div class="icon"><img class="pixelImg isoImg" src="assets/iso/door_gather.png?v=146" alt="採集門"></div><div class="homeLabel lbl-above">採集</div></div>`);
   // V2.0 7.6：Lv/晶燼/食物等資訊併入statusExtra，避免畫面重複顯示
-  // v95：背包/商店/Peeps面板入口統一改用頂部按鈕(invBtn/shopBtn/peepsBtn)，避免重複
+  // v95：背包/商店面板入口統一改用頂部按鈕(invBtn/shopBtn)，避免重複
+  // 2026-06-21：peepsBtn(👥)已移除，另一半QR同步面板改走「⋯」展開列的statusPeepsBtn(💌)，小屋頭像旁「+邀請隊友」改開showCompanionPanel(小隊夥伴)
   const tabPills = `<div class="homePillRow homeTabPills" id="homeTabPillsRow">
     <button class="homePill homeTabBtn" id="homeTabSkill">⭐ 技能</button>
     <button class="homePill homeTabBtn${state.homePlacementMode ? " active" : ""}" id="homeTabPlacement">${state.homePlacementMode ? "結束佈置" : "🛋️ 佈置家具"}</button>
     <button class="homePill" id="homeComfortPill" title="居住舒適度">🛋️ 舒適 ${getComfortLevel(state)}（${getComfortLabel(getComfortLevel(state))}）</button>
   </div>`;
-  // V2.0 7.6嚗??券??之?剛票??瘥Peeps)?＊蝷箇摰??撈?剖?+擃??潘??∪?隡湔?憿舐內?隢???
 const avatarRow = `<div class="homeAvatarRow">
     <div class="homeAvatar">
-      <div class="homeAvatarImg"><img class="pixelImg" src="assets/characters/${state.appearance || "char_1"}.png?v=142" alt="玩家"></div>
+      <div class="homeAvatarImg"><img class="pixelImg" src="assets/characters/${state.appearance || "char_1"}.png?v=146" alt="玩家"></div>
       <div class="homeAvatarName">${state.playerName || "旅人"}</div>
       <div class="homeAvatarBar"><div class="homeAvatarBarFill" style="width:${Math.max(0, Math.min(100, state.stamina / state.staminaMax * 100))}%"></div></div>
     </div>
     ${state.companion ? `<div class="homeAvatar">
-      <div class="homeAvatarImg"><img class="pixelImg" src="assets/characters/companion_default.png?v=142" alt="同伴"></div>
+      <div class="homeAvatarImg"><img class="pixelImg" src="assets/characters/companion_default.png?v=146" alt="同伴"></div>
       <div class="homeAvatarName">${state.companionName || "同伴"}</div>
       <!-- v103：homeAvatarBar需要width:100%搭配相對定位的父層容器，才能正確顯示同伴體力條比例 -->
       <div class="homeAvatarTask">${COMPANION_TASK_LABELS[state.companionTask] || ""}</div>
-    </div>` : `<button class="homeAvatarInvite" id="homeTabPeepsInvite" title="邀請同伴">+ 邀請</button>`}
+    </div>` : `<button class="homeAvatarInvite" id="homeTabPeepsInvite" title="查看小隊夥伴招募狀態">+ 邀請隊友</button>`}
   </div>`;
   const nightCls = state.phase !== "day" ? " night" : "";
   return `<div class="homeScene">${avatarRow}${tabPills}<div class="roomCanvas ${floorStyle.cls}${state.homePlacementMode ? " placementMode" : ""}${nightCls}" id="roomCanvas">${items.join("")}</div></div>`;
@@ -673,7 +648,7 @@ const avatarRow = `<div class="homeAvatarRow">
 function bindHomeTabPills() {
   const map = {
     homeTabSkill: () => togglePanel("skill", showSkillPanel),
-    homeTabPeepsInvite: showPeepsPanel,
+    homeTabPeepsInvite: showCompanionPanel,
     homeComfortPill: () => togglePanel("comfort", showComfortDetail)
   };
   for (const id in map) {
@@ -737,7 +712,6 @@ function showFloorPicker() {
   renderOptions([{ label: "返回", variant: "ghost", onClick: renderMain }]);
 }
 
-// V2.0 7.6嚗??怠?摨扳?(px)頧??箇??詨??摮ridPos
 function snapToGridFromClientXY(canvas, clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
   let left = ((clientX - rect.left) / rect.width) * 100;
@@ -746,13 +720,10 @@ function snapToGridFromClientXY(canvas, clientX, clientY) {
   topPx = Math.max(0, Math.min(ROOM_H_PX, topPx));
   const gx = Math.round((left - GRID_ORIGIN_LEFT) / GRID_TILE_W);
   let gy = Math.round((topPx - WALL_PX) / ROW_PX);
-  // v85嚗?/銝楠?箇?憯嚗??脩宏???舫脣(蝣唳??餅?)嚗冗??唳?潛??
   gy = Math.max(GRID_FLOOR_ROW_MIN, Math.min(GRID_FLOOR_ROW_MAX, gy));
   return gridPos(gx, gy);
 }
-// v93嚗粥頝臬??恍脰?銝剝?摰??踹????暺???蝚砌?畾萄??怠??漣璅??啗絲頝?閬箔??忽頞?
 let homeWalkLock = false;
-// V2.0 7.6嚗??唳 ??鈭箇?芸?韏啣閰脫(?誨?蝘餃?嚗鞎潸?Peeps鈭?)
 function bindHomeCanvasMove(canvas) {
   canvas.onclick = (e) => {
     if (state.homePlacementMode || homeWalkLock) return;
@@ -762,17 +733,15 @@ function bindHomeCanvasMove(canvas) {
     const occupied = getOccupiedTileKeys(state);
     const start = posToGrid(state.homePos || gridPos(5, 5));
     const target = posToGrid(snapped);
-    // v91嚗陛??頝胼FS?曉?嚗?格?鋡急???韏啣?Ｙ璅?餈??舫???蝜?摰嗅/?撈)
     const dest = findReachablePos(start, target, occupied);
     if (!dest) return;
-    // v92嚗?剜韏啗楝?嚗???甈⊥折?蝘餃蝯?嚗93嚗??急???摰????    homeWalkLock = true;
+    homeWalkLock = true;
     animateWalk(el, dest.path, { zRole: 4, fn: (p, gx, gy, isLast) => {
       state.homePos = p;
       if (isLast) { saveGame(); homeWalkLock = false; }
     } });
   };
 }
-// v93嚗?/?∟?蝑??喟???澆??寧?拇挾撘洵銝甈⊿???胯摰?憿舐內璅惜+憭?)嚗?// ?冽????銝甈⊥??迤閫貊銵?嚗??撠?暺撠梁?亙??隡
 function bindConfirmAction(el, action) {
   let timer = null;
   el.onclick = (e) => {
@@ -787,7 +756,6 @@ function bindConfirmAction(el, action) {
     timer = setTimeout(() => el.classList.remove("armed"), 2500);
   };
 }
-// v91嚗?隡?NPC)?典?撅?蹂??冽?鈭粥????畾菜??璈?銝??唬??芾◤雿??踵蝘餃??
 let companionWanderTimer = null;
 function startCompanionWander() {
   if (companionWanderTimer) clearInterval(companionWanderTimer);
@@ -817,8 +785,6 @@ function startCompanionWander() {
     }
   }, 6000 + Math.random() * 4000);
 }
-// V2.0 7.6嚗?蝵格芋撘??喟征??獢摰嗅?唳雿蔭嚗??詨?朣蝺?摮state.homeFurniturePos[slot]
-// v93嚗??砍?舀floor(?∟?)嚗?游?slot?霈??Ｗ振??憒?閮)銋?蝘餃?
 function bindFurnitureDrag(el, canvas, slot = "floor") {
   let dragging = false, startX, startY;
   const onMove = (clientX, clientY) => {
@@ -836,7 +802,6 @@ function bindFurnitureDrag(el, canvas, slot = "floor") {
     if (!dragging) return;
     dragging = false;
     el.style.transition = "";
-    // v98嚗?蝵格芋撘?嚗??圈???撟曆?瘝????∟? ?????唳璅???豢?嚗?蝘餃?雿蔭
     if (slot === "floor" && Math.abs(clientX - startX) < 4 && Math.abs(clientY - startY) < 4) {
       showFloorPicker();
       return;
@@ -844,10 +809,8 @@ function bindFurnitureDrag(el, canvas, slot = "floor") {
     const pos = onMove(clientX, clientY);
     const gx = Math.round((pos.left - GRID_ORIGIN_LEFT) / GRID_TILE_W);
     let gy = Math.round((pos.topPx - WALL_PX) / ROW_PX);
-    // v85嚗?Ｗ振?瑕?璅???舀?亦?憯
     gy = Math.max(GRID_FLOOR_ROW_MIN, Math.min(GRID_FLOOR_ROW_MAX, gy));
     let snapped = gridPos(gx, gy);
-    // v89嚗璅?亙歇鋡怠?隡??拙振/?嗡?摰嗅雿嚗蝵桃??敶???
     const target = posToGrid(snapped);
     const playerG = posToGrid(state.homePos || gridPos(3, 3));
     const defaultPos = slot === "table" ? gridPos(2, GRID_FLOOR_ROW_MAX) : gridPos(3, 3);
@@ -869,7 +832,6 @@ function bindFurnitureDrag(el, canvas, slot = "floor") {
   el.onpointercancel = () => { dragging = false; el.style.transition = ""; };
 }
 
-// #25嚗??孛?潛?鈭箇雿宏???曉??恍????雿?嚗??瑁??迤????蝞?
 function playerAnim(cls, callback) {
   const el = document.getElementById("homePlayerCell");
   if (!el) { callback(); return; }
@@ -877,7 +839,6 @@ function playerAnim(cls, callback) {
   setTimeout(callback, cls === "anim-explore" ? 480 : 700);
 }
 
-// V2.0嚗歇?Ｗ????瘨?蝑??內(assets/icons/)嚗?撠?瑼???＊蝷綽??血??pixelIconSvg
 const ICON_ASSETS = {
   aero_cloak: 1, aero_crossbow: 1, aero_dagger: 1, aero_pouch: 1, appearance_token: 1,
   awaken_crystal: 1, bandage: 1, ceramic_vest: 1, cyber_hammer: 1, cyber_pendant: 1,
@@ -889,18 +850,16 @@ const ICON_ASSETS = {
   knife_01: 1, pipe_01: 1, scrap_chainsaw: 1, military_shovel: 1, bat_01: 1, machete_01: 1,
   pistol_01: 1, energy_drink: 1
 };
-// #29-5嚗???銵刻??????梁?????內嚗???剝??臬?????憿??鋆?
 function itemIconHtml(itemId, type) {
-  if (ICON_ASSETS[itemId]) return `<span class="icon inline"><img class="pixelImg" src="assets/icons/${itemId}.png?v=142" alt="${itemId}"></span>`;
+  if (ICON_ASSETS[itemId]) return `<span class="icon inline"><img class="pixelImg" src="assets/icons/${itemId}.png?v=146" alt="${itemId}"></span>`;
   return `<span class="icon inline">${pixelIconSvg(itemId, type)}</span>`;
 }
 
-// #29-2嚗?撅?摰??甈暸?(?銝)嚗摰?撖怠appearance嚗nlockedAppearances嚗?敺??舫??∪?摰嗅+閫?????
 function chooseStartAppearance() {
   statusBar.innerHTML = "";
   const cardsHtml = CHARACTER_OPTIONS.map(c => `
     <div class="charCard" data-id="${c.id}">
-      <img class="pixelImg" src="assets/characters/${c.id}.png?v=142" alt="${c.name}">
+      <img class="pixelImg" src="assets/characters/${c.id}.png?v=146" alt="${c.name}">
       <div class="homeLabel">${c.name}</div>
         </div>`).join("");
   renderText(`<div class="subtitle">在末日來臨之前的最後一晚，你想以什麼樣的面貌活下去？選擇你的外觀造型：</div><div class="charGrid">${cardsHtml}</div>`, { kind: "event" });
@@ -921,7 +880,7 @@ function showAppearancePicker() {
   const unlocked = state.unlockedAppearances || [state.appearance || "char_1"];
   const cardsHtml = CHARACTER_OPTIONS.filter(c => unlocked.includes(c.id)).map(c => `
     <div class="charCard${c.id === state.appearance ? " selected" : ""}" data-id="${c.id}">
-      <img class="pixelImg" src="assets/characters/${c.id}.png?v=142" alt="${c.name}">
+      <img class="pixelImg" src="assets/characters/${c.id}.png?v=146" alt="${c.name}">
       <div class="homeLabel">${c.name}</div>
         </div>`).join("");
   // v93：選擇造型後立即套用並返回主畫面，無需額外確認步驟
@@ -938,9 +897,7 @@ function showAppearancePicker() {
   ]);
 }
 
-// 7.7嚗筑????????內?活暺?=餈?撠?????????刻撟?磬ey嚗enderMain??蝛?
 let homeOpenPanel = null;
-// v122嚗?隡湔除瘜⊿?桅????怠?閮(7.6-C)
 let companionBubbleOpen = false;
 let companionBubbleLine = null;
 // 小隊同伴（艾莉/阿卡）小屋視覺化氣泡狀態，2026-06-20新增
@@ -966,8 +923,6 @@ function renderMain() {
   }
   // #23：徽章列表（廢料/防禦力/同伴任務等小圖示）
 const badges = [`<span class="miniBadge">📦 ${state.resources.scrap}</span>`, `<span class="miniBadge">🛡️${state.baseDefense}</span>`];
-  // #22-3：配偶連結狀態徽章
-    badges.push(`<span class="miniBadge" title="已觸發的隨機事件進度">📖 ${(state.seenEvents || []).length}/${EVENTS.length}</span>`);
   if (state.companion) badges.push(`<span class="miniBadge">👤 ${COMPANION_TASK_LABELS[state.companionTask] || state.companionTask}</span>`);
   // #28：設施等級徽章列表
   FACILITY_KEYS.forEach(key => {
@@ -1017,7 +972,6 @@ const lowHp = state.hp <= state.hpMax * 0.25;
   bindHomeTabPills();
   const placementBtn = document.getElementById("homeTabPlacement");
   if (placementBtn) placementBtn.onclick = () => { state.homePlacementMode = !state.homePlacementMode; renderMain(); };
-  // V2.0嚗??鋡??啣?蝑loor?喳???-> 雿蔭璅∪???蝘餃?嚗??暺甈⊥?閫貊???胯?v93?脰炊閫?
   const floorCell = document.getElementById("homeFloorCell");
   if (floorCell && roomCanvas) {
     if (state.homePlacementMode) {
@@ -1026,7 +980,6 @@ const lowHp = state.hp <= state.hpMax * 0.25;
       bindConfirmAction(floorCell, () => playerAnim("anim-rest", doRest));
     }
   }
-  // v93嚗??Ｗ振??憒?閮)??蝵格芋撘?蝘餃?嚗??祆芋撘??鈭?(?亥????閮)
   const tableCell = document.getElementById("homeTableCell");
   if (tableCell && roomCanvas) {
     if (state.homePlacementMode) {
@@ -1046,7 +999,6 @@ const lowHp = state.hp <= state.hpMax * 0.25;
       };
     }
   }
-  // v112嚗洵鈭??Ｘ??蝵格芋撘??喉??血?瘝輻?亥?/?園璈?摮萄?撌Ｖ???
 const table2Cell = document.getElementById("homeTable2Cell");
   if (table2Cell && roomCanvas) {
     if (state.homePlacementMode) {
@@ -1066,10 +1018,8 @@ const table2Cell = document.getElementById("homeTable2Cell");
       };
     }
   }
-  // v112嚗洵鈭?踵??雿蔭璅∪??舀???
 const floor2Cell = document.getElementById("homeFloor2Cell");
   if (floor2Cell && roomCanvas && state.homePlacementMode) bindFurnitureDrag(floor2Cell, roomCanvas, "floor2");
-  // v122嚗???隡渲???????瘞?部?詨(7.6-C)嚗?隞??Ｗ?鈭?瘚?
   const companionCell = document.getElementById("homeCompanionCell");
   if (companionCell) companionCell.onclick = (e) => {
     e.stopPropagation();
@@ -1141,7 +1091,6 @@ const floor2Cell = document.getElementById("homeFloor2Cell");
     });
   }
 
-  // v129嚗?撅?敹萇?????＊蝷?flavor ??
   const coupleWallCell = document.getElementById("homeWallCell");
   if (coupleWallCell) coupleWallCell.onclick = (e) => {
     e.stopPropagation();
@@ -1194,12 +1143,9 @@ const floor2Cell = document.getElementById("homeFloor2Cell");
       onClick: () => playerAnim("anim-gather", doConvert)
     },
   ];
-  // v97嚗???賬?閮?典?踵見撘歇?臭??孵??????踝?銝銵?皜銝???
-  // v99嚗?瘣曉?隡氬?箇?仿???撅ㄐ??隡渲??脖???銝銝????曄蔭
   renderOptions(opts);
 }
 
-// ---------- 29蝭 Peeps?犖??嚗??偷???賣/?曹澈?啁拳/QR?郊 ----------
 function showPeepsPanel() {
   renderStatusBar();
   const ss = state.spouseState || {};
@@ -1294,7 +1240,6 @@ function showPeepsPanel() {
   renderOptions(opts);
 }
 
-// ---------- ?亥?嚗????亦????“?? ----------
 function addDiaryEntry() {
   const r = state.resources;
   const isNight = state.phase !== "day";
@@ -1449,7 +1394,6 @@ function showEvent(evt, onDone, staminaResult) {
     hint: hint || undefined,
     disabled: lacking,
     onClick: () => {
-      // 鞈??瘙炎??
       if (opt.requiresResource) {
         for (const k in opt.requiresResource) {
           if ((state.resources[k] || 0) < opt.requiresResource[k]) {
@@ -1484,11 +1428,9 @@ function showEvent(evt, onDone, staminaResult) {
   renderOptions(opts);
 }
 
-// ---------- 銵?嚗???圈??Ｙ揣嚗VP2嚗?---------
 const RISK_LABELS = { 1: "雿?", 2: "銝?", 3: "擃?", 4: "璆菟?" };
 const RISK_CLASS = { 1: "low", 2: "mid", 3: "high", 4: "extreme" };
 
-// ?揣??????撖恬?靘暺◢?芸?蝝???????????死
 const SEARCH_BEATS = {
   1: [
         "你在附近的廢墟裡翻找，找到了一些還算有用的東西。",
@@ -1594,7 +1536,6 @@ function visitLocation(loc) {
     return;
   }
 
-  // ?啣??
 let effectText = "";
   let lootFlavorPool;
   const qty = stResult.overdraw ? Math.max(1, Math.floor(result.qty * stResult.resourceMultiplier)) : result.qty;
@@ -1626,7 +1567,6 @@ ${flavor}${effectText}${travelText}`, { kind: "event" });
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
 }
 
-// ---------- 銵?嚗鞈???----------
 function doConvert() {
   const result = spendStamina(state, "convert");
   if (state.hp <= 0) { renderGameOver(); return; }
@@ -1639,7 +1579,6 @@ function doConvert() {
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
 }
 
-// ---------- 銵?嚗??----------
 const GATHER_TEXTS = [
     "你在附近仔細搜尋，採集到了一些補給品。",
     "周圍的環境提供了不少能用的資源。",
@@ -1663,7 +1602,6 @@ function doGather() {
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
 }
 
-// ---------- 28.2嚗??潔???----------
 function showLounge() {
   renderStatusBar();
   const companionName = state.companions ? Object.keys(state.companions)[0] : null;
@@ -1674,16 +1612,12 @@ SAN已恢復，休息品質提升+10`, { kind: "event" });
   renderOptions([{ label: "返回", variant: "ghost", onClick: renderMain }]);
 }
 
-// ---------- 銵?嚗???----------
 function doRest() {
-  // V2.0嚗???瞏桃憭??誨銝?砍?镼莎??脣瘙箸摨?
   if (state.phase === "night" && isThreatDue(state)) {
     startBloodMoonNight();
     return;
   }
-  // 憭??????暺必??
   if (state.phase === "night" && Math.random() < raidChance(state)) {
-    // A.3嚗??賣?憭Ｙ雯??镼脩??嚗擛仿?憪???敺咎AN
     const raidSanBonus = sumFurnitureEffect(state, "raidSanBonus");
         let raidText = "夜裡突然傳來騷動，敵人摸進了據點！";
     if (raidSanBonus > 0) {
@@ -1691,7 +1625,6 @@ function doRest() {
             raidText += `
 🌿 家具的安撫效果讓你冷靜下來，SAN+${raidSanBonus}`;
     }
-    // v119嚗蝤蝳西??憛?furn_turret)??镼脤?撅撠鈭粹??0?瑕拿
     const turretShock = Object.values(state.baseSlots || {}).includes("furn_turret") ? 30 : 0;
     if (turretShock > 0) {
             raidText += `
@@ -1724,7 +1657,6 @@ function doRest() {
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => endPhase() }]);
 }
 
-// ---------- V2.0嚗???瞏格捱?啣?嚗?.2/禮2.3嚗?----------
 function startBloodMoonNight() {
   clearUpcomingThreat(state);
   document.body.classList.add("blood-moon");
@@ -1772,7 +1704,6 @@ function runBloodMoonWave(waves, idx) {
   startBattle(w.enemyId, () => runBloodMoonWave(waves, idx + 1), false, { extraTier: w.extraTier, bloodMoon: true });
 }
 
-// ---------- V2.0 禮1.2嚗ier0~3銵?????----------
 function startTierZoneBattle(zone) {
   renderText(`🔓 偵測到行政區「${zone.name}」的防禦核心，擊敗指揮官即可徹底解放此區域
 ${zone.psychicNote}`, { kind: "event" });
@@ -1788,7 +1719,6 @@ ${formatEffect(zone.reward)}`, { kind: "event" });
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => endPhase() }]);
 }
 
-// V2.0嚗????氯?Ｗ?暺?嚗???????瘚桃
 function showBloodMoonTransition(callback) {
   const overlay = document.createElement("div");
   overlay.className = "bloodMoonTransition";
@@ -1804,7 +1734,6 @@ function showBloodMoonTransition(callback) {
   }, 2600);
 }
 
-// V2.0蝚??????曹澈?啁拳?????Ｗ?暺?嚗?摮?瘚桃嚗＊蝷箔噶璇?SAN?儔
 function showFridgeWithdrawTransition(result) {
   const overlay = document.createElement("div");
   overlay.className = "bloodMoonTransition fridgeTransition";
@@ -1889,7 +1818,6 @@ function doReinforceFacility(key, cost) {
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
 }
 
-// ---------- 銵?蝯?嚗???Ｙ揣/撘瑕?蝑??????銝餌?ｇ?銝蜓????畾蛛????胯?蝯??挾嚗?---------
 function finishAction() {
   applyActionRegen(state);
   if (state.hp <= 0) {
@@ -1900,7 +1828,6 @@ function finishAction() {
   renderMain();
 }
 
-// ---------- ?挾?券?----------
 function endPhase() {
   const died = applyPhaseDecay(state);
   if (died) {
@@ -1929,7 +1856,6 @@ function endPhase() {
 }
 
 
-// ---------- 瘝?璅∪??瑟??格?蝯?嚗?2.1嚗?憭扯身?皛燉v3嚗????oss嚗?---------
 function renderSandboxEnding() {
   statusBar.innerHTML = "";
   const endingId = evaluateSandboxEnding(state);
@@ -2009,12 +1935,11 @@ function renderBattle(message) {
   renderStatusBar();
   const b = pendingBattle;
   const pct = Math.max(0, (b.enemy.hpLeft / b.enemy.hp) * 100);
-  // #34嚗?銝??澆?瘥?霈摰嗉?斗??
   const myStats = getEffectiveStats(state);
   const enemyDef = getShreddedDef(b.enemy);
   renderText(`
     <div class="enemyCard">
-      <div class="icon" title="${b.enemy.icon}">${ENEMY_ASSETS[b.enemy.id] ? `<img class="pixelImg enemyImg" src="assets/enemies/${b.enemy.id}.png?v=142" alt="${b.enemy.name}">` : pixelIconSvg(b.enemy.id || b.enemy.name, "enemy")}</div>
+      <div class="icon" title="${b.enemy.icon}">${ENEMY_ASSETS[b.enemy.id] ? `<img class="pixelImg enemyImg" src="assets/enemies/${b.enemy.id}.png?v=146" alt="${b.enemy.name}">` : pixelIconSvg(b.enemy.id || b.enemy.name, "enemy")}</div>
       <div class="info">
         <div class="name">${b.enemy.name}</div>
         <div class="enemyHpTrack"><div class="enemyHpFill" style="width:${pct}%"></div></div>
@@ -2032,8 +1957,6 @@ function renderBattle(message) {
   ]);
 }
 
-// 25.3嚗?蝞鈭箏??拙振?摰喉??急?瘚??1?????嘰4皜嚗??{dmg, dodged}
-// 27.4嚗鈭箄??廣tun???銝脰???
 function resolveEnemyHit(b, myStats) {
   if (b.enemy.stunned) {
     b.enemy.stunned = false;
@@ -2045,7 +1968,6 @@ function resolveEnemyHit(b, myStats) {
   return { dmg: Math.max(0, dmg), dodged: false };
 }
 
-// 憟?萎犖?瑕拿嚗?7.4?誑shield?豢嚗??ΕP嚗?游銝?鈭??4撠雿輻嚗孛?澆?甇颯??唾?????摮牧??
 function applyEnemyDamage(rawDmg) {
   maybeGenerateShield(state, rawDmg);
   const dmg = absorbShield(state, rawDmg);
@@ -2057,7 +1979,6 @@ function applyEnemyDamage(rawDmg) {
   return "";
 }
 
-// 閮?銝甈⊥?餃摰喉?35.4嚗??璈１蝟??圈?頛曉?銋?∩?瘜????敺絞銝round銝甈∴?
 function calcAttackDamage(b) {
   const myStats = getEffectiveStats(state);
   const enemyDef = Math.round(getShreddedDef(b.enemy) * (1 - getIgnoreDefRatio(state)));
@@ -2077,7 +1998,6 @@ function battleAttack() {
   if (!b) { clearTurbo(); return; } // Turbo Click連擊時若戰鬥已結束，立即停止避免持續觸發
   consumeAmmoForAttack(state);
   let extraText = "";
-  // 27.5嚗yber_pendant擐???摰孛?潔?甈⊿?憭??
   if (!b.firstRoundDone) {
     b.firstRoundDone = true;
     const acc = getEquipRef(state, state.equipment && state.equipment.accessory);
@@ -2100,14 +2020,12 @@ function battleAttack() {
   if (lifesteal > 0) applyEffect({ hp: lifesteal });
 
   if (b.enemy.hpLeft <= 0) {
-    // ?嚗?蝞??質?蝬???
 let lootText = "";
     const drop = pickWeighted(b.enemy.dropTable);
     if (drop) {
       const dropItem = ITEMS[drop.itemId];
       if (RESOURCE_DROP_KEYS.includes(drop.itemId)) applyEffect({ resources: { [drop.itemId]: drop.qty } });
       if (!RESOURCE_DROP_KEYS.includes(drop.itemId)) {
-        // 27.1嚗are隞乩?甇血/?脣/憌曉?撖虫??weaponInstances嚗?韌閰?嚗擗??可nventory
         if (["weapon", "armor", "accessory"].includes(dropItem.type) && (dropItem.rarity === "rare" || dropItem.rarity === "epic" || dropItem.rarity === "legendary")) {
           const instId = instantiateEquipment(state, drop.itemId, Math.random);
           const inst = getInstance(state, instId);
@@ -2156,7 +2074,6 @@ let lootText = "";
     return;
   }
 
-  // ?萎犖??
   const hit = resolveEnemyHit(b, myStats);
   const reviveText = hit.dmg > 0 ? applyEnemyDamage(hit.dmg) : "";
 
@@ -2176,7 +2093,6 @@ let lootText = "";
 function battleFlee() {
   const b = pendingBattle;
   const myStats = getEffectiveStats(state);
-  // 50% ????嚗仃???銝甈⊥??
   if (Math.random() < 0.5) {
     renderStatusBar();
         renderText("你的攻擊被敵人完全擋下，沒有造成傷害。", { kind: "event" });
@@ -2223,11 +2139,9 @@ function showInventory() {
         const equipped = isEquipped ? "（已裝備）" : "";
     const statsText = item.stats ? Object.entries(item.stats).map(([k, v]) => `${k}+${v}`).join(" ") : "";
     const titleText = [statsText, item.desc].filter(Boolean).join(" / ");
-    // v107嚗振?瑟?臭??拙?嚗?交?蝪∪隤芣?憿舐內?刻???(銝?over title)
     const descText = item.type === "furniture" && item.desc ? `<div class="hint">${item.desc}</div>` : "";
     html += `<div class="invRow" title="${titleText}">${itemIconHtml(item.id, item.type)}<span>${item.name}${equipped}${descText}</span><span class="qty">x${i.qty}</span></div>`;
   });
-  // 27.1嚗are隞乩?裝備撖阡?嚗eaponInstances嚗??怠?蝬渲???摨?
   (state.weaponInstances || []).forEach(inst => {
     const isEquipped = inst.id === equippedWeapon || inst.id === equippedArmor || inst.id === equippedAccessory;
         const equipped = isEquipped ? "（已裝備）" : "";
@@ -2276,7 +2190,6 @@ function showInventory() {
         onClick: () => {
           const result = placeFurniture(state, i.itemId);
           saveGame();
-          // v105嚗??????wall/table/floor)??振?瑟??????恍銝虜撣貊?韏瑚???鈭瘝???          // ?ㄐ?Ⅱ???隞暻潘?銝行?靘?敺撠??亦???
 const replacedName = result.replaced && ITEMS[result.replaced] ? ITEMS[result.replaced].name : null;
                     renderText(`你裝備了${item.name}`, { kind: "event" });
           renderOptions([
@@ -2311,7 +2224,6 @@ const replacedName = result.replaced && ITEMS[result.replaced] ? ITEMS[result.re
       });
     }
   });
-  // 27.1嚗??祕擃?weaponInstances嚗?裝備??
   (state.weaponInstances || []).forEach(inst => {
     const baseItem = ITEMS[inst.baseItemId];
     const slotKey = baseItem.type === "weapon" ? "weapon" : (baseItem.type === "armor" ? "armor" : "accessory");
@@ -2331,7 +2243,6 @@ const replacedName = result.replaced && ITEMS[result.replaced] ? ITEMS[result.re
   renderOptions(opts);
 }
 
-// ---------- ??賡?選?25.3嚗?憭扳?瘣橘?----------
 function showSkillPanel() {
   renderStatusBar();
   const faction = state.skills && state.skills.faction;
@@ -2341,10 +2252,10 @@ function showSkillPanel() {
   } else {
     const tree = SKILLS_TREE[faction];
     const cur = state.skills.tier || 0;
-    html += `<div class="faction-${faction}"><div class="invRow"><span>銝餅?瘣橘?${tree.name}嚗${tree.role}嚗?/span><span class="qty">${cur}/${tree.tiers.length}</span></div>`;
+    html += `<div class="faction-${faction}"><div class="invRow"><span>技能樹：${tree.name}（${tree.role}）</span><span class="qty">${cur}/${tree.tiers.length}</span></div>`;
     tree.tiers.forEach((t, idx) => {
       const unlocked = idx < cur;
-      html += `<div class="hint" style="padding:0 0 4px 0">${unlocked ? "??" : "漎?"} T${idx + 1} ${t.name}嚗${t.desc}</div>`;
+      html += `<div class="hint" style="padding:0 0 4px 0">${unlocked ? "🔓" : "🔒"} T${idx + 1} ${t.name}：${t.desc}</div>`;
     });
     html += `</div><div class="hint" style="padding:8px 0 0 0">使用技能點可永久提升角色能力</div>`;
   }
@@ -2371,7 +2282,6 @@ function showSkillPanel() {
   renderOptions(opts);
 }
 
-// ---------- ???Ｘ嚗?7.3嚗??? A璅⊥隤脤?/B瘨???C憭批葦??嚗?---------
 function showShop(tab = "B") {
   if (tab === "A") return showShopGacha();
   if (tab === "C") return showShopRepair();
@@ -2388,20 +2298,17 @@ function shopTabOptions(current) {
   }));
 }
 
-// v107嚗振?瑟?銝???撌脣???歇?喳?(baseSlots)?賜???
 function ownsFurniture(itemId) {
   if ((state.inventory || []).some(i => i.itemId === itemId && i.qty > 0)) return true;
   return !!(state.baseSlots && Object.values(state.baseSlots).includes(itemId));
 }
 
-// B. 瘨批撥???瘀?25.4蝮賡?蝞∪嚗窒?冽?hopPrice璈嚗?// v114嚗???批?蝝啣?????/摰嗅????(????撘?蝵桀?摨I閬?37.2)
 function showShopConsumables(subTab = "consumable") {
   renderStatusBar();
   const allShopItems = Object.values(ITEMS).filter(i => i.shopPrice);
   const shopItems = allShopItems.filter(i => subTab === "furniture" ? i.type === "furniture" : i.type !== "furniture");
   let html = `<div class="subtitle">🛒 商店｜晶燼：${state.currency.embers}</div><div class="invList">`;
   shopItems.forEach(item => {
-    // v107嚗振?瑟?銝???瘥車?憭?隞?嚗歇??(???歇?喳?)??璅內?箔?嚗??銴頃鞎?
 const owned = item.type === "furniture" && ownsFurniture(item.id);
         const limitText = item.useLimitPerGame ? `（限${item.useLimitPerGame}次，已使用${state.itemUseCount[item.id] || 0}次）` : owned ? "（已擁有）" : "";
     const descText = item.desc ? `<div class="hint">${item.desc}</div>` : "";
@@ -2435,7 +2342,6 @@ const owned = item.type === "furniture" && ownsFurniture(item.id);
   renderOptions(opts);
 }
 
-// A. 璅⊥隤脤???嚗?甇血/霅瑞/憌曉?嚗eta撟賡?敶抵?嚗?6.3 rarity??甈?嚗?
 function showShopGacha() {
   renderStatusBar();
   const cost = gachaCost(state);
@@ -2460,7 +2366,6 @@ function showShopGacha() {
   renderOptions(opts);
 }
 
-// C. 憭批葦??嚗?暾?嚗??撠歇裝備甇血/霅瑞??摨血?皛?
 function showShopRepair() {
   renderStatusBar();
   const cost = repairCost(state);
@@ -2516,7 +2421,6 @@ function showShopRepair() {
   renderOptions(opts);
 }
 
-// ---------- ?撈?晷?Ｘ嚗?8.1嚗???曇?/?踹嚗?---------
 const COMPANION_NAME_LABELS = { "雷恩": "🛡️ 雷恩（前哨守衛）", "艾莉": "🌿 艾莉（採集醫護）", "阿卡": "💣 阿卡（爆破手）" };
 const SQUAD_CHAT_LINES = {
   "艾莉": ["（一邊整理藥草一邊跟你打招呼）", "「外面還安全嗎？」", "「我把採集到的東西分類好了。」"],
@@ -2566,7 +2470,6 @@ function showCompanionPanel() {
   renderOptions(opts);
 }
 
-// ---------- 璅??恍 ----------
 function renderTitle() {
   statusBar.innerHTML = "";
   screen.innerHTML = `
@@ -2628,7 +2531,6 @@ function renderTitle() {
   screen.appendChild(box);
 }
 
-// ---------- ?剔?摨??洵銝??MVP4嚗?---------
 function startPrologue() {
   statusBar.innerHTML = "";
   renderPrologueScene("intro");
@@ -2659,12 +2561,10 @@ function renderPrologueScene(sceneId) {
   renderOptions(opts);
 }
 
-// ?圈洛?????敺?靘摰嗅擗P?文?蝯?
 function afterPrologueCombat() {
   finishPrologue(state.hp <= state.hpMax * 0.5 ? "weak" : "alone");
 }
 
-// ???嚗璈??唬?鈭摰喉???HP?文?蝯?
 function resolvePrologueFlee() {
   const dmg = 5 + Math.floor(Math.random() * 16); // 5~20
   applyEffect({ hp: -dmg });
@@ -2675,7 +2575,6 @@ function resolvePrologueFlee() {
   afterPrologueCombat();
 }
 
-// 憟蝯???嚗＊蝷箇?撅??嚗??脣瘝?璅∪?銝餌??
 function finishPrologue(endingId) {
   const ending = PROLOGUE_ENDINGS[endingId];
 
@@ -2686,6 +2585,5 @@ function finishPrologue(endingId) {
   renderOptions([{ label: "繼續冒險", variant: "primary", onClick: renderMain }]);
 }
 
-// ---------- ?? ----------
 renderTitle();
 
