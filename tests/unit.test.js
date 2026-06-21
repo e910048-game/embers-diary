@@ -413,10 +413,13 @@ test("gainExp: 升級時staminaMax提升且當下stamina同步增加（24.1升�
   const s = L.defaultState();
   s.stamina = 5; // 滿體力時升級
   s.exp = s.expToNext - 1;
+  // 固定awakening避免觸發triggerAwakening的隨機流派分配（某些流派會額外提升staminaMax，導致此測試flaky）
+  s.awakening = { id: "test_fixed" };
+  const staminaMaxBefore = L.staminaMaxForLevel(s.level);
   L.gainExp(s, 1); // 升級至level2
   assert.strictEqual(s.level, 2);
-  assert.strictEqual(s.staminaMax, L.staminaMaxForLevel(2)); // 6
-  assert.strictEqual(s.stamina, 6); // 5 + (6-5)
+  assert.strictEqual(s.staminaMax, L.staminaMaxForLevel(2));
+  assert.strictEqual(s.stamina, 5 + (L.staminaMaxForLevel(2) - staminaMaxBefore));
 });
 
 // ---------- 26.1 敵人分級（由等級驅動，取代原本以state.day計算）----------
