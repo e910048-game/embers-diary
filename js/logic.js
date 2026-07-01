@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL } = data;
+  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -171,7 +171,10 @@
       unlockedAppearances: ["char_1"], // #29-3：已解鎖造型清單，開局造型固定，需透過鏡子家具切換
       roomFloor: "wood", // #27：安全屋地板樣式，可透過商城/探索獲得後切換
       unlockedFloors: ["wood"], // #29-1b：已解鎖地板樣式清單，開局僅木地板，其餘需透過「地板樣品券」解鎖
+      homeLightOff: false, // v164：玩家主動點燈開關，純氛圍互動，不影響日夜/體力等遊戲數值
       homePos: null, // #27：人物在安全屋畫布中的位置(可拖曳移動)，null=預設站位
+      homeFacing: "front", // v179：角色4方向朝向，依移動方向更新("front"/"back"/"left"/"right")，無對應美術時自動退回原本單一張正面圖
+      companionFacing: "front", // v179：同伴朝向，邏輯同上
       actionPoints: ACTION_POINTS_PER_PHASE,
       stamina: staminaMaxForLevel(1),
       staminaMax: staminaMaxForLevel(1),
@@ -190,7 +193,8 @@
       baseRaidChance: 0.12,
       facilities: { command: 0, greenhouse: 0, workshop: 0, radar: 0 }, // 22.2
       bonusDefense: 0, // 22.2：事件/道具給予的舊式baseDefense加成，疊加於facilities.command*2之上
-      baseSlots: { wall: null, table: null, floor: "furn_sleeping_bag", wall2: null, table2: null, floor2: null }, // 27.2陳列格；#31：初始小屋僅一張睡袋+人物；v112每槽位開放第二格
+      baseSlots: { wall: null, wall2: null }, // 27.2陳列格(僅牆面，固定2格——牆面是固定掛點，跟地板/桌面的free-form擺放邏輯不同，故保留)
+      placedFurniture: [{ itemId: "furn_sleeping_bag", gx: 3, gy: 3 }], // v166：table/floor/rug改為free-form擺放，取代原本wall/table/floor/rug四類固定槓位制度；每項{itemId,gx,gy}，無容量上限(僅受9x6邏輯網格範圍限制)。#31：初始小屋僅一張睡袋+人物
       overdrawStreak: 0, // #26-4：連續過勞次數，HP懲罰隨次數遞增，恢復餘力後重置
       seenEvents: [], // #22-3：已記錄過的事件id清單，首次遭遇給予「日記新頁」小獎勵與收納感
       companion: false,
@@ -213,10 +217,14 @@
       // 29節 Peeps雙人同居
       sharedFridge: { food: 0, water: 0, specialItem: null, note: null },
       whiteboardMessage: "便條：歡迎來到安全屋。探索時請注意體力分配。", // 32.8
-      spouseState: { hasLinked: false, weddingRingActive: false, lastSyncTimestamp: null, spouseName: null },
+      spouseState: { hasLinked: false, weddingRingActive: false, lastSyncTimestamp: null, spouseName: null, appliedCodes: [] }, // v180：appliedCodes防止同一張同步碼被重複套用
       dailyMood: null,
       dailyMoodDay: null,
-      statusEffects: [] // 27.4：戰鬥/階段內暫時狀態效果
+      statusEffects: [], // 27.4：戰鬥/階段內暫時狀態效果
+      // 任務與成就系統（規格文件/任務與成就系統_設計規格.md）
+      questFlags: {}, // 任務系統專用計數器/中間狀態（如gatherTodayCount/careCompletedCount/totalKills），跟全局flags分開避免污染命名空間
+      questProgress: { activeMain: "main_01_wake_up", completedMain: [], completedSide: [] },
+      unlockedAchievements: []
     };
   }
 
@@ -293,6 +301,11 @@
     } catch (e) {
       return { ok: false, reason: "invalid_code" };
     }
+    // v180新增：防止同一張同步碼被重複套用而重複領取冰箱物資(原本完全沒有防呆，貼上同一段文字可無限重複領取)
+    if (!state.spouseState.appliedCodes) state.spouseState.appliedCodes = [];
+    if (state.spouseState.appliedCodes.includes(code)) return { ok: false, reason: "duplicate_code" };
+    state.spouseState.appliedCodes.push(code);
+    if (state.spouseState.appliedCodes.length > 50) state.spouseState.appliedCodes.shift(); // 只保留最近50筆，避免存檔無限累積
     state.spouseState.hasLinked = true;
     state.spouseState.spouseName = payload.playerName || state.spouseState.spouseName;
     state.spouseState.lastSyncTimestamp = state.day;
@@ -302,8 +315,10 @@
     state.spouseState.weddingRingActive = ownWeddingRingEquipped && !!payload.weddingRingEquipped;
     const extractedFood = payload.sharedFridge ? payload.sharedFridge.food || 0 : 0;
     const extractedWater = payload.sharedFridge ? payload.sharedFridge.water || 0 : 0;
-    state.resources.food += extractedFood;
-    state.resources.water += extractedWater;
+    // v180修正：原本直接+=沒有上限，跟withdrawFromFridge(同樣是提取冰箱物資)的clamp邏輯不一致，
+    // 不對稱天數同步時(對方存了很多)會讓資源衝破resourceCaps上限
+    state.resources.food = clamp(state.resources.food + extractedFood, 0, getResourceCap(state, "food"));
+    state.resources.water = clamp(state.resources.water + extractedWater, 0, getResourceCap(state, "water"));
     const facilitiesTotal = state.facilities ? (state.facilities.command + state.facilities.greenhouse + state.facilities.workshop + state.facilities.radar) : 0;
     state.spouseState.jointProgress = {
       mine: facilitiesTotal + (state.bossesDefeated || 0),
@@ -486,7 +501,7 @@
     const extraWater = getAccessoryEffect(state, "extraWaterDecay"); // 27.1：洋流寄生蛭，每階段水消耗額外+1
     // v117：巨型地脈藤蔓標本(furn_vines)——已陳列時，每階段50%機率水消耗-1（最低0）
     let waterDecay = base + extraWater;
-    if (state.baseSlots && Object.values(state.baseSlots).includes("furn_vines") && rng() < 0.5) {
+    if (hasFurniturePlaced(state, "furn_vines") && rng() < 0.5) {
       waterDecay = Math.max(0, waterDecay - 1);
     }
     applyEffect(state, { resources: { food: -base, water: -waterDecay } });
@@ -526,7 +541,7 @@
     state.stamina = state.staminaMax;
     refreshCompanionUnlocks(state);
     // v117：蓋亞靈能生態溫室(furn_greenhouse)——已陳列時，每次晝夜切換產出食物1~2
-    if (state.baseSlots && Object.values(state.baseSlots).includes("furn_greenhouse")) {
+    if (hasFurniturePlaced(state, "furn_greenhouse")) {
       applyEffect(state, { resources: { food: rng() < 0.5 ? 1 : 2 } });
     }
     // 22.2：生態溫室被動產出（不消耗AP/體力）：Lv1每階段+1食物，Lv2再+1飲水
@@ -656,10 +671,11 @@
 
   // 25.3：流派相關的暴擊機率/倍率
   function getCritChance(state) {
-    let c = 0;
-    if (factionTier(state, "aero") >= 1) c += 0.05; // 靜電外殼
-    if (factionTier(state, "gaia") >= 3 && state.san < 40) c += 0.15; // 捕食者基因
-    // 29.3：失落的結婚戒指，雙方QR互掃確認後暴擊率永久+15%
+    let factionC = 0;
+    if (factionTier(state, "aero") >= 1) factionC += 0.05; // 靜電外殼
+    if (factionTier(state, "gaia") >= 3 && state.san < 40) factionC += 0.15; // 捕食者基因
+    let c = factionC * (1 + getSkillBonusRatio(state)); // v182：【共鳴的】等前綴只放大流派加成部分
+    // 29.3：失落的結婚戒指，雙方QR互掃確認後暴擊率永久+15%（非流派技能，不吃skillBonusRatio）
     const acc = getEquipRef(state, state.equipment && state.equipment.accessory);
     if (acc && acc.item && acc.item.id === "wedding_ring" && state.spouseState && state.spouseState.weddingRingActive) c += 0.15;
     return c;
@@ -737,9 +753,18 @@
     return factionTier(state, "aero") >= 4 ? 2.0 : CRIT_MULTIPLIER; // 雷磁風暴翼
   }
 
+  // v182：【共鳴的】/晶格共鳴前綴的skillBonusRatio——原本「未接入，文案保留」，現在接上：
+  // 套用在「流派(25.3)帶來的比例型技能效果」上(暴擊率/吸血/閃避的流派加成部分)，不影響武器/防具本身的固定加成
+  function getSkillBonusRatio(state) {
+    const acc = getEquipRef(state, state.equipment && state.equipment.accessory);
+    if (acc && acc.prefix && acc.prefix.effect && typeof acc.prefix.effect.skillBonusRatio === "number") return acc.prefix.effect.skillBonusRatio;
+    return 0;
+  }
+
   // 25.3 蓋亞血脈T2：攻擊附帶15%吸血；27.1：活化荊棘刺鞭(+15%)與【飢渴的】前綴(+5%)疊加
   function getLifestealRatio(state) {
-    let ratio = factionTier(state, "gaia") >= 2 ? 0.15 : 0;
+    let factionRatio = factionTier(state, "gaia") >= 2 ? 0.15 : 0;
+    let ratio = factionRatio * (1 + getSkillBonusRatio(state));
     const weapon = getEquipRef(state, state.equipment && state.equipment.weapon);
     if (weapon) {
       if (weapon.effects && weapon.effects.lifestealBonus) ratio += weapon.effects.lifestealBonus;
@@ -750,8 +775,9 @@
 
   // 25.3 洋流寄生T1：物理閃避率+5%；27.1：重水防護夾克(+5%)
   function getDodgeChance(state) {
-    let chance = factionTier(state, "ocean") >= 1 ? 0.05 : 0;
-    if (factionTier(state, "aero") >= 1) chance += 0.03; // 25.3 大氣幽魂T1：靜電外殼，簡化追加閃避+3%
+    let factionChance = factionTier(state, "ocean") >= 1 ? 0.05 : 0;
+    if (factionTier(state, "aero") >= 1) factionChance += 0.03; // 25.3 大氣幽魂T1：靜電外殼，簡化追加閃避+3%
+    let chance = factionChance * (1 + getSkillBonusRatio(state));
     const armor = getEquipRef(state, state.equipment && state.equipment.armor);
     if (armor && armor.effects && armor.effects.dodgeBonus) chance += armor.effects.dodgeBonus;
     return chance;
@@ -973,54 +999,83 @@
     return state.baseDefense;
   }
 
-  // ---------- 27.2 家具池：陳列格(baseSlots.wall/table/floor)放置與效果 ----------
+  // ---------- 27.2 家具池：陳列格放置與效果 ----------
+  // v166：free-form佈置改版——wall維持固定2格(牆面是固定掛點)，table/floor/rug三類原本各自的固定槓位制度
+  // 取消，改成state.placedFurniture陣列任意擺放於9x6邏輯網格上，無容量上限(僅受網格範圍限制，實務上不會撞到)
+  const WALL_SLOT_NAMES = ["wall", "wall2"];
+  // 與game.js的GRID_COL_MAX(8)/GRID_FLOOR_ROW_MAX(5)同步——純數字邏輯網格範圍，跟等距投影公式無關，
+  // 刻意不跨檔案共用常數以維持logic.js對DOM/game.js零依賴
+  const FURNITURE_GRID_COLS = 9, FURNITURE_GRID_ROWS = 6;
+  function isGridCellOccupied(state, gx, gy) {
+    return (state.placedFurniture || []).some(f => f.gx === gx && f.gy === gy);
+  }
+  function findEmptyGridCell(state) {
+    for (let gy = 0; gy < FURNITURE_GRID_ROWS; gy++) {
+      for (let gx = 0; gx < FURNITURE_GRID_COLS; gx++) {
+        if (!isGridCellOccupied(state, gx, gy)) return { gx, gy };
+      }
+    }
+    return { gx: 4, gy: 3 }; // 極端邊緣情況(54格全滿)，疊放在房間中心，不阻擋佈置流程
+  }
+  // 通用：取得目前已陳列的所有家具itemId(牆面2格+free-form陣列)，供存在性判定/效果加總共用
+  function allPlacedFurnitureIds(state) {
+    const ids = [];
+    if (state.baseSlots) WALL_SLOT_NAMES.forEach(s => { if (state.baseSlots[s]) ids.push(state.baseSlots[s]); });
+    (state.placedFurniture || []).forEach(f => ids.push(f.itemId));
+    return ids;
+  }
+  function hasFurniturePlaced(state, itemId) {
+    return allPlacedFurnitureIds(state).includes(itemId);
+  }
   function placeFurniture(state, itemId) {
     const item = ITEMS[itemId];
     if (!item || item.type !== "furniture") return { ok: false, reason: "invalid_item" };
     const entry = state.inventory.find(i => i.itemId === itemId);
     if (!entry || entry.qty <= 0) return { ok: false, reason: "not_in_inventory" };
-    if (!state.baseSlots) state.baseSlots = { wall: null, table: null, floor: null, wall2: null, table2: null, floor2: null };
-    const base = item.slot;
-    const alt = base + "2";
-    // v112：每種槽位開放第二格，已有第一格時優先放第二格(空)，否則覆蓋第一格
-    let slot = base;
-    if (state.baseSlots[base] && !state.baseSlots[alt]) slot = alt;
-    const prev = state.baseSlots[slot];
+    if (!state.baseSlots) state.baseSlots = { wall: null, wall2: null };
     entry.qty -= 1;
     if (entry.qty <= 0) state.inventory.splice(state.inventory.indexOf(entry), 1);
-    if (prev) {
-      const prevEntry = state.inventory.find(i => i.itemId === prev);
-      if (prevEntry) prevEntry.qty += 1;
-      else state.inventory.push({ itemId: prev, qty: 1 });
+    if (item.slot === "wall") {
+      // 牆面維持固定2格制度：依序找空格放，兩格皆滿則覆蓋第一格(沿用原規則)
+      let slot = WALL_SLOT_NAMES.find(s => !state.baseSlots[s]) || WALL_SLOT_NAMES[0];
+      const prev = state.baseSlots[slot];
+      if (prev) {
+        const prevEntry = state.inventory.find(i => i.itemId === prev);
+        if (prevEntry) prevEntry.qty += 1;
+        else state.inventory.push({ itemId: prev, qty: 1 });
+      }
+      state.baseSlots[slot] = itemId;
+      syncBaseDefense(state);
+      return { ok: true, slot, replaced: prev };
     }
-    state.baseSlots[slot] = itemId;
+    // table/floor/rug：free-form找空格放進placedFurniture，無容量上限
+    if (!state.placedFurniture) state.placedFurniture = [];
+    const cell = findEmptyGridCell(state);
+    state.placedFurniture.push({ itemId, gx: cell.gx, gy: cell.gy });
     syncBaseDefense(state);
-    return { ok: true, slot, replaced: prev };
+    return { ok: true, replaced: null };
   }
 
-  // 通用：加總所有已陳列家具(wall/table/floor)中某個effects欄位的數值
+  // 通用：加總所有已陳列家具(牆面+free-form)中某個effects欄位的數值
   function sumFurnitureEffect(state, key) {
-    if (!state.baseSlots) return 0;
     let total = 0;
-    for (const slot of ["wall", "wall2", "table", "table2", "floor", "floor2"]) {
-      const itemId = state.baseSlots[slot];
-      const item = itemId && ITEMS[itemId];
+    allPlacedFurnitureIds(state).forEach(itemId => {
+      const item = ITEMS[itemId];
       if (item && item.effects && typeof item.effects[key] === "number") {
         total += item.effects[key];
       }
-    }
+    });
     return total;
   }
 
   // v110：舒適度系統——已陳列家具依稀有度加總，回饋探索/採集/休息
   const RARITY_COMFORT = { common: 1, rare: 2, epic: 3, legendary: 3 };
   function getComfortLevel(state) {
-    if (!state.baseSlots) return 0;
     let total = 0;
-    for (const slot of ["wall", "wall2", "table", "table2", "floor", "floor2"]) {
-      const item = ITEMS[state.baseSlots[slot]];
+    allPlacedFurnitureIds(state).forEach(itemId => {
+      const item = ITEMS[itemId];
       if (item) total += RARITY_COMFORT[item.rarity] || 0;
-    }
+    });
     return total;
   }
   function getComfortLabel(level) {
@@ -1076,7 +1131,7 @@
 
   // 28.2：沙發互動 - SAN回滿，hpMax暫時+10(1天)，附帶同伴互動文案
   function loungeInteract(state, companionName) {
-    if (!state.baseSlots || state.baseSlots.floor !== "furn_sofa") return { ok: false, reason: "no_sofa" };
+    if (!hasFurniturePlaced(state, "furn_sofa")) return { ok: false, reason: "no_sofa" };
     const hpMaxBonus = sumFurnitureEffect(state, "loungeHpMaxBonus") || 10;
     state.san = getEffectiveSanMax(state);
     state.hpMax += hpMaxBonus;
@@ -1094,7 +1149,7 @@
 
   // v110：收音機互動——每日一次，SAN+3
   function radioInteract(state) {
-    if (!state.baseSlots || (state.baseSlots.table !== "furn_radio" && state.baseSlots.table2 !== "furn_radio")) return { ok: false, reason: "no_radio" };
+    if (!hasFurniturePlaced(state, "furn_radio")) return { ok: false, reason: "no_radio" };
     if (!state.flags) state.flags = {};
     if (state.flags.radioUsedDay === state.day) return { ok: false, reason: "already_used" };
     state.flags.radioUsedDay = state.day;
@@ -1104,7 +1159,7 @@
 
   // v110：孵化巢互動——每日一次，10%機率掉落稀有金屬廢料
   function eggNestInteract(state, rng = Math.random) {
-    if (!state.baseSlots || (state.baseSlots.table !== "furn_egg_nest" && state.baseSlots.table2 !== "furn_egg_nest")) return { ok: false, reason: "no_nest" };
+    if (!hasFurniturePlaced(state, "furn_egg_nest")) return { ok: false, reason: "no_nest" };
     if (!state.flags) state.flags = {};
     if (state.flags.eggNestCheckedDay === state.day) return { ok: false, reason: "already_used" };
     state.flags.eggNestCheckedDay = state.day;
@@ -1113,6 +1168,24 @@
       return { ok: true, found: true, text: "孵化巢裡的怪物今天似乎吐出了一些金屬碎渣。（廢料+2）" };
     }
     return { ok: true, found: false, text: "孵化巢裡的怪物只是發出咕噜聲，今天沒有什麼收穫。" };
+  }
+
+  // v166：家具彩蛋改用placedFurniture陣列索引定位(free-form佈置後不再有固定slot名稱)，
+  // 參考Peeps「書架後面找到了東西」的隨手翻找互動，給目前完全沒有任何點擊回饋的純裝飾家具
+  // (不含已有專屬互動的furn_diary/furn_radio/furn_egg_nest/furn_sleeping_bag)一個低成本的每日小回饋
+  function furnitureEasterEggInteract(state, furnitureIndex, rng = Math.random) {
+    const placed = state.placedFurniture && state.placedFurniture[furnitureIndex];
+    if (!placed) return { ok: false, reason: "empty" };
+    if (!state.flags) state.flags = {};
+    if (!state.flags.easterEggDay) state.flags.easterEggDay = {};
+    // 用itemId+座標組key而非陣列索引，避免日後若新增「移除家具」功能造成陣列重排時誤判
+    const key = `${placed.itemId}_${placed.gx}_${placed.gy}`;
+    if (state.flags.easterEggDay[key] === state.day) return { ok: false, reason: "already_used" };
+    state.flags.easterEggDay[key] = state.day;
+    const amount = 3 + Math.floor(rng() * 6); // 3~8
+    state.currency.embers = (state.currency.embers || 0) + amount;
+    const item = ITEMS[placed.itemId];
+    return { ok: true, text: `你在${item ? item.name : "家具"}附近翻找，找到了一些散落的晶燼碎片！（晶燼+${amount}）` };
   }
 
   // ---------- 27.1：裝備實體化(weaponInstances)＋前綴詞 ----------
@@ -1313,7 +1386,7 @@
     let cost = REPAIR_COST.embers;
     if (state.facilities && state.facilities.workshop >= 1) cost = Math.round(cost * 0.8);
     // v121：外骨骼重組工作台(furn_bench)——重鍛消耗再-20%
-    if (state.baseSlots && Object.values(state.baseSlots).includes("furn_bench")) cost = Math.round(cost * 0.8);
+    if (hasFurniturePlaced(state, "furn_bench")) cost = Math.round(cost * 0.8);
     const discount = getAccessoryEffect(state, "merchantDiscount"); // 27.1：黑市VIP徽章-10%
     if (discount) cost = Math.round(cost * (1 - discount));
     return cost;
@@ -1457,6 +1530,73 @@
     return { ...enemyData, name, hp, atk, tier };
   }
 
+  // ---------- 任務與成就系統（規格文件/任務與成就系統_設計規格.md）----------
+  // reward用{embers,exp,scrap}簡寫，轉呼叫既有applyEffect，不重造數值套用邏輯
+  function applyQuestReward(state, reward) {
+    if (!reward) return;
+    const effect = {};
+    if (reward.embers) effect.embers = reward.embers;
+    if (reward.exp) effect.exp = reward.exp;
+    if (reward.scrap) effect.resources = { scrap: reward.scrap };
+    applyEffect(state, effect);
+  }
+
+  // 仿照seenEvents的記錄方式，在finishAction/endPhase收尾時呼叫一次。
+  // 只「監看」現有flag/day/facilities等狀態，達成條件就記錄+發獎，不主動改變遊戲邏輯。
+  // 回傳本次新完成/解鎖的項目，供UI顯示toast/彈窗（不影響呼叫端既有流程）。
+  function checkQuestsAndAchievements(state) {
+    const result = { completedMain: null, completedSide: [], graduated: false, unlockedAchievements: [] };
+
+    const main = state.questProgress.activeMain ? QUESTS[state.questProgress.activeMain] : null;
+    if (main && main.condition(state)) {
+      state.questProgress.completedMain.push(main.id);
+      applyQuestReward(state, main.reward);
+      state.questProgress.activeMain = main.nextQuestId || null;
+      result.completedMain = main;
+      if (!main.nextQuestId) result.graduated = true; // 第7章完成＝「畢業」，非遊戲結局
+    }
+
+    Object.values(QUESTS).forEach(q => {
+      if (q.type !== "side") return;
+      if (q.repeatable === "day") {
+        const lastClaimKey = q.id + "_lastClaimDay";
+        const lastClaim = state.questFlags[lastClaimKey];
+        if (lastClaim === state.day) return; // 今天已經拿過
+        if (q.condition(state)) {
+          state.questFlags[lastClaimKey] = state.day;
+          applyQuestReward(state, q.reward);
+          result.completedSide.push(q);
+        }
+        return;
+      }
+      if (q.repeatable === "manual") {
+        if (q.condition(state)) {
+          applyQuestReward(state, q.reward);
+          if (q.resetField) state.questFlags[q.resetField] = 0; // 達標後扣回計數器，讓玩家可以重新累積
+          result.completedSide.push(q);
+        }
+        return;
+      }
+      if (state.questProgress.completedSide.includes(q.id)) return;
+      if (q.condition(state)) {
+        state.questProgress.completedSide.push(q.id);
+        applyQuestReward(state, q.reward);
+        result.completedSide.push(q);
+      }
+    });
+
+    Object.values(ACHIEVEMENTS).forEach(a => {
+      if (state.unlockedAchievements.includes(a.id)) return;
+      if (a.condition(state)) {
+        state.unlockedAchievements.push(a.id);
+        applyQuestReward(state, a.reward);
+        result.unlockedAchievements.push(a);
+      }
+    });
+
+    return result;
+  }
+
   const api = {
     defaultState, clamp, applyEffect, useItem, pickWeighted, pickEvent, RESOURCE_DROP_KEYS,
     applyPhaseDecay, applyActionRegen, advancePhase, battleDamage, raidChance, reinforceCost, consumeReinforceDiscount, REINFORCE_COST, gatherYield, convertScrap, CONVERT_SCRAP_COST,
@@ -1468,7 +1608,7 @@
     getDurability, decayEquippedDurability, repairCost, repairEquipment, DURABILITY_MAX, DURABILITY_LOSS_PER_BATTLE,
     reforgePrefixCost, reforgePrefix,
     rollGacha, gachaCost, GACHA_COST,
-    getEffectiveStats, getCritChance, CRIT_MULTIPLIER, getCritMultiplier, consumeAmmoForAttack,
+    getEffectiveStats, getCritChance, CRIT_MULTIPLIER, getCritMultiplier, consumeAmmoForAttack, getSkillBonusRatio,
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     getLifestealRatio, getDodgeChance, getIgnoreDefRatio, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult,
@@ -1479,13 +1619,15 @@
     COMPANION_TASKS, recruitCompanion, refreshCompanionUnlocks, dispatchCompanion, companionAssigned,
     FACILITY_KEYS, syncBaseDefense, reinforceFacility, restSanRegen,
     placeFurniture, getFurnitureDefBonus, getFurnitureRaidChanceDelta, loungeInteract, sumFurnitureEffect,
-    getComfortLevel, getComfortLabel, radioInteract, eggNestInteract,
+    hasFurniturePlaced, allPlacedFurnitureIds, findEmptyGridCell,
+    getComfortLevel, getComfortLabel, radioInteract, eggNestInteract, furnitureEasterEggInteract,
     longTermGoalMet, evaluateSandboxEnding, getMilestoneEvent, MILESTONE_EVENTS,
     triggerAwakening, spendSkillPoint, enemyTier, getScaledEnemy, TIER_PREFIXES, getLocationOverpower,
     checkUpcomingThreat, isThreatDue, clearUpcomingThreat, THREAT_LEAD_DAYS, BLOOD_MOON_CYCLE_MIN, BLOOD_MOON_CYCLE_MAX,
     resolveBloodMoonDefense, bloodMoonRewards, TIER_ZONES, getTierZoneForBloodMoonWin,
     ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS,
     replacePlayerNameTag, dailyMoodCheckin, depositToFridge, withdrawFromFridge, generateSyncCode, applySyncCode,
+    QUESTS, ACHIEVEMENTS, applyQuestReward, checkQuestsAndAchievements,
     _applyEffect: applyEffect, _pickEvent: pickEvent, _pickWeighted: pickWeighted
   };
 

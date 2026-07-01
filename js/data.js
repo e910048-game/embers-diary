@@ -1,5 +1,22 @@
 // 資料定義（內嵌為JS物件，避免file://下fetch JSON的CORS問題）
 
+// v167：EVENTS的condition需要判斷「某家具是否已陳列」，但data.js被logic.js require()，
+// 不能反過來呼叫logic.js的hasFurniturePlaced()（會造成循環依賴，Node環境下require會拿到尚未
+// 執行完的空module.exports）。故在此就地複製一份最小邏輯，僅依賴state本身、不依賴其他檔案
+function isFurniturePlacedInData(state, itemId) {
+  if (state.baseSlots && (state.baseSlots.wall === itemId || state.baseSlots.wall2 === itemId)) return true;
+  return !!(state.placedFurniture && state.placedFurniture.some(f => f.itemId === itemId));
+}
+// 同上理由就地複製：計算目前總共擺放了幾件家具(牆面2格+free-form陣列)，供任務/成就的數量門檻條件使用
+function countPlacedFurnitureInData(state) {
+  let count = (state.placedFurniture || []).length;
+  if (state.baseSlots) {
+    if (state.baseSlots.wall) count += 1;
+    if (state.baseSlots.wall2) count += 1;
+  }
+  return count;
+}
+
 const ITEMS = {
   // 武器
   knife_01: { id: "knife_01", name: "生鏽小刀", type: "weapon", icon: "🔪", stats: { atk: 2 }, rarity: "common" },
@@ -26,7 +43,8 @@ const ITEMS = {
   appearance_token: { id: "appearance_token", name: "風格交換券", type: "consumable", icon: "🎟️", useEffect: { unlockAppearance: "random" }, useLimitPerGame: 3, rarity: "rare", shopPrice: { embers: 25 }, desc: "隨機解鎖一款新造型，可於鏡子前切換（每款僅需解鎖一次）" },
   floor_sample: { id: "floor_sample", name: "地板樣品券", type: "consumable", icon: "🧵", useEffect: { unlockFloor: "random" }, useLimitPerGame: 2, rarity: "uncommon", shopPrice: { embers: 18 }, desc: "隨機解鎖一款新地板樣式，可於睡袋前切換（每款僅需解鎖一次）" },
 
-  // 27.2 家具池(14款)：type="furniture"，slot="wall"|"table"|"floor"，陳列於state.baseSlots
+  // 27.2 家具池：type="furniture"，slot="wall"|"table"|"floor"|"rug"。2026-06-26起：wall類陳列於
+  // state.baseSlots(固定2格)，其餘(table/floor/rug)改為state.placedFurniture(free-form擺放，無上限)
   furn_photo_frame: { id: "furn_photo_frame", name: "時空相片展示壁框", type: "furniture", icon: "🖼️", slot: "wall", rarity: "rare", factionTag: "none", desc: "陳設用家具，呼應29.2「相片裂縫任務」（該任務系統尚未實作，目前僅為裝飾）" },
   furn_fridge: { id: "furn_fridge", name: "Peeps物資共享大冰箱", type: "furniture", icon: "🧊", slot: "floor", rarity: "rare", factionTag: "none", desc: "陳設用家具，呼應29.2聯機共用冰箱功能（該功能不論是否擺放本家具皆可使用）" },
   furn_turret: { id: "furn_turret", name: "電磁防禦自動槍塔", type: "furniture", icon: "🗼", slot: "wall", rarity: "epic", factionTag: "none", desc: "防禦+25，夜襲開局對全體電擊30", effects: { defBonus: 25 } },
@@ -51,13 +69,18 @@ const ITEMS = {
   furn_potted_plant: { id: "furn_potted_plant", name: "倖存的小盆栽", type: "furniture", icon: "🪴", slot: "table", rarity: "common", factionTag: "none", shopPrice: { embers: 12 }, desc: "每次返回據點自動回SAN+5", effects: { returnSanBonus: 5 } },
   furn_toolbox: { id: "furn_toolbox", name: "上鎖的工具箱", type: "furniture", icon: "🧰", slot: "floor", rarity: "common", factionTag: "none", shopPrice: { embers: 15 }, desc: "防禦+3", effects: { defBonus: 3 } },
 
+  // v160：地毯類(獨立rug槽位，純裝飾鋪在地板下層，不佔用floor陳列格)
+  rug_plain: { id: "rug_plain", name: "簡約棉質地墊", type: "furniture", icon: "🟫", slot: "rug", rarity: "common", factionTag: "none", shopPrice: { embers: 8 }, desc: "純裝飾，鋪在地板上提升小屋氛圍" },
+  rug_woven: { id: "rug_woven", name: "編織暖色地毯", type: "furniture", icon: "🟧", slot: "rug", rarity: "rare", factionTag: "none", shopPrice: { embers: 14 }, desc: "純裝飾，鋪在地板上提升小屋氛圍" },
+  rug_round: { id: "rug_round", name: "圓形毛絨地毯", type: "furniture", icon: "🔵", slot: "rug", rarity: "epic", factionTag: "none", shopPrice: { embers: 22 }, desc: "純裝飾，鋪在地板上提升小屋氛圍" },
+
   // 27.1/32.3 裝備池：28項武器(10)/防具(8)/飾品(8)，rare以上掉落時實例化為weaponInstances並可疊加前綴詞(PREFIX_POOL)
   // 武器(10)
   scrap_chainsaw: { id: "scrap_chainsaw", name: "工兵改裝電鋸", type: "weapon", icon: "⚙️", stats: { atk: 2 }, rarity: "common", factionTag: "none", desc: "初始武器" },
   military_shovel: { id: "military_shovel", name: "舊世軍用軍鏟", type: "weapon", icon: "🥄", stats: { atk: 3 }, rarity: "common", factionTag: "none", desc: "防禦時護盾+2（未接入防禦判定，文案保留）" },
   gaia_whip: { id: "gaia_whip", name: "活化荊棘刺鞭", type: "weapon", icon: "🌱", stats: { atk: 5 }, rarity: "rare", factionTag: "gaia", desc: "攻擊額外15%吸血（與蓋亞血脈T2分開計算）", effects: { lifestealBonus: 0.15 } },
   ocean_pistol: { id: "ocean_pistol", name: "酸水噴射短槍", type: "weapon", icon: "🔫", stats: { atk: 4 }, rarity: "rare", factionTag: "ocean", ranged: true, desc: "每擊敵方防禦-1，上限-5（27.4 defShred）；遠程武器：每次攻擊消耗1🔋彈藥，耗盡時攻擊力加成減半" },
-  aero_crossbow: { id: "aero_crossbow", name: "大氣靈能重弩", type: "weapon", icon: "🏹", stats: { atk: 5 }, rarity: "rare", factionTag: "aero", ranged: true, desc: "先手率+10%（未接入先手判定，文案保留）；遠程武器：每次攻擊消耗1🔋彈藥，耗盡時攻擊力加成減半" },
+  aero_crossbow: { id: "aero_crossbow", name: "大氣靈能重弩", type: "weapon", icon: "🏹", stats: { atk: 5 }, rarity: "rare", factionTag: "aero", ranged: true, desc: "先手率10%：每次攻擊有機率搶先造成一次額外傷害；遠程武器：每次攻擊消耗1🔋彈藥，耗盡時攻擊力加成減半" },
   aero_dagger: { id: "aero_dagger", name: "高頻次聲波刃", type: "weapon", icon: "🔪", stats: { atk: 8 }, rarity: "epic", factionTag: "aero", desc: "攻擊無視敵方防禦", effects: { ignoreDefBonus: 1 } },
   cyber_hammer: { id: "cyber_hammer", name: "電磁改裝重錘", type: "weapon", icon: "🔨", stats: { atk: 9 }, rarity: "epic", factionTag: "cyber", desc: "對機械系敵人傷害+100%" },
   ocean_mace: { id: "ocean_mace", name: "水銀液態流星錘", type: "weapon", icon: "⚒️", stats: { atk: 7 }, rarity: "epic", factionTag: "ocean", desc: "25%機率使敵暈眩1回合（27.4 stun）" },
@@ -66,7 +89,7 @@ const ITEMS = {
   // 防具(8)
   scrap_plating: { id: "scrap_plating", name: "廢棄鐵皮外殼", type: "armor", icon: "🛡️", stats: { def: 1 }, rarity: "common", factionTag: "none", desc: "" },
   ceramic_vest: { id: "ceramic_vest", name: "陶瓷防彈插板", type: "armor", icon: "🦺", stats: { def: 2 }, rarity: "common", factionTag: "none", desc: "免疫流血（27.4 bleedImmune）／初始護甲", effects: { bleedImmune: true } },
-  gaia_armor: { id: "gaia_armor", name: "苔蘚幾何外殼", type: "armor", icon: "🌿", stats: { def: 3 }, rarity: "rare", factionTag: "gaia", desc: "荒野每回合回2HP（未接入荒野回合制，文案保留）" },
+  gaia_armor: { id: "gaia_armor", name: "苔蘚幾何外殼", type: "armor", icon: "🌿", stats: { def: 3 }, rarity: "rare", factionTag: "gaia", desc: "探索遭遇戰每回合回HP+2（不含血月/據點防衛戰）" },
   ocean_jacket: { id: "ocean_jacket", name: "重水防護夾克", type: "armor", icon: "🧥", stats: { def: 2 }, rarity: "rare", factionTag: "ocean", desc: "閃避率+5%", effects: { dodgeBonus: 0.05 } },
   aero_cloak: { id: "aero_cloak", name: "氣流避彈防風衣", type: "armor", icon: "🧥", stats: { def: 1 }, rarity: "rare", factionTag: "aero", desc: "遠程/爆炸傷害-20%（未接入傷害類型判定，文案保留）" },
   cyber_suit: { id: "cyber_suit", name: "金屬活化液壓甲", type: "armor", icon: "🦾", stats: { def: 5 }, rarity: "epic", factionTag: "cyber", desc: "20%機率將受傷轉為護盾（27.4 shield）" },
@@ -88,13 +111,13 @@ const PREFIX_POOL = [
   { id: "hungry", name: "飢渴的", type: "weapon", minRarity: "rare", effect: { lifestealBonus: 0.05 }, desc: "武器額外+5%吸血" },
   { id: "corrosive", name: "腐蝕的", type: "weapon", minRarity: "rare", effect: { corrosiveStack: 1 }, desc: "每次攻擊額外使敵防-1，上限-5（27.4 defShred）" },
   { id: "heavy", name: "沉重的", type: "armor", minRarity: "rare", effect: { defBonus: 2, staminaCostBonus: 1 }, desc: "防具額外def+2，但體力消耗+1" },
-  { id: "resonant", name: "共鳴的", type: "accessory", minRarity: "epic", effect: { skillBonusRatio: 0.1 }, desc: "對應流派(25.3)技能效果額外+10%（未接入，文案保留）" },
+  { id: "resonant", name: "共鳴的", type: "accessory", minRarity: "epic", effect: { skillBonusRatio: 0.1 }, desc: "流派暴擊率/吸血/閃避加成額外+10%" },
   { id: "perfect", name: "完美的", type: "any", minRarity: "legendary", effect: { statBonus: 1 }, desc: "該裝備基礎數值額外+1(atk或def)" },
   // v1.5內容擴充：前綴詞x5
   { id: "prefix_animated", name: "活化的", type: "weapon", minRarity: "rare", effect: { statBonus: 1, winStaminaChance: 0.15 }, desc: "武器額外+1攻擊；戰鬥勝利時有15%機率回復體力+1" },
   { id: "prefix_still_water", name: "止水之", type: "armor", minRarity: "rare", effect: { sanMaxBonus: 10 }, desc: "防具額外提供SAN上限+10" },
   { id: "prefix_overloaded", name: "過載的", type: "weapon", minRarity: "epic", effect: { statBonus: 5, durabilityDecayMult: 2 }, desc: "武器額外+5攻擊，但耐久消耗速度x2" },
-  { id: "prefix_crystal_resonance", name: "晶格共鳴", type: "accessory", minRarity: "epic", effect: { skillBonusRatio: 0.15 }, desc: "對應流派(25.3)技能效果額外+15%（未接入，文案保留）" },
+  { id: "prefix_crystal_resonance", name: "晶格共鳴", type: "accessory", minRarity: "epic", effect: { skillBonusRatio: 0.15 }, desc: "流派暴擊率/吸血/閃避加成額外+15%" },
   { id: "prefix_immortal", name: "不滅的", type: "any", minRarity: "legendary", effect: { durabilityDecayMult: 0.5, lockMaxStats: true }, desc: "耐久消耗速度減半；基礎數值鎖定為浮動區間最大值" }
 ];
 
@@ -399,33 +422,33 @@ const EVENTS = [
   {
     id: "evt_quiet_day", title: "平靜的時刻",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 30,
-    text: "今天沒有發生什麼大事。陽光（或月光）斜斜地照進據點，灰塵在空氣中緩緩飄浮。你靠著牆坐了一會兒，聽著自己的呼吸聲——在這個世界，「無聊」反而是種奢侈。",
+    text: "今天沒有發生什麼大事。陽光（或月光）斜斜地照進據點，空氣中懸浮的細塵泛著一絲若有若無的螢光，緩緩飄著。你靠著牆坐了一會兒，聽著自己的呼吸聲——在這個世界，「無聊」反而是種奢侈。",
     textPool: [
-      "今天沒有發生什麼大事。陽光（或月光）斜斜地照進據點，灰塵在空氣中緩緩飄浮。你靠著牆坐了一會兒，聽著自己的呼吸聲——在這個世界，「無聊」反而是種奢侈。",
-      "你花了一整段時間整理背包，把每件物品按用途重新排列。這種瑣碎的小事，意外地讓緊繃的神經鬆了下來——至少今天，一切都在自己的掌控之中。",
-      "遠處偶爾傳來幾聲不知名的聲響，但都沒有靠近。你坐在角落，望著牆上斑駁的痕跡發呆，腦中一片空白，時間就這樣靜靜地流過。",
-      "你翻出隨身攜帶的小刀，慢慢地磨著早已生鏽的刀刃。金屬摩擦的聲音規律而單調，像是某種儀式，讓你暫時忘記外頭的世界。",
-      "難得的好天氣。你找了個能曬到光的角落坐下，閉上眼睛，感受久違的溫暖灑在臉上。這樣的片刻，你想盡量多留一會兒。",
-      "你檢查了一遍隨身物資，又把破損的衣物縫補了幾針。動作不快，但每完成一件小事，心裡就踏實一分。",
-      "整個白天（或夜晚）安靜得有些不真實。你坐在原地，聽著風穿過縫隙的聲音，思緒漫無目的地飄著，沒有特別想到什麼。",
-      "你靠在牆邊，慢慢嚼著一小塊乾糧，細細品味著這份難得的寧靜。在這個世界裡，能安穩地吃完一餐，已經是值得感激的事。"
+      "今天沒有發生什麼大事。陽光（或月光）斜斜地照進據點，空氣中懸浮的細塵泛著一絲若有若無的螢光，緩緩飄著。你靠著牆坐了一會兒，聽著自己的呼吸聲——在這個世界，「無聊」反而是種奢侈。",
+      "你花了一整段時間整理背包，把每件物品按用途重新排列。遠處傳來地脈活化特有的低頻嗡鳴，規律得幾乎像背景音樂——意外地讓緊繃的神經鬆了下來，至少今天，一切都在自己的掌控之中。",
+      "遠處偶爾傳來幾聲不知名的聲響，混著一絲說不清楚的細碎呢喃，但都沒有靠近。你坐在角落，望著牆上斑駁的痕跡發呆，腦中一片空白，時間就這樣靜靜地流過。",
+      "你翻出隨身攜帶的小刀，慢慢地磨著早已生鏽的刀刃。金屬摩擦的聲音規律而單調，像是某種儀式，讓你暫時忘記外頭那個會自己發光的世界。",
+      "難得的好天氣。你找了個能曬到光的角落坐下，閉上眼睛，感受久違的溫暖灑在臉上——連空氣裡那層淡淡的石英粉塵味，此刻聞起來都不算討厭。這樣的片刻，你想盡量多留一會兒。",
+      "你檢查了一遍隨身物資，又把破損的衣物縫補了幾針。動作不快，但每完成一件小事，心裡就踏實一分，外頭那些扭曲的雜音，暫時都被你關在門外。",
+      "整個白天（或夜晚）安靜得有些不真實。你坐在原地，聽著風穿過縫隙的聲音，偶爾夾雜一絲分不清是不是幻聽的低語，思緒漫無目的地飄著，沒有特別想到什麼。",
+      "你靠在牆邊，慢慢嚼著一小塊乾糧，細細品味著這份難得的寧靜。在這個世界裡，能安穩地吃完一餐、不被任何詭異的動靜打斷，已經是值得感激的事。"
     ],
     options: []
   },
   {
     id: "evt_noise_outside", title: "窗外的聲響",
     minDay: 1, maxDay: null, phase: ["night"], weight: 15,
-    text: "窗外突然傳來「咚——咚——」的拖行聲，混雜著金屬刮地的刺耳聲響，一步一步，似乎正朝著據點的方向逼近。你的心跳聲在寂靜中顯得格外清楚。",
+    text: "窗外突然傳來「咚——咚——」的拖行聲，混雜著一陣低頻嗡鳴，像是某種扭曲的呻吟，一步一步，似乎正朝著據點的方向逼近。你的心跳聲在寂靜中顯得格外清楚。",
     textPool: [
-      "窗外突然傳來「咚——咚——」的拖行聲，混雜著金屬刮地的刺耳聲響，一步一步，似乎正朝著據點的方向逼近。你的心跳聲在寂靜中顯得格外清楚。",
-      "一陣低沉的呻吟聲從牆外傳來，斷斷續續，伴隨著某種重物被拖過地面的悶響。你屏住呼吸，豎起耳朵分辨聲音的方向。",
-      "遠處傳來一聲玻璃碎裂的聲響，緊接著是雜亂的腳步聲，由遠而近，又似乎在某處停了下來。寂靜中，每一個聲響都被放大數倍。",
-      "屋頂傳來輕微的「喀、喀」聲，像是有什麼東西正緩慢地爬過鐵皮。你抬頭盯著天花板，動也不敢動。",
-      "門外傳來一陣若有似無的低語聲，分不清是風聲還是真的有什麼在說話。你的後頸瞬間泛起一陣寒意。"
+      "窗外突然傳來「咚——咚——」的拖行聲，混雜著一陣低頻嗡鳴，像是某種扭曲的呻吟，一步一步，似乎正朝著據點的方向逼近。你的心跳聲在寂靜中顯得格外清楚。",
+      "一陣低沉的呻吟聲從牆外傳來，斷斷續續，尾音帶著一絲不屬於人類的顫音，伴隨著某種重物被拖過地面的悶響。你屏住呼吸，豎起耳朵分辨聲音的方向。",
+      "遠處傳來一聲玻璃碎裂的聲響，緊接著是雜亂的腳步聲，由遠而近，又似乎在某處停了下來。寂靜中，每一個聲響都被放大數倍，連帶著一絲說不出的靜電感爬上後頸。",
+      "屋頂傳來輕微的「喀、喀」聲，像是有什麼東西正緩慢地爬過鐵皮，爪痕劃過的地方隱約留下一道轉瞬即逝的螢光。你抬頭盯著天花板，動也不敢動。",
+      "門外傳來一陣若有似無的低語聲，分不清是風聲還是真的有什麼在說話——那聲音的節奏太規律了，不像自然的風。你的後頸瞬間泛起一陣寒意。"
     ],
     options: [
       { label: "屏息躲藏", resultText: "你貼著牆壁，盡量放慢呼吸。拖行聲在門外停留了片刻，接著緩緩遠去——你直到聲音完全消失後，才敢吐出那口氣。" },
-      { label: "悄悄查看", effect: { resources: { scrap: 1 }, setFlag: "noise_investigated" }, resultText: "你輕輕拉開窗簾一角——原來只是一塊被風吹倒、拖行在地上的招牌。你鬆了口氣，順手把附近散落的金屬零件撿了回來。但拉開窗簾的瞬間，你似乎瞥見巷口有個人影一閃而過……" }
+      { label: "悄悄查看", effect: { resources: { scrap: 1 }, setFlag: "noise_investigated" }, resultText: "你輕輕拉開窗簾一角——原來只是一塊被風吹倒、拖行在地上的招牌，邊角還沾著一絲螢光粉塵。你鬆了口氣，順手把附近散落的金屬零件撿了回來。但拉開窗簾的瞬間，你似乎瞥見巷口有個人影一閃而過……" }
     ]
   },
   {
@@ -433,7 +456,7 @@ const EVENTS = [
     minDay: 1, maxDay: null, phase: ["day"], weight: 20,
     // 據點防禦越低（越缺乏準備），越容易發現額外補給，緩解前期壓力
     weightModifier: (state) => Math.max(0, (3 - state.baseDefense) * 3),
-    text: "在據點角落一堆雜物底下，你發現了一個被遺忘已久、還沒被翻動過的背包，表面積了一層薄薄的灰塵——看起來已經放在這裡好一陣子了。",
+    text: "在據點角落一堆雜物底下，你發現了一個被遺忘已久、還沒被翻動過的背包，表面積了一層薄薄的灰塵，混著幾粒會反光的細小石英顆粒——看起來已經放在這裡好一陣子了。",
     options: [
       { label: "打開查看", effect: { resources: { food: 2, water: 1 }, exp: 3 }, resultText: "拉開拉鍊的瞬間，裡頭傳出罐頭碰撞的聲響——幾罐還沒過期的食物，加上一瓶密封完好的水。在這種日子裡，這已經算是一筆不小的收穫。" }
     ]
@@ -443,7 +466,7 @@ const EVENTS = [
     minDay: 1, maxDay: null, phase: ["day"], weight: 15,
     // 食物或飲水快見底時才會出現
     condition: (state) => state.resources.food <= 2 || state.resources.water <= 2,
-    text: "正當你開始擔心存糧見底的時候，路邊一個褪色的軍用補給箱吸引了你的注意——箱子側面印著模糊的救援單位標誌，掀開蓋子，裡面竟然還剩下一些沒被搜刮走的物資。",
+    text: "正當你開始擔心存糧見底的時候，路邊一個褪色的軍用補給箱吸引了你的注意——箱子側面印著模糊的救援單位標誌，邊角還燒著一圈淡淡的螢光焦痕，掀開蓋子，裡面竟然還剩下一些沒被搜刮走的物資。",
     options: [
       { label: "拿走補給", effect: { resources: { food: 2, water: 2 } }, resultText: "你迅速把食物和飲水塞進背包，緊繃的肩膀總算放鬆了一些——至少，接下來幾天不用餓肚子了。" }
     ]
@@ -451,7 +474,7 @@ const EVENTS = [
   {
     id: "evt_infected_encounter", title: "感染者出現",
     minDay: 1, maxDay: null, phase: ["night"], weight: 12,
-    text: "一道踉蹌的身影從巷口的陰影中竄出，發出低沉而沙啞的呻吟——是一名感染者，渾濁的雙眼直直盯著你，步伐雖然蹣跚，卻正一步步逼近。",
+    text: "一道踉蹌的身影從巷口的陰影中竄出，發出低沉而沙啞的呻吟——是一名感染者，渾濁的雙眼深處透著一絲不自然的螢光，步伐雖然蹣跚，卻正一步步逼近。",
     options: [
       { label: "戰鬥", battle: "enemy_walker_weak" },
       { label: "逃跑", effect: { resources: { food: -1 } }, resultText: "你轉身就跑，背包在奔跑中不斷晃動，一些食物從縫隙中掉了出來。等你確定甩開對方後，才發現自己已經滿身是汗。" }
@@ -462,7 +485,7 @@ const EVENTS = [
     minDay: 1, maxDay: null, phase: ["night"], weight: 10,
     // 等級較高的玩家才會遇到較強的變種
     condition: (state) => state.level >= 3,
-    text: "黑暗中，一名感染者緩緩走出——牠的手裡竟還緊緊攥著一根生鏽的鐵管，關節因為長期僵硬而以詭異的角度晃動著。比起一般感染者，牠的氣息明顯更加危險。",
+    text: "黑暗中，一名感染者緩緩走出——牠的手裡竟還緊緊攥著一根生鏽的鐵管，關節因為長期僵硬而以詭異的角度晃動著，皮膚下隱約能看見一條條發光的紋路在脈動。比起一般感染者，牠的氣息明顯更加危險。",
     options: [
       { label: "戰鬥", battle: "enemy_walker_armed" },
       { label: "逃跑", effect: { resources: { food: -1 } }, resultText: "你不敢戀戰，立刻拔腿沿著小巷狂奔。鐵管刮過牆面的聲響在身後迴盪，你直到拐過好幾個轉角才敢放慢腳步，途中弄丟了一些食物。" }
@@ -481,7 +504,7 @@ const EVENTS = [
   {
     id: "evt_rain", title: "下雨了",
     minDay: 1, maxDay: null, phase: ["day"], weight: 10,
-    text: "天空毫無預警地暗了下來，豆大的雨滴開始敲打在屋頂與廢棄車輛上，匯聚成一片白噪音。對現在的你來說，這場雨不是麻煩，而是一份意外的禮物。",
+    text: "天空毫無預警地暗了下來，豆大的雨滴開始敲打在屋頂與廢棄車輛上，匯聚成一片白噪音，雨水落地時偶爾濺起一閃即逝的微光。對現在的你來說，這場雨不是麻煩，而是一份意外的禮物。",
     options: [
       { label: "收集雨水", effect: { resources: { water: 2 }, exp: 3 }, resultText: "你迅速把所有能用的容器擺到屋簷下，看著雨水一點一滴匯聚起來。雨勢持續了好一陣子，等你把容器收回來時，飲水量明顯多了不少。" }
     ]
@@ -489,7 +512,7 @@ const EVENTS = [
   {
     id: "evt_injury", title: "受傷",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 8,
-    text: "在翻找雜物時，一塊藏在暗處、邊緣鏽蝕的鐵片劃過你的手臂，刺痛感瞬間竄上來。你低頭一看，傷口雖不深，但血已經滲了出來，在這種環境下，傷口感染的風險不容小覷。",
+    text: "在翻找雜物時，一塊藏在暗處、邊緣沾著螢光鏽斑的鐵片劃過你的手臂，刺痛感瞬間竄上來。你低頭一看，傷口雖不深，但血已經滲了出來，在這種環境下，傷口感染的風險不容小覷。",
     textPool: [
       "在翻找雜物時，一塊藏在暗處、邊緣鏽蝕的鐵片劃過你的手臂，刺痛感瞬間竄上來。你低頭一看，傷口雖不深，但血已經滲了出來，在這種環境下，傷口感染的風險不容小覷。",
       "搬動一塊倒塌的木板時，腳下一滑，膝蓋重重撞在堅硬的地面上。一陣鈍痛從腿部蔓延開來，你勉強站起身，發現傷口處已經腫了起來。",
@@ -506,7 +529,7 @@ const EVENTS = [
   {
     id: "evt_scrap_pile_gear", title: "雜物堆裡的傢俬",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 5,
-    text: "在一堆鏽蝕的金屬廢料與破布之間，你注意到一件還算堪用的裝備——雖然不是什麼精良貨，但對現在的你來說已經足夠。",
+    text: "在一堆鏽蝕的金屬廢料與破布之間，一件還算堪用的裝備泛著一絲不易察覺的微光吸引了你的注意——雖然不是什麼精良貨，但對現在的你來說已經足夠。",
     options: [
       { label: "拿走", effect: { equipment_pool: ["knife_01", "pipe_01", "jacket_01", "scrap_plating", "military_shovel"], exp: 3 }, resultText: "你把它擦拭乾淨，收進背包——這趟出來總算沒有白跑一場。" }
     ]
@@ -515,10 +538,10 @@ const EVENTS = [
     id: "evt_scavenger_trade", title: "流浪商人",
     minDay: 3, maxDay: null, phase: ["day"], weight: 12,
     condition: (state) => state.resources.scrap >= 3,
-    text: "一陣吱嘎作響的輪子聲由遠而近，一個衣著破舊、推著改裝手推車的男人出現在視線中。車上掛滿了各種瓶瓶罐罐與零件，他朝你咧嘴一笑，露出缺了角的牙齒：「廢料換物資，要不要？童叟無欺。」",
+    text: "一陣吱嘎作響的輪子聲由遠而近，一個衣著破舊、推著改裝手推車的男人出現在視線中。車上掛滿瓶瓶罐罐與零件，幾圈銅線纏在其間微微發光。他朝你咧嘴一笑，露出缺角的牙齒：「廢料換物資，要不要？童叟無欺。」",
     options: [
       { label: "用廢料交換物資", effect: { resources: { scrap: -3, food: 2, water: 2 } }, resultText: "你拿出一些廢料遞給他，他熟練地秤了秤重量，從車上翻出幾罐食物和水交給你。「這年頭，活下去最重要。」他咧嘴一笑，推著車繼續前行，很快消失在街角。" },
-      { label: "婉拒，目送他離開", resultText: "你搖搖頭。商人聳聳肩，似乎早已習慣這種反應，「隨你。」他推著吱嘎作響的車子，慢慢消失在街道盡頭，留下一陣若有似無的金屬碰撞聲。" }
+      { label: "婉拒，目送他離開", resultText: "你搖搖頭。商人聳聳肩，似乎早已習慣這種反應，「隨你。」他推著吱嘎作響的車子，慢慢消失在街道盡頭，留下一陣若有似無的金屬碰撞聲，和一絲說不清的螢光餘暈。" }
     ]
   },
   {
@@ -534,7 +557,7 @@ const EVENTS = [
     minDay: 1, maxDay: null, phase: ["day"], weight: 10,
     condition: (state) => state.baseDefense < 3,
     weightModifier: (state) => (3 - state.baseDefense) * 2,
-    text: "遠方的天空逐漸被厚重的烏雲吞沒，悶雷聲一陣接著一陣，越來越近。風開始呼嘯著掠過據點外圍那些臨時搭建的圍欄與木板——以目前的防禦狀況，這場風暴恐怕撐不住。",
+    text: "遠方的天空逐漸被厚重的烏雲吞沒，悶雷聲一陣接著一陣，越來越近，每次閃光過後空氣裡都殘留一絲焦糊般的靜電味。風開始呼嘯著掠過據點外圍那些臨時搭建的圍欄與木板——以目前的防禦狀況，這場風暴恐怕撐不住。",
     options: [
       { label: "趕緊加固據點", effect: { resources: { scrap: -2 }, baseDefense: 1 }, resultText: "你抓起手邊的廢料和工具，趕在風暴來臨前加固了幾處最脆弱的結構。當第一陣強風掃過時，圍欄劇烈搖晃卻沒有倒下——這次，你們撐住了。" },
       { label: "躲進地下室硬撐", effect: { hp: -5 }, resultText: "你選擇先躲起來，把加固工程留到明天。整個夜晚，風暴在外頭怒吼，不時傳來木板被掀飛、東西倒塌的巨響。隔天清晨走出來時，據點多處受損，你也是一夜未眠，渾身痠痛。" }
@@ -613,7 +636,7 @@ const EVENTS = [
   {
     id: "evt_radio_broadcast", title: "雜訊中的聲音",
     minDay: 2, maxDay: null, phase: ["night"], weight: 9,
-    text: "你無意間轉開一台老舊的收音機，刺耳的雜訊中突然夾雜進一段斷斷續續的人聲：「……如果聽得到……北邊的訊號塔……我們還在……」訊息很快又被雜訊淹沒，無論怎麼轉動旋鈕都找不回來了。\n\n你盯著收音機，久久無法移開視線——這是這幾天來，第一次確定這座城市裡不是只有你和那些東西。",
+    text: "你無意間轉開一台老舊的收音機，刺耳的雜訊裡夾著一絲規律嗡鳴，接著突然冒出一段斷斷續續的人聲：「……如果聽得到……北邊的訊號塔……我們還在……」訊息很快又被雜訊淹沒，無論怎麼轉動旋鈕都找不回來了。\n\n你盯著收音機，久久無法移開視線——這是這幾天來，第一次確定這座城市裡不是只有你和那些東西。",
     options: [
       { label: "把頻率記下來", effect: { setFlag: "radio_lead" }, resultText: "你找了張紙，把聽到的頻率與關鍵字仔細寫下來，小心收進口袋。北邊……訊號塔……或許哪天用得上。雖然渺茫，但這是個方向，足夠讓你在黑暗中多一點盼頭。" },
       { label: "關掉收音機，留著電池", effect: { resources: { scrap: 1 } }, resultText: "你關掉收音機，拆下還有電的電池收好。希望是奢侈品，活下去才是現在的優先事項——你這樣告訴自己，但那段聲音還是在腦海裡迴盪了很久。" }
@@ -631,7 +654,7 @@ const EVENTS = [
   {
     id: "evt_collapsing_floor", title: "腳下的異響",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 8,
-    text: "「喀啦——」一聲，腳下的地板突然傳來令人牙酸的爆裂聲，木板瞬間下陷了一截！你下意識地僵在原地，能感覺到整個地面正微微震動，灰塵簌簌地從天花板落下。再往前一步，可能就會徹底塌陷。",
+    text: "「喀啦——」一聲，腳下的地板突然傳來令人牙酸的爆裂聲，木板瞬間下陷了一截！你下意識地僵在原地，能感覺到整個地面正微微震動，裂縫深處透出一絲幽幽螢光，灰塵簌簌落下。再往前一步，可能就會徹底塌陷。",
     options: [
       {
         label: "賭一把，衝過去",
@@ -654,7 +677,7 @@ const EVENTS = [
     id: "evt_black_market", title: "黑市交易",
     minDay: 7, maxDay: null, phase: ["night"], weight: 8,
     condition: (state) => state.resources.scrap >= 5,
-    text: "巷子深處透出一點微弱的燈光，幾個人影圍著一張鋪滿貨物的木板低聲交談，看到你靠近也沒有驅趕的意思。\n\n其中一人朝你抬了抬下巴，露出意味不明的笑容：「想交易？這裡什麼都有，只要你出得起價。」木板上擺著幾件來路不明、卻保養得相當不錯的裝備。",
+    text: "巷子深處透出一點微弱的燈光，混著一絲不屬於電燈泡的冷色螢光，幾個人影圍著一張鋪滿貨物的木板低聲交談，看到你靠近也沒有驅趕的意思。\n\n其中一人朝你抬了抬下巴，露出意味不明的笑容：「想交易？這裡什麼都有，只要你出得起價。」木板上擺著幾件來路不明、卻保養得相當不錯的裝備。",
     options: [
       { label: "用廢料換一件裝備", effect: { resources: { scrap: -5 }, equipment_pool: ["pistol_01", "vest_01", "machete_01"] }, resultText: "你遞出廢料，對方不發一語地清點，隨即從木板底下抽出一件用布包好的裝備塞進你手裡。「東西很乾淨，別問來源。」他低聲說完，轉身便和同夥隱入巷子深處的陰影中。" },
       { label: "謝絕，盡快離開", resultText: "你搖搖頭，禮貌地後退幾步。對方也不在意，只是聳聳肩繼續和同夥低聲交談。你加快腳步離開這條巷子——這種地方，待得越久，風險越高。" }
@@ -663,7 +686,7 @@ const EVENTS = [
   {
     id: "evt_fever", title: "突如其來的發燒",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 7,
-    text: "你忽然感到一陣寒意從背脊竄上，緊接著是一波又一波的燥熱。額頭滾燙，視線開始模糊，四肢也變得沉重無力——是發燒了。在這種環境下，任何一點小毛病都可能演變成大麻煩。",
+    text: "你忽然感到一陣寒意從背脊竄上，緊接著是一波又一波的燥熱。額頭滾燙，視線開始模糊，眼前甚至浮現幾道轉瞬即逝的光斑，四肢也變得沉重無力——是發燒了。在這種環境下，任何一點小毛病都可能演變成大麻煩。",
     options: [
       { label: "服用藥品退燒", requiresResource: { medicine: 1 }, effect: { resources: { medicine: -1 }, hp: -3 }, resultText: "你翻出僅剩的藥品服下，靠著牆閉目休息了一陣子。藥效漸漸發揮作用，燒總算退了一些，雖然身體還是有點虛軟，但至少不再持續惡化。" },
       { label: "硬撐過去", effect: { hp: -8 }, resultText: "你沒有藥可用，只能裹緊外套，蜷縮著等待這陣難受過去。一整天下來，你渾身發冷又發燙，幾乎無法集中精神，等到燒總算退去時，整個人已經虛脫得不成樣子。" }
@@ -768,7 +791,7 @@ const EVENTS = [
   {
     id: "evt_dusty_attic", title: "閣樓的灰塵",
     minDay: 1, maxDay: null, phase: ["day"], weight: 6,
-    text: "你爬上吱呀作響的樓梯，閣樓裡堆滿了積灰的紙箱與舊家具，光線從破損的天窗斜斜灑下，空氣中漂浮著細小的塵埃。",
+    text: "你爬上吱呀作響的樓梯，閣樓裡堆滿了積灰的紙箱與舊家具，光線從破損的天窗斜斜灑下，空氣中漂浮著細小的塵埃，其中幾粒在光束裡閃著不該有的微光。",
     options: [
       { label: "仔細翻找紙箱", effect: { resources: { scrap: 2 } }, resultText: "你一箱一箱翻過，大多是發黃的舊文件，但底層藏著幾件還能用的金屬零件，你小心收進背包。" },
       { label: "只是看看就好", effect: {}, resultText: "你站在門口看了一會兒，這些屬於別人的回憶讓你不忍心翻動，最後還是輕輕帶上了門。" }
@@ -777,7 +800,7 @@ const EVENTS = [
   {
     id: "evt_strange_smell", title: "空氣中的焦味",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 5,
-    text: "一股淡淡的焦味隨風飄來，似乎是不遠處有東西在悶燒。你停下腳步，鼻子皺了皺，試著判斷方向。",
+    text: "一股淡淡的焦味隨風飄來，混著一絲說不出的金屬腥氣，似乎是不遠處有東西在悶燒。你停下腳步，鼻子皺了皺，試著判斷方向。",
     options: [
       { label: "循著味道過去看看", effect: { resources: { scrap: 1 }, hp: -2 }, resultText: "靠近後你發現是一堆悶燒的電線堆，刺鼻的濃煙嗆得你直咳嗽，但你還是從旁邊扯下幾段還能用的電纜。" },
       { label: "繞道而行", effect: {}, resultText: "不確定的危險不值得冒險，你選擇繞了一段遠路，避開那股令人不安的氣味。" }
@@ -803,7 +826,7 @@ const EVENTS = [
   {
     id: "evt_tool_found", title: "工具箱",
     minDay: 1, maxDay: null, phase: ["day"], weight: 6,
-    text: "在一輛拋錨已久的貨車底下，你發現了一個半埋在泥土裡的工具箱，鎖頭早已鏽蝕損壞。",
+    text: "在一輛拋錨已久的貨車底下，你發現了一個半埋在泥土裡的工具箱，鎖頭早已鏽蝕損壞，縫隙間還卡著幾粒會反光的細小石英顆粒。",
     options: [
       { label: "撬開工具箱", effect: { resources: { scrap: 3 } }, resultText: "裡面雖然沒有完整的工具，但塞滿了各種螺絲、金屬片與電線——對你來說，這些零件比完整的工具更實用。" }
     ]
@@ -821,7 +844,7 @@ const EVENTS = [
     id: "evt_cold_night_wind", title: "刺骨的夜風",
     minDay: 1, maxDay: null, phase: ["night"], weight: 5,
     weightModifier: (state) => state.baseDefense < 2 ? 5 : 0,
-    text: "夜裡的風從牆壁的縫隙鑽進來，帶著刺骨的寒意。你裹緊身上僅有的衣物，牙齒不自覺地打顫。",
+    text: "夜裡的風從牆壁的縫隙鑽進來，帶著刺骨的寒意，隱約還夾雜著一絲低頻的嗡鳴。你裹緊身上僅有的衣物，牙齒不自覺地打顫。",
     options: [
       { label: "用備用材料堵住縫隙", effect: { resources: { scrap: -1 }, baseDefense: 1 }, resultText: "你摸黑找出幾塊木板和破布，把最大的縫隙堵了起來。雖然簡陋，但至少今晚不會再被風吹得睡不著了。" },
       { label: "硬撐過去", effect: { hp: -2 }, resultText: "你蜷縮在角落，把所有能裹的東西都裹在身上。一夜無眠，醒來時渾身僵硬痠痛。" }
@@ -840,7 +863,7 @@ const EVENTS = [
     id: "evt_distant_gunshot", title: "遠方的槍聲",
     minDay: 4, maxDay: null, phase: ["day", "night"], weight: 5,
     weightModifier: (state) => state.day >= 10 ? 3 : 0,
-    text: "一聲悶響從遠處傳來，緊接著是第二聲、第三聲——是槍聲，距離不算近，但也絕對不算遠。你的心跳瞬間加快。",
+    text: "一聲悶響從遠處傳來，緊接著是第二聲、第三聲——是槍聲，尾音卻拖著一絲不自然的回響，距離不算近，但也絕對不算遠。你的心跳瞬間加快。",
     options: [
       { label: "提高警覺，加緊手邊的工作", effect: { baseDefense: 1, resources: { scrap: -1 } }, resultText: "你不敢放鬆，立刻檢查了一遍據點的每個角落，順手把幾處薄弱的防禦補強了一些。槍聲漸漸停了，但那股緊張感久久未散。" },
       { label: "趴低身子，等待平靜", effect: { hp: -1 }, resultText: "你立刻趴低身子，屏住呼吸數著心跳。過了好一陣子，槍聲才終於停止，你才敢重新站起身，後背早已被冷汗浸濕。" }
@@ -849,7 +872,7 @@ const EVENTS = [
   {
     id: "evt_morning_fog", title: "濃霧的早晨",
     minDay: 1, maxDay: null, phase: ["day"], weight: 6,
-    text: "推開門，外頭一片濃霧瀰漫，能見度不到十步，世界彷彿被吞沒在一片灰白之中，連聲音都被悶住了。",
+    text: "推開門，外頭一片濃霧瀰漫，能見度不到十步，霧氣深處隱約有微光流轉，世界彷彿被吞沒在一片灰白之中，連聲音都被悶住了。",
     options: [
       { label: "趁著濃霧掩護外出", effect: { resources: { scrap: 1 }, hp: -1 }, resultText: "霧氣讓你幾乎看不清路，你小心翼翼摸索著前進，雖然多花了不少力氣，但也因為視線受阻意外撿到一些被忽略的雜物。" },
       { label: "等霧散了再說", effect: {}, resultText: "你決定不冒這個險，留在據點裡整理裝備，靜靜等待霧氣散去。" }
@@ -866,7 +889,7 @@ const EVENTS = [
   {
     id: "evt_leaking_pipe", title: "漏水的水管",
     minDay: 1, maxDay: null, phase: ["day"], weight: 6,
-    text: "牆角一根老舊水管正滴滴答答地漏著水，地上已經積出一小灘水漬，水質看起來還算清澈。",
+    text: "牆角一根老舊水管正滴滴答答地漏著水，地上已經積出一小灘水漬，水面上漂著一層極淡的螢光油膜，但水質看起來還算清澈。",
     options: [
       { label: "用容器接水", effect: { resources: { water: 2 } }, resultText: "你找出空容器接在漏水處下方，雖然要花點時間，但慢慢積攢下來，也是一筆不無小補的水源。" },
       { label: "嘗試修補水管", effect: { resources: { scrap: -1 }, baseDefense: 0 }, resultText: "你用隨身的工具和布條把漏水處纏緊，水管總算不再滴水——雖然解決不了根本問題，但至少不再浪費了。" }
@@ -884,7 +907,7 @@ const EVENTS = [
   {
     id: "evt_jammed_lock", title: "卡住的保險箱",
     minDay: 2, maxDay: null, phase: ["day"], weight: 5,
-    text: "辦公室角落有個小型保險箱，門把已經鏽死，但箱體看起來並沒有被人動過的痕跡。",
+    text: "辦公室角落有個小型保險箱，門把已經鏽死，箱體接縫處滲出一絲若有似無的螢光粉塵，但看起來並沒有被人動過的痕跡。",
     options: [
       { label: "用工具硬撬開", effect: { resources: { scrap: 2 }, hp: -1 }, resultText: "你費了好大力氣才把鏽死的鉸鏈撬開，雖然手被刮傷了一道，但裡面確實藏著一些值錢的零件與五金。" },
       { label: "太費力了，放棄", effect: {}, resultText: "看了看自己僅有的工具，你判斷不值得花這麼多力氣，便轉身離開了。" }
@@ -893,7 +916,7 @@ const EVENTS = [
   {
     id: "evt_thunderstorm", title: "雷陣雨",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 6,
-    text: "天色毫無預警地暗了下來，豆大的雨點砸在鐵皮屋頂上，轟隆的雷聲一聲接著一聲，整個世界彷彿都在震動。",
+    text: "天色毫無預警地暗了下來，豆大的雨點砸在鐵皮屋頂上，每道閃電劈下時都拖著一絲不該存在的螢綠尾光，轟隆的雷聲一聲接著一聲，整個世界彷彿都在震動。",
     options: [
       { label: "出去收集雨水", effect: { resources: { water: 3 }, hp: -1 }, resultText: "你冒著雨把所有空容器擺到屋外，豆大的雨滴打得你睜不開眼，但收穫的雨水足以讓你安心好一陣子。" },
       { label: "待在屋內等雨停", effect: {}, resultText: "你縮在屋內，聽著雨聲打在屋頂上，雷聲一次比一次近，你只希望這場雨不要造成太大的破壞。" }
@@ -902,7 +925,7 @@ const EVENTS = [
   {
     id: "evt_locked_door", title: "上鎖的房間",
     minDay: 1, maxDay: null, phase: ["day"], weight: 5,
-    text: "走廊盡頭有一扇房門緊閉著，門縫下透出一絲微光，門把上掛著一把銅鎖，看起來不算太牢固。",
+    text: "走廊盡頭有一扇房門緊閉著，門縫下透出一絲不太尋常的螢光，門把上掛著一把銅鎖，看起來不算太牢固。",
     options: [
       { label: "撞開房門", effect: { resources: { scrap: 1, medicine: 1 }, hp: -3 }, resultText: "你後退幾步，用力撞向房門，肩膀傳來一陣劇痛，門鎖應聲斷裂。房內是個小型儲藏室，留有一些零件和藥品。" },
       { label: "尊重隱私，不去打擾", effect: {}, resultText: "上鎖的房間或許代表著某人不希望被打擾的東西，你選擇尊重這份界線，轉身離開。" }
@@ -920,7 +943,7 @@ const EVENTS = [
   {
     id: "evt_broken_radio_message", title: "斷續的求救訊號",
     minDay: 1, maxDay: null, phase: ["night"], weight: 5,
-    text: "你隨身攜帶的小型收音機突然發出刺耳的雜訊，接著傳來一段斷斷續續、幾乎聽不清的人聲：「……如果有人聽到……請……回應……」",
+    text: "你隨身攜帶的小型收音機突然發出刺耳的雜訊，夾雜一陣規律到不自然的嗡鳴，接著傳來一段斷斷續續、幾乎聽不清的人聲：「……如果有人聽到……請……回應……」",
     options: [
       { label: "對著收音機回應", effect: { hp: -1 }, resultText: "你按下通話鍵，對著話筒說了幾句話。但無論你怎麼呼叫，對方都沒有再回應，只剩下持續的雜訊聲。你關掉收音機，心裡有些悵然。" },
       { label: "默默把收音機收好", effect: {}, resultText: "你聽著那段斷續的聲音，最終還是沒有按下通話鍵——你不確定自己是否準備好面對另一個聲音背後的故事。" }
@@ -929,7 +952,7 @@ const EVENTS = [
   {
     id: "evt_overgrown_park", title: "荒蕪的遊樂場",
     minDay: 1, maxDay: null, phase: ["day"], weight: 5,
-    text: "你經過一座兒童遊樂場，鞦韆隨風輕輕搖晃發出吱呀聲，溜滑梯上爬滿了藤蔓，沙坑裡長出了雜草。",
+    text: "你經過一座兒童遊樂場，鞦韆隨風輕輕搖晃發出吱呀聲，溜滑梯上爬滿了藤蔓，葉片邊緣泛著淡淡螢光，沙坑裡長出了雜草。",
     options: [
       { label: "在鞦韆上坐一會兒", effect: { hp: 2 }, resultText: "你坐上鞦韆，輕輕晃動著。微風吹過，藤蔓沙沙作響，這片刻的寧靜讓你緊繃的神經難得鬆弛下來。" },
       { label: "翻找器材室", effect: { resources: { scrap: 1 } }, resultText: "遊樂場旁的器材室半掩著門，裡面堆著一些維護用的工具，你撿走了幾樣還能用的零件。" }
@@ -939,7 +962,7 @@ const EVENTS = [
     id: "evt_medicine_cabinet", title: "藥櫃",
     minDay: 1, maxDay: null, phase: ["day"], weight: 6,
     weightModifier: (state) => state.resources.medicine <= 1 ? 4 : 0,
-    text: "浴室裡的藥櫃半開著，裡面散落著幾個藥瓶，大部分標籤都已經模糊不清，但其中一兩瓶看起來還算完整。",
+    text: "浴室裡的藥櫃半開著，裡面散落著幾個藥瓶，大部分標籤都已經模糊不清、邊緣泛著一絲詭異的螢光，但其中一兩瓶看起來還算完整。",
     options: [
       { label: "仔細檢查每一瓶", effect: { resources: { medicine: 1 } }, resultText: "你一瓶一瓶檢查標籤與保存期限，確認其中一瓶止痛藥還能使用，小心地收進醫療包。" },
       { label: "不確定的藥不要亂拿", effect: {}, resultText: "過期或來路不明的藥物可能比疾病本身更危險，你考慮再三，最終還是沒有拿走任何東西。" }
@@ -948,7 +971,7 @@ const EVENTS = [
   {
     id: "evt_burnt_building", title: "焦黑的建築",
     minDay: 1, maxDay: null, phase: ["day"], weight: 5,
-    text: "眼前這棟建築的外牆被燻得焦黑，窗戶全數碎裂，顯然曾經發生過嚴重的火災，但結構看起來還算穩固。",
+    text: "眼前這棟建築的外牆被燻得焦黑，窗戶全數碎裂，焦痕邊緣泛著一絲詭異的螢光，顯然曾經發生過不只是火災那麼單純的事，但結構看起來還算穩固。",
     options: [
       { label: "進去地下室碰碰運氣", effect: { resources: { scrap: 2, food: 1 } }, resultText: "地面樓層幾乎被燒成廢墟，但地下室因為遠離火源，意外保存了一些罐頭與建材，你盡可能多帶了一些。" },
       { label: "太危險了，不進去", effect: {}, resultText: "焦黑的結構隨時可能倒塌，你站在外面看了一會兒，最終還是決定不冒這個險。" }
@@ -958,7 +981,7 @@ const EVENTS = [
     id: "evt_night_patrol_lights", title: "遠方的探照燈",
     minDay: 5, maxDay: null, phase: ["night"], weight: 5,
     weightModifier: (state) => state.day >= 12 ? 3 : 0,
-    text: "遠處的天際線上，一道光束緩緩掃過天空，規律地來回移動——像是某種巡邏的探照燈，但你不確定那是誰在巡邏，又是為了什麼。",
+    text: "遠處的天際線上，一道泛著冷色螢光的光束緩緩掃過天空，規律地來回移動——像是某種巡邏的探照燈，但你不確定那是誰在巡邏，又是為了什麼。",
     options: [
       { label: "熄滅手邊的光源，靜觀其變", effect: {}, resultText: "你立刻吹熄手邊的蠟燭，蹲低身子，看著那道光束緩緩掃過又遠離。直到光束完全消失，你才敢重新點起燈火。" },
       { label: "趁機加緊修補據點", effect: { resources: { scrap: -1 }, baseDefense: 1 }, resultText: "既然外頭的人或物似乎暫時不會靠近這裡，你把握時間加緊修補了據點的防禦，希望能應付未知的威脅。" }
@@ -978,7 +1001,7 @@ const EVENTS = [
     id: "evt_distant_explosion", title: "遠方的爆炸聲",
     minDay: 6, maxDay: null, phase: ["day", "night"], weight: 5,
     weightModifier: (state) => state.day >= 15 ? 3 : 0,
-    text: "一聲巨大的轟鳴聲從城市另一端傳來，緊接著是一股黑煙緩緩升起，劃破原本灰濛濛的天空。整座城市似乎又少了一個角落。",
+    text: "一聲巨大的轟鳴聲從城市另一端傳來，緊接著是一股泛著淡綠色澤的黑煙緩緩升起，劃破原本灰濛濛的天空。整座城市似乎又少了一個角落。",
     options: [
       { label: "默默記下這個方向，避開那裡", effect: {}, resultText: "你站在原地看著那股黑煙，在心裡的地圖上又劃掉了一個區域。能避開的危險，就不要主動靠近。" },
       { label: "繼續手邊的事，不去多想", effect: { resources: { scrap: 1 } }, resultText: "這樣的聲音已經不是第一次聽到了。你深吸一口氣，把注意力拉回手邊的工作——活下去，才是現在唯一重要的事。" }
@@ -996,7 +1019,7 @@ const EVENTS = [
   {
     id: "evt_old_world_cache", title: "封存的舊世儲物櫃",
     minDay: 15, maxDay: null, phase: ["day"], weight: 5,
-    text: "在一條久未有人踏足的走廊盡頭，一列金屬儲物櫃整齊地排列著，大多已經鏽蝕變形，但其中一個的鎖頭看起來還很新——似乎曾有人試圖保護裡面的東西。",
+    text: "在一條久未有人踏足的走廊盡頭，一列金屬儲物櫃整齊地排列著，大多已經鏽蝕變形，但其中一個的鎖頭看起來還很新，表面還殘留著一圈防護用的螢光符文——似乎曾有人試圖保護裡面的東西。",
     options: [
       { label: "撬開這個鎖頭", effect: { resources: { scrap: -2 }, equipment_pool: ["ocean_pistol", "aero_crossbow", "ocean_mace", "cyber_suit"] }, resultText: "你花了一番力氣才撬開鎖頭，櫃子裡是用油布仔細包裹的裝備——保存狀況出乎意料地好。" },
       { label: "不去打擾，繼續往前", effect: {}, resultText: "你看了那個鎖頭一眼，最終還是沒有伸手。有些東西，或許曾經對某人很重要。" }
@@ -1171,7 +1194,7 @@ const EVENTS = [
     minDay: 1, maxDay: null, phase: ["night"], weight: 12,
     condition: (state) => !!(state.flags && state.flags.has_vinyl && !state.flags.music_healed
       && state.day >= state.flags.has_vinyl + 3 && state.day <= state.flags.has_vinyl + 5
-      && state.baseSlots && state.baseSlots.table === "furn_radio"),
+      && isFurniturePlacedInData(state, "furn_radio")),
     text: "你將那張黑膠唱片放上收音機的唱盤，沙沙的雜訊過後，悠揚的旋律緩緩流出，填滿了據點的每個角落。",
     options: [
       { label: "靜靜聆聽", effect: { san: 999, setFlag: "music_healed" }, resultText: "你靜靜坐著，讓音樂洗去這些日子積累的疲憊與緊張。SAN值完全恢復。" },
@@ -1280,7 +1303,7 @@ const EVENTS = [
   {
     id: "evt_find_plant", title: "窗台上的綠意",
     minDay: 1, maxDay: null, phase: ["day"], weight: 4,
-    condition: (state) => !(state.baseSlots && state.baseSlots.table === "furn_potted_plant")
+    condition: (state) => !isFurniturePlacedInData(state, "furn_potted_plant")
       && !(state.inventory || []).some(i => i.itemId === "furn_potted_plant"),
     text: "廢棄公寓的窗台上，一株不知名的小植物頑強地活了下來，葉片在裂縫透進的光線中微微搖晃。你猶豫了一下，最終把它連著盆一起帶走。",
     options: [
@@ -1290,9 +1313,11 @@ const EVENTS = [
   {
     id: "evt_find_toolbox", title: "鎖住的工具箱",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 4,
-    condition: (state) => !(state.baseSlots && state.baseSlots.wall === "furn_toolbox")
+    // 2026-06-26發現並修正：furn_toolbox的slot是"floor"，原本誤寫成檢查state.baseSlots.wall，永遠不會比對到，
+    // 等於這個事件即使已擁有工具箱也會一直重複出現；改用isFurniturePlacedInData統一查詢後順帶修掉
+    condition: (state) => !isFurniturePlacedInData(state, "furn_toolbox")
       && !(state.inventory || []).some(i => i.itemId === "furn_toolbox"),
-    text: "在工作間角落，你發現一個上了鎖的工具箱，鎖頭已經鏽蝕得差不多了。費了點力氣撬開後，裡頭的工具雖舊，但保養得意外完好。",
+    text: "在工作間角落，你發現一個上了鎖的工具箱，鎖頭已經鏽蝕得差不多了，邊緣還沾著幾粒會反光的細小石英顆粒。費了點力氣撬開後，裡頭的工具雖舊，但保養得意外完好。",
     options: [
       { label: "整箱帶走", effect: { furniture: ["furn_toolbox"] }, resultText: "你把工具箱搬回據點，打算找個地方固定上牆——這些工具以後肯定派得上用場。" }
     ]
@@ -1300,7 +1325,7 @@ const EVENTS = [
   {
     id: "evt_furniture_admire", title: "小小的家",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 6,
-    condition: (state) => !!(state.baseSlots && (state.baseSlots.wall || state.baseSlots.table || state.baseSlots.floor)),
+    condition: (state) => !!(state.baseSlots && (state.baseSlots.wall || state.baseSlots.wall2)) || !!(state.placedFurniture && state.placedFurniture.length > 0),
     text: "你環顧據點裡這些一點一滴添置起來的家具，雖然多半是從廢墟裡撿來、修補過的二手物，但擺在這裡，總算有了一點「家」的樣子。",
     options: [
       { label: "稍作休息", effect: { embers: 2 }, resultText: "你靠著牆坐下，難得地什麼都不做，只是發了一會兒呆。（獲得🔥2）" }
@@ -1308,8 +1333,257 @@ const EVENTS = [
   }
 ];
 
+// ---------- 任務與成就系統（規格文件/任務與成就系統_設計規格.md）----------
+// 主線：nextQuestId鏈式串接，永遠只有一個進行中的主線任務(state.questProgress.activeMain)
+// 支線：平坦集合，category分collect/companion/explore三類，UI對應3個子分頁
+// 注意：condition只「監看」現有flag/day/facilities等狀態，不主動改變遊戲邏輯
+const QUESTS = {
+  // ===== 主線（共7章，第7章=「畢業」非結局，因主迴圈是無限模式）=====
+  main_01_wake_up: {
+    id: "main_01_wake_up", type: "main", chapter: 1,
+    title: "醒來", desc: "在末日中睜開眼，這是你重新開始的第一天。",
+    condition: (state) => true,
+    reward: { embers: 10 },
+    nextQuestId: "main_02_settle_in",
+  },
+  main_02_settle_in: {
+    id: "main_02_settle_in", type: "main", chapter: 2,
+    title: "安頓下來", desc: "在安全屋擺上一件家具，讓這裡更像個家。",
+    condition: (state) => countPlacedFurnitureInData(state) > 0,
+    reward: { embers: 20 },
+    nextQuestId: "main_03_not_alone",
+  },
+  main_03_not_alone: {
+    id: "main_03_not_alone", type: "main", chapter: 3,
+    title: "不再是一個人", desc: "招募至少2名隊員，組成你的隊伍。",
+    condition: (state) => Object.values(state.companions).filter(v => v !== "locked").length >= 2,
+    reward: { exp: 50 },
+    nextQuestId: "main_04_storm_coming",
+  },
+  main_04_storm_coming: {
+    id: "main_04_storm_coming", type: "main", chapter: 4,
+    title: "風暴將至", desc: "感應到血月將臨的徵兆。",
+    condition: (state) => !!(state.upcomingThreat && state.day >= state.upcomingThreat.day), // 等同isThreatDue(state)（logic.js:565），直接讀state避免跨檔案函式依賴順序風險
+    reward: { embers: 20 },
+    nextQuestId: "main_05_blood_moon_night",
+  },
+  main_05_blood_moon_night: {
+    id: "main_05_blood_moon_night", type: "main", chapter: 5,
+    title: "血月之夜", desc: "在第一次血月之夜中存活下來。",
+    condition: (state) => (state.questFlags.bloodMoonSurvivedCount || 0) >= 1,
+    reward: { embers: 50, exp: 50 },
+    nextQuestId: "main_06_reclaim",
+  },
+  main_06_reclaim: {
+    id: "main_06_reclaim", type: "main", chapter: 6,
+    title: "收復失土", desc: "解放近郊封鎖線（Tier 0行政區）。",
+    condition: (state) => !!(state.flags && state.flags.tier0_liberated),
+    reward: { embers: 50 },
+    nextQuestId: "main_07_graduation",
+  },
+  main_07_graduation: {
+    id: "main_07_graduation", type: "main", chapter: 7,
+    title: "活下去的日子", desc: "你已經站穩腳步，接下來的故事由你自己決定。",
+    condition: (state) => true,
+    reward: { embers: 30 },
+    nextQuestId: null,
+  },
+
+  // ===== 支線·📦收集 =====
+  side_collect_furnish_full: {
+    id: "side_collect_furnish_full", type: "side", category: "collect",
+    title: "把家填滿", desc: "牆面/桌面/地板的4個陳列格都擺上家具。",
+    condition: (state) => countPlacedFurnitureInData(state) >= 4,
+    reward: { embers: 30 },
+  },
+  side_collect_floors: {
+    id: "side_collect_floors", type: "side", category: "collect",
+    title: "換個樣子", desc: "解鎖3種不同的地板樣式。",
+    condition: (state) => (state.unlockedFloors || []).length >= 3,
+    reward: { scrap: 10 },
+  },
+  side_collect_vinyl: {
+    id: "side_collect_vinyl", type: "side", category: "collect",
+    title: "黑膠唱片之夜", desc: "找到一張黑膠唱片，並在收音機旁聽完一整晚的音樂。",
+    condition: (state) => !!(state.flags && state.flags.music_healed),
+    reward: { exp: 20 },
+  },
+  side_collect_factions: {
+    id: "side_collect_factions", type: "side", category: "collect",
+    title: "五行俱全", desc: "曾經擁有過5大派系（蓋亞/賽博/洋流/大氣/靈能）裝備各一件。",
+    condition: (state) => {
+      const owned = new Set([
+        ...state.inventory.map(i => ITEMS[i.itemId] && ITEMS[i.itemId].factionTag),
+        ...state.weaponInstances.map(w => ITEMS[w.baseItemId] && ITEMS[w.baseItemId].factionTag),
+        ...Object.values(state.equipment).map(id => id && ITEMS[id] && ITEMS[id].factionTag),
+      ].filter(Boolean));
+      return FACTION_IDS.every(f => owned.has(f));
+    },
+    reward: { embers: 50 },
+  },
+  side_collect_facilities: {
+    id: "side_collect_facilities", type: "side", category: "collect",
+    title: "據點基礎建設", desc: "指揮中心/溫室/工坊/雷達站全部升到Lv1以上。",
+    condition: (state) => ["command", "greenhouse", "workshop", "radar"].every(k => (state.facilities[k] || 0) >= 1),
+    reward: { scrap: 20 },
+  },
+
+  // ===== 支線·👥隊員 =====
+  side_companion_full_squad: {
+    id: "side_companion_full_squad", type: "side", category: "companion",
+    title: "全員到齊", desc: "招募完整的3人隊伍。",
+    condition: (state) => Object.values(state.companions).filter(v => v !== "locked").length >= 3,
+    reward: { embers: 30 },
+  },
+  side_companion_care: {
+    id: "side_companion_care", type: "side", category: "companion", repeatable: "manual", resetField: "careCompletedCount", counterField: "careCompletedCount", counterTarget: 5,
+    title: "彼此照顧", desc: "指派隊員執行「照護」任務並完成5次。",
+    condition: (state) => (state.questFlags.careCompletedCount || 0) >= 5,
+    reward: { exp: 30 },
+  },
+  side_companion_stray_dog: {
+    id: "side_companion_stray_dog", type: "side", category: "companion",
+    title: "不請自來的夥伴", desc: "餵食一隻流浪狗，看牠是否決定留下來。",
+    condition: (state) => !!(state.flags && state.flags.dog_companion),
+    reward: { exp: 15 },
+  },
+  side_companion_cyborg_choice: {
+    id: "side_companion_cyborg_choice", type: "side", category: "companion",
+    title: "改造人的抉擇", desc: "面對逃亡的改造實驗體，做出你的選擇——無論救他還是放棄他，後果都會找上門。",
+    condition: (state) => !!(state.flags && (state.flags.cyborg_revenge_done || state.flags.cyborg_nemesis_done)),
+    reward: { embers: 30 },
+  },
+  side_companion_stranger: {
+    id: "side_companion_stranger", type: "side", category: "companion",
+    title: "陌路相逢", desc: "在荒野中與一名陌生人相遇，無論結果如何，都記下這次相遇。",
+    condition: (state) => !!(state.flags && state.flags.stranger_event_done),
+    reward: { exp: 15 },
+  },
+
+  // ===== 支線·🧭探索 =====
+  side_explore_seed: {
+    id: "side_explore_seed", type: "side", category: "explore",
+    title: "溫室的祕密", desc: "在溫室種出異變植株，並完成收穫。",
+    condition: (state) => !!(state.flags && state.flags.seed_harvested),
+    reward: { embers: 20 },
+  },
+  side_explore_camp: {
+    id: "side_explore_camp", type: "side", category: "explore",
+    title: "倖存者營地", desc: "活到第10天，解鎖倖存者營地。",
+    condition: (state) => state.day >= 10,
+    reward: { exp: 20 },
+  },
+  side_explore_daily_gather: {
+    id: "side_explore_daily_gather", type: "side", category: "explore", repeatable: "day", counterField: "gatherTodayCount", counterTarget: 2,
+    title: "今日份的努力", desc: "今天完成2次採集。",
+    condition: (state) => (state.questFlags.gatherTodayCount || 0) >= 2,
+    reward: { scrap: 5 },
+  },
+  side_explore_family: {
+    id: "side_explore_family", type: "side", category: "explore",
+    title: "南邊的橋", desc: "追查一張關於失散家人的字條線索，了結這份牽掛。",
+    condition: (state) => !!(state.flags && state.flags.family_search_done),
+    reward: { exp: 25 },
+  },
+  side_explore_radio_lead: {
+    id: "side_explore_radio_lead", type: "side", category: "explore",
+    title: "北邊的訊號塔", desc: "記下一段神祕電台頻率，動身前往訊號來源一探究竟。",
+    condition: (state) => !!(state.flags && state.flags.radio_journey_done),
+    reward: { scrap: 15 },
+  },
+};
+
+// 成就：4類「存活/戰鬥/收集/探索意外」，永久記錄(state.unlockedAchievements)，不因任務重置而消失
+const ACHIEVEMENTS = {
+  // ===== 🏕️存活 =====
+  ach_survive_30: {
+    id: "ach_survive_30", category: "survival",
+    title: "三十天倖存者", desc: "存活滿30天。",
+    condition: (state) => state.day >= 30,
+    reward: { embers: 15 }, hidden: false,
+  },
+  ach_survive_60: {
+    id: "ach_survive_60", category: "survival",
+    title: "六十天倖存者", desc: "存活滿60天。",
+    condition: (state) => state.day >= 60,
+    reward: { embers: 25 }, hidden: false,
+  },
+  ach_blood_moon_streak3: {
+    id: "ach_blood_moon_streak3", category: "survival",
+    title: "百戰不殆", desc: "連續存活過3次血月之夜。",
+    condition: (state) => (state.questFlags.bloodMoonWinStreak || 0) >= 3,
+    reward: { embers: 20 }, hidden: false,
+  },
+
+  // ===== ⚔️戰鬥 =====
+  ach_kills_50: {
+    id: "ach_kills_50", category: "combat",
+    title: "身經百戰", desc: "累計擊殺50名敵人。",
+    condition: (state) => (state.questFlags.totalKills || 0) >= 50,
+    reward: { exp: 20 }, hidden: false,
+  },
+  ach_cyborg_nemesis: {
+    id: "ach_cyborg_nemesis", category: "combat",
+    title: "鋼鐵的代價", desc: "擊敗鋼鐵湮滅者。",
+    condition: (state) => !!(state.flags && state.flags.cyborg_nemesis_done),
+    reward: { embers: 20 }, hidden: false,
+  },
+  ach_legendary_equip: {
+    id: "ach_legendary_equip", category: "combat",
+    title: "傳說在身", desc: "裝備過一件傳說（legendary）等級裝備。",
+    condition: (state) => ["weapon", "armor", "accessory"].some(slot => {
+      const id = state.equipment[slot];
+      return id && ITEMS[id] && ITEMS[id].rarity === "legendary";
+    }),
+    reward: { exp: 25 }, hidden: false,
+  },
+
+  // ===== 📦收集 =====
+  ach_full_house: {
+    id: "ach_full_house", category: "collect",
+    title: "千變萬化", desc: "4個陳列格都擺上家具，且解鎖全部3種地板樣式。",
+    condition: (state) => countPlacedFurnitureInData(state) >= 4 && (state.unlockedFloors || []).length >= 3,
+    reward: { scrap: 15 }, hidden: false,
+  },
+  ach_wedding_ring: {
+    id: "ach_wedding_ring", category: "collect",
+    title: "至死不渝", desc: "取得並裝備婚戒。",
+    condition: (state) => !!(state.equipment.accessory === "wedding_ring"),
+    reward: { embers: 20 }, hidden: false,
+  },
+  ach_full_factions: {
+    id: "ach_full_factions", category: "collect",
+    title: "五行宗師", desc: "同時裝備5大派系裝備中的3個不同派系（武器/護甲/飾品三槽位）。",
+    condition: (state) => new Set(["weapon", "armor", "accessory"].map(slot => {
+      const id = state.equipment[slot];
+      return id && ITEMS[id] && ITEMS[id].factionTag;
+    }).filter(Boolean)).size >= 3,
+    reward: { exp: 20 }, hidden: false,
+  },
+
+  // ===== 🔍探索意外（hidden比例較高，保留驚喜感）=====
+  ach_dog_companion: {
+    id: "ach_dog_companion", category: "discovery",
+    title: "不只是寵物", desc: "讓一隻流浪狗決定留下來陪你。",
+    condition: (state) => !!(state.flags && state.flags.dog_companion),
+    reward: { exp: 10 }, hidden: false,
+  },
+  ach_betrayal_path: {
+    id: "ach_betrayal_path", category: "discovery", hidden: true,
+    title: "沒有人是無辜的", desc: "選擇推改造人去送死，並親手終結他化身的怪物。",
+    condition: (state) => !!(state.flags && state.flags.betrayed_cyborg && state.flags.cyborg_nemesis_done),
+    reward: { embers: 15 },
+  },
+  ach_secret_rare_event: {
+    id: "ach_secret_rare_event", category: "discovery", hidden: true,
+    title: "命中那道微光", desc: "觸發一段極度罕見的隨機事件。",
+    condition: (state) => (state.seenEvents || []).includes("evt_failed_exp_01"),
+    reward: { embers: 15 },
+  },
+};
+
 if (typeof module !== "undefined") {
-  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL };
+  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
   window.ITEMS = ITEMS;
@@ -1320,4 +1594,6 @@ if (typeof module !== "undefined") {
   window.SKILLS_TREE = SKILLS_TREE;
   window.FACTION_IDS = FACTION_IDS;
   window.PREFIX_POOL = PREFIX_POOL;
+  window.QUESTS = QUESTS;
+  window.ACHIEVEMENTS = ACHIEVEMENTS;
 }

@@ -31,11 +31,26 @@ const SAVE_KEY = "embers_diary_save_v1";
 // defaultState/clamp/applyEffect/pickWeighted/pickEvent/applyPhaseDecay/advancePhase
 let state = null;
 let pendingBattle = null; // { enemy, hpLeft, onEnd }
+// v181：終端機美學提案Phase3最後一項——副數據流(System Matrix Log)，戰鬥畫面右側/下方的快速技術戰報，
+// 跟主敘事(renderBattle的message參數)是兩條並行的文字流，只保留最近8筆避免畫面塞爆
+let battleSysLog = [];
+function pushSysLog(text) {
+  battleSysLog.push(text);
+  if (battleSysLog.length > 8) battleSysLog.shift();
+}
+function sysLogHtml() {
+  if (!battleSysLog.length) return "";
+  return `<div class="sysLog">${battleSysLog.map(l => `<div class="sysLogLine">${l}</div>`).join("")}</div>`;
+}
 
 function saveGame() {
   localStorage.setItem(SAVE_KEY, JSON.stringify(state));
 }
-const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions"];
+const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress"];
+// v167相容：v166以前的存檔把table/floor/rug類家具放在baseSlots的這些鍵裡，free-form改版後這些鍵已不再被
+// 任何程式碼讀取——若不搬移，舊存檔讀進來的家具會「卡在baseSlots裡但形同消失」（不在room顯示、不算舒適度、
+// 也回不去背包）。讀檔時偵測到就搬進placedFurniture，搬完即從baseSlots刪除，只需做這一次
+const LEGACY_FURNITURE_SLOT_KEYS = ["table", "table2", "table3", "table4", "floor", "floor2", "floor3", "floor4", "floor5", "rug", "rug2"];
 function loadGame() {
   const raw = localStorage.getItem(SAVE_KEY);
   if (!raw) return null;
@@ -47,7 +62,17 @@ function loadGame() {
       merged[key] = { ...defaults[key], ...saved[key] };
     }
   }
-  if (!merged.baseSlots.floor) merged.baseSlots.floor = "furn_sleeping_bag";
+  if (saved.baseSlots) {
+    LEGACY_FURNITURE_SLOT_KEYS.forEach(key => {
+      const itemId = saved.baseSlots[key];
+      delete merged.baseSlots[key];
+      if (!itemId) return;
+      // furn_sleeping_bag已由defaultState()預先放好一份在placedFurniture，避免搬移後重複出現兩個睡袋
+      if (itemId === "furn_sleeping_bag" && merged.placedFurniture.some(f => f.itemId === "furn_sleeping_bag")) return;
+      const cell = findEmptyGridCell(merged);
+      merged.placedFurniture.push({ itemId, gx: cell.gx, gy: cell.gy });
+    });
+  }
   return merged;
 }
 function hasSave() {
@@ -133,9 +158,12 @@ function renderStatusExtra() {
     ${bar("water", "💧", r.water, waterCap, "飲水：缺乏時持續扣HP", r.water <= 1)}
     <span class="dayBadge embers" title="晶燼：用於強化據點/物資轉換">🔥${state.currency.embers}</span>
     <button id="statusPeepsBtn" class="dayBadge" title="另一半QR同步：心情簽到/留言板/共用冰箱（只能連結一人）">💌 另一半</button>
+    <button id="statusAchievementBtn" class="dayBadge" title="成就：${state.unlockedAchievements.length}個已解鎖">🏆 成就</button>
   `;
   const peepsBtn = document.getElementById("statusPeepsBtn");
   if (peepsBtn) peepsBtn.onclick = () => togglePanel("peeps", showPeepsPanel);
+  const achievementBtn = document.getElementById("statusAchievementBtn");
+  if (achievementBtn) achievementBtn.onclick = () => togglePanel("achievement", showAchievementPanel);
 }
 
 function toggleStatusExtra() {
@@ -398,66 +426,66 @@ const ISO_ASSETS = {
   furn_sleeping_bag: 1, furn_bench: 1, furn_sofa: 1, furn_radio: 1,
   furn_greenhouse: 1, furn_fridge: 1, furn_whiteboard: 1, furn_jelly_lamp: 1,
   furn_vines: 1, furn_toolbox: 1,
+  furn_appearance_mirror: 1, furn_photo_frame: 1, furn_turret: 1, furn_flag: 1,
+  furn_egg_nest: 1, furn_diary: 1, furn_potted_plant: 1, furn_mirror: 1, furn_generator: 1,
+  rug_plain: 1, rug_woven: 1, rug_round: 1,
+  door_explore: 1, door_gather: 1, furn_couple_wall: 1,
 };
 function isoIconHtml(itemId, fallbackCategory) {
-  if (ISO_ASSETS[itemId]) return `<img class="pixelImg isoImg" src="assets/iso/${itemId}.png?v=156" alt="${itemId}">`;
+  const src = resolveAsset("furniture", itemId);
+  if (src) return `<img class="pixelImg isoImg" src="${src}" alt="${itemId}">`;
   return pixelIconSvg(itemId, fallbackCategory);
 }
-const GRID_TILE_W = 10.5, GRID_ORIGIN_LEFT = 6;
-const ROOM_H_PX = 360, WALL_PX = 45, ROW_PX = 45, ICON_PX = 40;
+const ROOM_H_PX = 360, WALL_PX = 45, ICON_PX = 40;
 const GRID_FLOOR_ROW_MIN = 0, GRID_FLOOR_ROW_MAX = 5;
+const GRID_COL_MIN = 0, GRID_COL_MAX = 8;
 const WALL_ICON_OFFSET = (WALL_PX - ICON_PX) / 2; // 2.5px
+// 等距投影：gx每+1往右下偏移、gy每+1往左下偏移，畫面上呈現菱形地板，呼應assets/iso/*.png的等角視角
+// left% = ISO_ORIGIN_LEFT + (gx-gy)*ISO_STEP_X；top px = WALL_PX + (gx+gy)*ISO_STEP_Y
+// ISO_STEP_Y=17（而非更大的值）是為了讓最深的格子(gx+gy=13)+圖示高度仍落在牆面帶以內，
+// 避免角色/家具視覺上「站到牆上」；CSS的.roomFloorDiamond clip-path四個角座標需與此同步換算
+const ISO_ORIGIN_LEFT = 40, ISO_STEP_X = 7, ISO_STEP_Y = 17;
 function gridPos(x, y) {
   return {
-    left: (GRID_ORIGIN_LEFT + x * GRID_TILE_W).toFixed(1) + "%",
-    top: (WALL_PX + y * ROW_PX) + "px"
+    left: (ISO_ORIGIN_LEFT + (x - y) * ISO_STEP_X).toFixed(1) + "%",
+    top: (WALL_PX + (x + y) * ISO_STEP_Y) + "px"
   };
 }
 function labelCls(y) {
   return y === GRID_FLOOR_ROW_MAX ? " lbl-above" : "";
 }
-function cellZ(gy, roleOffset) {
-  return Math.max(0, gy) * 10 + 1 + (roleOffset || 0);
+// depth取gx+gy（等距視角的前後深度），值越大代表越靠近畫面前方，疊在上層
+function cellZ(depth, roleOffset) {
+  return Math.max(0, depth) * 10 + 1 + (roleOffset || 0);
+}
+// 等距座標的反推：由left%/top px回推最接近的(gx,gy)整數格，供拖曳/點擊/路徑搜尋共用
+function pixelToGrid(leftPct, topPx) {
+  const diff = (leftPct - ISO_ORIGIN_LEFT) / ISO_STEP_X;
+  const sum = (topPx - WALL_PX) / ISO_STEP_Y;
+  let gx = Math.round((diff + sum) / 2);
+  let gy = Math.round((sum - diff) / 2);
+  gx = Math.max(GRID_COL_MIN, Math.min(GRID_COL_MAX, gx));
+  gy = Math.max(GRID_FLOOR_ROW_MIN, Math.min(GRID_FLOOR_ROW_MAX, gy));
+  return { gx, gy };
 }
 function posToGrid(pos) {
-  return {
-    gx: Math.round((parseFloat(pos.left) - GRID_ORIGIN_LEFT) / GRID_TILE_W),
-    gy: Math.round((parseFloat(pos.top) - WALL_PX) / ROW_PX)
-  };
+  return pixelToGrid(parseFloat(pos.left), parseFloat(pos.top));
 }
 function tileKey(gx, gy) { return gx + "," + gy; }
-const GRID_COL_MIN = 0, GRID_COL_MAX = 8;
-function getOccupiedTileKeys(state, excludeKey) {
+// v166：free-form佈置改版——table/floor/rug類家具不再有固定slot名稱/預設位置表，
+// 改直接讀state.placedFurniture陣列裡每項自帶的gx/gy。excludeIndex可傳數字(排除佈置中正在拖曳的那一件)
+// 或字串"companion"(排除同伴自己目前位置)，沿用原本excludeKey的呼叫慣例
+function getOccupiedTileKeys(state, excludeIndex) {
   const occupied = new Set();
-  if (state.companion && excludeKey !== "companion") {
+  if (state.companion && excludeIndex !== "companion") {
     const c = state.companionPos || gridPos(6, 2);
     const g = posToGrid(c);
     occupied.add(tileKey(g.gx, g.gy));
   }
-  if (state.baseSlots && state.baseSlots.table && excludeKey !== "table") {
-    const defaultTPos = gridPos(2, GRID_FLOOR_ROW_MAX);
-    const tPos = (state.homeFurniturePos && state.homeFurniturePos.table) || defaultTPos;
-    const g = posToGrid(tPos);
-    occupied.add(tileKey(g.gx, g.gy));
-  }
-  if (state.baseSlots && state.baseSlots.floor && excludeKey !== "floor") {
-    const defaultFPos = gridPos(3, 3);
-    const fPos = (state.homeFurniturePos && state.homeFurniturePos.floor) || defaultFPos;
-    const g = posToGrid(fPos);
-    occupied.add(tileKey(g.gx, g.gy));
-  }
-  if (state.baseSlots && state.baseSlots.table2 && excludeKey !== "table2") {
-    const defaultT2Pos = gridPos(6, GRID_FLOOR_ROW_MAX);
-    const t2Pos = (state.homeFurniturePos && state.homeFurniturePos.table2) || defaultT2Pos;
-    const g = posToGrid(t2Pos);
-    occupied.add(tileKey(g.gx, g.gy));
-  }
-  if (state.baseSlots && state.baseSlots.floor2 && excludeKey !== "floor2") {
-    const defaultF2Pos = gridPos(5, 3);
-    const f2Pos = (state.homeFurniturePos && state.homeFurniturePos.floor2) || defaultF2Pos;
-    const g = posToGrid(f2Pos);
-    occupied.add(tileKey(g.gx, g.gy));
-  }
+  (state.placedFurniture || []).forEach((f, idx) => {
+    if (idx === excludeIndex) return;
+    occupied.add(tileKey(f.gx, f.gy));
+  });
   return occupied;
 }
 function findReachablePos(start, target, occupied) {
@@ -502,28 +530,60 @@ function animateWalk(el, path, onStep) {
     const p = gridPos(gx, gy);
     el.style.left = p.left;
     el.style.top = p.top;
-    el.style.zIndex = cellZ(gy, onStep ? onStep.zRole : 4);
+    el.style.zIndex = cellZ(gx + gy, onStep ? onStep.zRole : 4);
     const label = el.querySelector(".homeLabel");
     if (label) label.classList.toggle("lbl-above", gy === GRID_FLOOR_ROW_MAX);
     if (onStep && onStep.fn) onStep.fn(p, gx, gy, i === path.length - 1);
     i++;
-    setTimeout(step, 160);
+    setTimeout(step, 220);
   };
   step();
+}
+function furnitureCellId(index) { return "homeFurn" + index + "Cell"; }
+// v179：rare以上家具加一層淡微光，呼應使用者期望，common/uncommon維持原樣避免畫面太吵
+function furnitureGlowClass(item) {
+  if (!item || !item.rarity) return "";
+  if (item.rarity === "rare") return " furn-glow-rare";
+  if (item.rarity === "epic") return " furn-glow-epic";
+  if (item.rarity === "legendary") return " furn-glow-legendary";
+  return "";
+}
+// v166：free-form佈置改版——原本renderTableSlotCell/renderFloorSlotCell/renderRugSlotCell三個幾乎一樣的
+// 渲染函式(分別對應table/floor/rug三種固定slot)收斂成一個，依item.slot做視覺樣式分支(prop-small桌墊/rugDeco鋪底)，
+// 位置直接讀state.placedFurniture[index]的gx/gy(不再有固定預設位置表)
+function renderPlacedFurnitureCell(state, index) {
+  const placed = state.placedFurniture[index];
+  const item = ITEMS[placed.itemId];
+  if (!item) return ""; // 防禦：理論上不會發生的未知itemId
+  const itemId = placed.itemId;
+  const pos = gridPos(placed.gx, placed.gy);
+  const row = placed.gy;
+  const isTable = item.slot === "table";
+  const isRug = item.slot === "rug";
+  const used = (itemId === "furn_radio" && state.flags.radioUsedDay === state.day) || (itemId === "furn_egg_nest" && state.flags.eggNestCheckedDay === state.day);
+  const hint = state.homePlacementMode ? "（佈置模式：點擊可拖曳移動）"
+    : itemId === "furn_diary" ? "（點擊查看日記）"
+    : itemId === "furn_radio" ? "（點擊聽廣播，每日限一次）"
+    : itemId === "furn_egg_nest" ? "（點擊查看鳥蛋，每日限一次）"
+    : itemId === "furn_sleeping_bag" ? "（點擊休息）"
+    : "（點擊翻找）";
+  const cls = "roomCell furniturePlaceable" + (isTable ? " prop-small" : "") + (isRug ? " rugDeco" : "") + labelCls(row) + (used ? " furn-used" : "") + furnitureGlowClass(item);
+  const matHtml = isTable ? `<div class="propMat"></div>` : "";
+  return `<div class="${cls}" id="${furnitureCellId(index)}" style="left:${pos.left};top:${pos.top};z-index:${cellZ(placed.gx + placed.gy, isRug ? -1 : 0)}" title="${item.name}${item.desc ? "：" + item.desc : ""}${hint}">${matHtml}<div class="icon">${isoIconHtml(itemId, "furniture")}</div><div class="homeLabel${labelCls(row)}">${used ? "今日已使用" : item.name}</div></div>`;
 }
 function homeSceneHtml(state) {
   const items = [];
   const defaultPos = gridPos(5, 5);
   const pos = state.homePos || { left: defaultPos.left, top: defaultPos.top };
-  const pRow = Math.round(((parseFloat(pos.top) || 0) - WALL_PX) / ROW_PX);
-  items.push(`<div class="roomCell player" id="homePlayerCell" style="left:${pos.left};top:${pos.top};z-index:${cellZ(pRow, 4)}" title="拖曳可移動位置"><div class="icon"><img class="pixelImg" src="assets/characters/${state.appearance || "char_1"}.png?v=156" alt="玩家"></div><div class="homeLabel${labelCls(pRow)}">${state.playerName || "旅人"}</div></div>`);
+  const pg = posToGrid(pos), pRow = pg.gy;
+  items.push(`<div class="roomCell player" id="homePlayerCell" style="left:${pos.left};top:${pos.top};z-index:${cellZ(pg.gx + pg.gy, 4)}" title="拖曳可移動位置"><div class="icon">${characterSpriteHtml("character", state.appearance || "char_1", state.homeFacing || "front", "玩家")}</div><div class="homeLabel${labelCls(pRow)}">${state.playerName || "旅人"}</div></div>`);
   if (state.companion) {
     const task = COMPANION_TASK_LABELS[state.companionTask] || state.companionTask || "";
     // #22-2：同伴來源差異化文案，依劇情分支顯示不同描述
         const origin = state.flags && state.flags.companion ? "（在末日中與你相遇，選擇留在你身邊）" : "";
     const cPos = state.companionPos || gridPos(6, 2);
-    const cRow = posToGrid(cPos).gy;
-        items.push(`<div class="roomCell companion${state.companionTask ? ' task-active' : ''}" id="homeCompanionCell" style="left:${cPos.left};top:${cPos.top};z-index:${cellZ(cRow, 2)}" title="同伴：${state.companionName || "同伴"}（目前任務：${task}）${origin}"><div class="icon" style="position:relative">${state.companionTask ? '<span class="taskBadge">' + (COMPANION_TASK_LABELS[state.companionTask] || state.companionTask) + '</span>' : ''}<img class="pixelImg" src="assets/characters/companion_default.png?v=156" alt="同伴"></div><div class="homeLabel${labelCls(cRow)}">${state.companionName || "同伴"}${task ? `（${task}）` : ""}</div></div>`);
+    const cg = posToGrid(cPos), cRow = cg.gy;
+        items.push(`<div class="roomCell companion${state.companionTask ? ' task-active' : ''}" id="homeCompanionCell" style="left:${cPos.left};top:${cPos.top};z-index:${cellZ(cg.gx + cg.gy, 2)}" title="同伴：${state.companionName || "同伴"}（目前任務：${task}）${origin}"><div class="icon" style="position:relative">${state.companionTask ? '<span class="taskBadge">' + (COMPANION_TASK_LABELS[state.companionTask] || state.companionTask) + '</span>' : ''}${characterSpriteHtml("companion", "default", state.companionFacing || "front", "同伴")}</div><div class="homeLabel${labelCls(cRow)}">${state.companionName || "同伴"}${task ? `（${task}）` : ""}</div></div>`);
     // v122：同伴互動氣泡選單(7.6-C)，取代全螢幕文字流程
     if (companionBubbleOpen) {
       const cLeftPct = parseFloat(cPos.left) || 50;
@@ -546,10 +606,10 @@ function homeSceneHtml(state) {
       const sStatus = state.companions[sName];
       if (!sStatus || sStatus === "locked") return;
       const sPos = SQUAD_POS[sName];
-      const sRow = posToGrid(sPos).gy;
+      const sg = posToGrid(sPos), sRow = sg.gy;
       const sTaskLabel = TASK_LABELS[sStatus] || sStatus;
       const sColor = SQUAD_COLOR[sName] || "#8a9099";
-      items.push(`<div class="roomCell companion squadCompanion${sStatus !== "standby" ? " task-active" : ""}" id="squadCell_${sName}" style="left:${sPos.left};top:${sPos.top};z-index:${cellZ(sRow, 2)};--squadColor:${sColor}" title="${COMPANION_NAME_LABELS[sName] || sName}：${sTaskLabel}"><div class="icon" style="position:relative">${sStatus !== "standby" ? `<span class="taskBadge">${sTaskLabel}</span>` : ""}<img class="pixelImg" src="assets/characters/companion_default.png?v=156" alt="${sName}"></div><div class="homeLabel${labelCls(sRow)}">${sName}（${sTaskLabel}）</div></div>`);
+      items.push(`<div class="roomCell companion squadCompanion${sStatus !== "standby" ? " task-active" : ""}" id="squadCell_${sName}" style="left:${sPos.left};top:${sPos.top};z-index:${cellZ(sg.gx + sg.gy, 2)};--squadColor:${sColor}" title="${COMPANION_NAME_LABELS[sName] || sName}：${sTaskLabel}"><div class="icon" style="position:relative">${sStatus !== "standby" ? `<span class="taskBadge">${sTaskLabel}</span>` : ""}<img class="pixelImg" src="${resolveAsset("companion", "default")}" alt="${sName}"></div><div class="homeLabel${labelCls(sRow)}">${sName}（${sTaskLabel}）</div></div>`);
       if (squadBubbleOpen === sName) {
         const taskOptions = ["standby", ...(COMPANION_TASKS[sName] || [])];
         const nextTask = taskOptions[(taskOptions.indexOf(sStatus) + 1) % taskOptions.length];
@@ -571,60 +631,34 @@ function homeSceneHtml(state) {
     const item = ITEMS[wallItemId];
     const isMirror = wallItemId === "furn_appearance_mirror";
     const wallCellId = isMirror ? "homeMirrorCell" : (wallItemId === "furn_couple_wall" ? "homeWallCell" : "");
-    items.push(`<div class="roomCell wallDeco${isMirror ? " clickable" : wallItemId === "furn_couple_wall" ? " clickable" : ""}" id="${wallCellId}" style="left:78%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="${item.name}${item.desc ? "：" + item.desc : ""}"><div class="icon">${isoIconHtml(wallItemId, "furniture")}</div><div class="homeLabel">${item.name}</div></div>`);
+    items.push(`<div class="roomCell wallDeco${isMirror ? " clickable" : wallItemId === "furn_couple_wall" ? " clickable" : ""}${furnitureGlowClass(item)}" id="${wallCellId}" style="left:78%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="${item.name}${item.desc ? "：" + item.desc : ""}"><div class="icon">${isoIconHtml(wallItemId, "furniture")}</div><div class="homeLabel">${item.name}</div></div>`);
   }
   const wall2ItemId = state.baseSlots && state.baseSlots.wall2;
   if (wall2ItemId) {
     const item2 = ITEMS[wall2ItemId];
     const isMirror2 = wall2ItemId === "furn_appearance_mirror";
-    items.push(`<div class="roomCell wallDeco${isMirror2 ? " clickable" : ""}" id="${isMirror2 ? "homeMirror2Cell" : "homeWall2Cell"}" style="left:22%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="${item2.name}${item2.desc ? "：" + item2.desc : ""}"><div class="icon">${isoIconHtml(wall2ItemId, "furniture")}</div><div class="homeLabel">${item2.name}</div></div>`);
+    items.push(`<div class="roomCell wallDeco${isMirror2 ? " clickable" : ""}${furnitureGlowClass(item2)}" id="${isMirror2 ? "homeMirror2Cell" : "homeWall2Cell"}" style="left:22%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="${item2.name}${item2.desc ? "：" + item2.desc : ""}"><div class="icon">${isoIconHtml(wall2ItemId, "furniture")}</div><div class="homeLabel">${item2.name}</div></div>`);
   }
-  const tableItemId = state.baseSlots && state.baseSlots.table;
-  if (tableItemId) {
-    const item = ITEMS[tableItemId];
-    const defaultTPos = gridPos(2, GRID_FLOOR_ROW_MAX);
-    const tPos = (state.homeFurniturePos && state.homeFurniturePos.table) || defaultTPos;
-    const tRow = posToGrid(tPos).gy;
-    const tUsed = (tableItemId === "furn_radio" && state.flags.radioUsedDay === state.day) || (tableItemId === "furn_egg_nest" && state.flags.eggNestCheckedDay === state.day);
-    items.push(`<div class="roomCell prop-small furniturePlaceable${labelCls(tRow)}${tUsed ? " furn-used" : ""}" id="homeTableCell" style="left:${tPos.left};top:${tPos.top};z-index:${cellZ(tRow)}" title="${item.name}${item.desc ? "：" + item.desc : ""}${state.homePlacementMode ? "（佈置模式：點擊可拖曳移動）" : tableItemId === "furn_diary" ? "（點擊查看日記）" : tableItemId === "furn_radio" ? "（點擊聽廣播，每日限一次）" : tableItemId === "furn_egg_nest" ? "（點擊查看鳥蛋，每日限一次）" : ""}"><div class="propMat"></div><div class="icon">${isoIconHtml(tableItemId, "furniture")}</div><div class="homeLabel${labelCls(tRow)}">${tUsed ? "今日已使用" : item.name}</div></div>`);
-  }
-  // v112：第二桌面格
-  const table2ItemId = state.baseSlots && state.baseSlots.table2;
-  if (table2ItemId) {
-    const item2 = ITEMS[table2ItemId];
-    const defaultT2Pos = gridPos(6, GRID_FLOOR_ROW_MAX);
-    const t2Pos = (state.homeFurniturePos && state.homeFurniturePos.table2) || defaultT2Pos;
-    const t2Row = posToGrid(t2Pos).gy;
-    const t2Used = (table2ItemId === "furn_radio" && state.flags.radioUsedDay === state.day) || (table2ItemId === "furn_egg_nest" && state.flags.eggNestCheckedDay === state.day);
-    items.push(`<div class="roomCell prop-small furniturePlaceable${labelCls(t2Row)}${t2Used ? " furn-used" : ""}" id="homeTable2Cell" style="left:${t2Pos.left};top:${t2Pos.top};z-index:${cellZ(t2Row)}" title="${item2.name}${item2.desc ? "：" + item2.desc : ""}${state.homePlacementMode ? "（佈置模式：點擊可拖曳移動）" : table2ItemId === "furn_diary" ? "（點擊查看日記）" : table2ItemId === "furn_radio" ? "（點擊聽廣播，每日限一次）" : table2ItemId === "furn_egg_nest" ? "（點擊查看鳥蛋，每日限一次）" : ""}"><div class="propMat"></div><div class="icon">${isoIconHtml(table2ItemId, "furniture")}</div><div class="homeLabel${labelCls(t2Row)}">${t2Used ? "今日已使用" : item2.name}</div></div>`);
-  }
-  const floorItemId = state.baseSlots && state.baseSlots.floor;
-  if (floorItemId) {
-    const item = ITEMS[floorItemId];
-    const defaultFPos = gridPos(3, 3);
-    const fPos = (state.homeFurniturePos && state.homeFurniturePos.floor) || defaultFPos;
-    const fRow = Math.round(((parseFloat(fPos.top) || 0) - WALL_PX) / ROW_PX);
-    items.push(`<div class="roomCell furniturePlaceable${labelCls(fRow)}" id="homeFloorCell" style="left:${fPos.left};top:${fPos.top};z-index:${cellZ(fRow)}" title="${item.name}${item.desc ? "：" + item.desc : ""}${state.homePlacementMode ? "（佈置模式：可拖曳，放開後磁吸對齊格線）" : "（點擊休息）"}"><div class="icon">${isoIconHtml(floorItemId, "furniture")}</div><div class="homeLabel${labelCls(fRow)}">${item.name}</div></div>`);
-  }
-  // v112：第二地板格(純裝飾，無互動綁定)
-  const floor2ItemId = state.baseSlots && state.baseSlots.floor2;
-  if (floor2ItemId) {
-    const item2 = ITEMS[floor2ItemId];
-    const defaultF2Pos = gridPos(5, 3);
-    const f2Pos = (state.homeFurniturePos && state.homeFurniturePos.floor2) || defaultF2Pos;
-    const f2Row = Math.round(((parseFloat(f2Pos.top) || 0) - WALL_PX) / ROW_PX);
-    items.push(`<div class="roomCell furniturePlaceable${labelCls(f2Row)}" id="homeFloor2Cell" style="left:${f2Pos.left};top:${f2Pos.top};z-index:${cellZ(f2Row)}" title="${item2.name}${item2.desc ? "：" + item2.desc : ""}${state.homePlacementMode ? "（佈置模式：可拖曳）" : ""}"><div class="icon">${isoIconHtml(floor2ItemId, "furniture")}</div><div class="homeLabel${labelCls(f2Row)}">${item2.name}</div></div>`);
-  }
+  // v166：free-form佈置——table/floor/rug類家具不再有固定slot名稱，直接遍歷state.placedFurniture陣列渲染
+  (state.placedFurniture || []).forEach((placed, index) => {
+    items.push(renderPlacedFurnitureCell(state, index));
+  });
   const floorStyle = FLOOR_STYLES[state.roomFloor] || FLOOR_STYLES.wood;
   // V2.0：窗戶外觀依晝夜/血月狀態切換，呼應威脅倒數的視覺提示
   // v108：依state.phase(白天/夜晚)切換窗戶樣式，血月期間額外套用警示外觀
 const windowCls = `homeWindow ${state.phase === "night" ? "is-night" : "is-day"}${isThreatDue(state) ? " is-bloodmoon" : ""}`;
   items.unshift(`<div class="wallBand wallBandTop"><div class="${windowCls}"><div class="homeWindowFrame"></div></div></div><div class="wallBand wallBandBottom"></div>`);
+  // v164：點燈開關——純氛圍互動，跟state.phase的被動變暗濾鏡是兩件事，玩家可隨時主動關燈
+  items.push(`<button class="lightSwitch${state.homeLightOff ? " is-off" : " is-on"}" id="homeLightSwitch" style="right:14px;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0) + 1}" title="${state.homeLightOff ? "點擊開燈" : "點擊關燈"}">${state.homeLightOff ? "🌑" : "💡"}</button>`);
   items.push(`<div class="roomCell doorCell clickable" id="homeExploreDoorCell" style="left:50%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="探索門（點擊探索）"><div class="icon">${isoIconHtml("door_explore", "furniture")}</div><div class="homeLabel">探索</div></div>`);
   items.push(`<div class="roomCell doorCell clickable" id="homeGatherDoorCell" style="left:50%;top:${ROOM_H_PX - WALL_PX + WALL_ICON_OFFSET}px;z-index:${cellZ(GRID_FLOOR_ROW_MAX)}" title="採集門（點擊採集）"><div class="icon">${isoIconHtml("door_gather", "furniture")}</div><div class="homeLabel lbl-above">採集</div></div>`);
   // V2.0 7.6：Lv/晶燼/食物等資訊併入statusExtra，避免畫面重複顯示
   // v95：背包/商店面板入口統一改用頂部按鈕(invBtn/shopBtn)，避免重複
   // 2026-06-21：peepsBtn(👥)已移除，另一半QR同步面板改走「⋯」展開列的statusPeepsBtn(💌)，小屋頭像旁「+邀請隊友」改開showCompanionPanel(小隊夥伴)
+  // 任務系統：低調的目標提示，不顯示「第N/M項」這種計數，只顯示「現在要做的這一件事」
+  const activeMainQuest = state.questProgress.activeMain ? QUESTS[state.questProgress.activeMain] : null;
+  const questTargetText = activeMainQuest ? `🎯 目前目標：${activeMainQuest.title}` : "🎯 主線已完成，支線等著你";
+  const questTargetRow = `<div class="homePillRow"><button class="homePill" id="homeQuestTargetPill" title="${activeMainQuest ? activeMainQuest.desc : "點擊查看支線任務"}">${questTargetText}</button></div>`;
   const tabPills = `<div class="homePillRow homeTabPills" id="homeTabPillsRow">
     <button class="homePill homeTabBtn" id="homeTabSkill">⭐ 技能</button>
     <button class="homePill homeTabBtn${state.homePlacementMode ? " active" : ""}" id="homeTabPlacement">${state.homePlacementMode ? "結束佈置" : "🛋️ 佈置家具"}</button>
@@ -632,25 +666,28 @@ const windowCls = `homeWindow ${state.phase === "night" ? "is-night" : "is-day"}
   </div>`;
 const avatarRow = `<div class="homeAvatarRow">
     <div class="homeAvatar">
-      <div class="homeAvatarImg"><img class="pixelImg" src="assets/characters/${state.appearance || "char_1"}.png?v=156" alt="玩家"></div>
+      <div class="homeAvatarImg"><img class="pixelImg" src="${resolveAsset("character", state.appearance || "char_1")}" alt="玩家"></div>
       <div class="homeAvatarName">${state.playerName || "旅人"}</div>
       <div class="homeAvatarBar"><div class="homeAvatarBarFill" style="width:${Math.max(0, Math.min(100, state.stamina / state.staminaMax * 100))}%"></div></div>
     </div>
     ${state.companion ? `<div class="homeAvatar">
-      <div class="homeAvatarImg"><img class="pixelImg" src="assets/characters/companion_default.png?v=156" alt="同伴"></div>
+      <div class="homeAvatarImg"><img class="pixelImg" src="${resolveAsset("companion", "default")}" alt="同伴"></div>
       <div class="homeAvatarName">${state.companionName || "同伴"}</div>
       <!-- v103：homeAvatarBar需要width:100%搭配相對定位的父層容器，才能正確顯示同伴體力條比例 -->
       <div class="homeAvatarTask">${COMPANION_TASK_LABELS[state.companionTask] || ""}</div>
     </div>` : `<button class="homeAvatarInvite" id="homeTabPeepsInvite" title="查看小隊夥伴招募狀態">+ 邀請隊友</button>`}
   </div>`;
   const nightCls = state.phase !== "day" ? " night" : "";
-  return `<div class="homeScene">${avatarRow}${tabPills}<div class="roomCanvas ${floorStyle.cls}${state.homePlacementMode ? " placementMode" : ""}${nightCls}" id="roomCanvas">${items.join("")}</div></div>`;
+  const lightsOffCls = state.homeLightOff ? " lightsOff" : "";
+  const windowGlow = state.homeLightOff ? `<div class="windowGlow"></div>` : "";
+  return `<div class="homeScene">${avatarRow}${questTargetRow}${tabPills}<div class="roomCanvas ${floorStyle.cls}${state.homePlacementMode ? " placementMode" : ""}${nightCls}${lightsOffCls}" id="roomCanvas">${items.join("")}${windowGlow}</div></div>`;
 }
 function bindHomeTabPills() {
   const map = {
     homeTabSkill: () => togglePanel("skill", showSkillPanel),
     homeTabPeepsInvite: showCompanionPanel,
-    homeComfortPill: () => togglePanel("comfort", showComfortDetail)
+    homeComfortPill: () => togglePanel("comfort", showComfortDetail),
+    homeQuestTargetPill: () => togglePanel("quest", () => showQuestPanel())
   };
   for (const id in map) {
     const el = document.getElementById(id);
@@ -659,25 +696,36 @@ function bindHomeTabPills() {
 }
 
 // v129：拖曳家具放開後磁吸對齊+鎖定按鈕，避免誤觸
+// v166：free-form佈置——牆面仍固定2格(顯示「空」)，table/floor/rug改為只列出實際已擺放的項目(無固定格數可列)
 function showComfortDetail() {
   renderStatusBar();
   const RARITY_COMFORT = { common: 1, rare: 2, epic: 3, legendary: 3 };
   const RARITY_LABEL = { common: "普通", rare: "稀有", epic: "史詩", legendary: "傳說" };
-  const SLOT_LABEL = { wall: "牆面格", wall2: "牆面格", table: "桌面格", table2: "桌面格", floor: "地板格", floor2: "地板格" };
-  const slots = ["wall", "wall2", "table", "table2", "floor", "floor2"];
+  const FURNITURE_SLOT_LABEL = { table: "桌面", floor: "地板", rug: "地毯" };
   let rows = "";
   let total = 0;
-  for (const slot of slots) {
+  ["wall", "wall2"].forEach(slot => {
     const itemId = state.baseSlots && state.baseSlots[slot];
     const item = ITEMS[itemId];
     if (item) {
       const pts = RARITY_COMFORT[item.rarity] || 0;
       total += pts;
-      rows += `<div class="invRow"><span>${SLOT_LABEL[slot]}：${item.icon} ${item.name}</span><span class="qty">${RARITY_LABEL[item.rarity]} +${pts}</span></div>`;
+      rows += `<div class="invRow"><span>牆面格：${item.icon} ${item.name}</span><span class="qty">${RARITY_LABEL[item.rarity]} +${pts}</span></div>`;
     } else {
-      rows += `<div class="invRow"><span>${SLOT_LABEL[slot]}</span><span class="qty" style="opacity:0.4">（空）</span></div>`;
+      rows += `<div class="invRow"><span>牆面格</span><span class="qty" style="opacity:0.4">（空）</span></div>`;
     }
+  });
+  if (!(state.placedFurniture || []).length) {
+    rows += `<div class="invRow"><span>地板/桌面/地毯</span><span class="qty" style="opacity:0.4">（尚未擺放任何家具）</span></div>`;
   }
+  (state.placedFurniture || []).forEach(placed => {
+    const item = ITEMS[placed.itemId];
+    if (!item) return;
+    const pts = RARITY_COMFORT[item.rarity] || 0;
+    total += pts;
+    const label = FURNITURE_SLOT_LABEL[item.slot] || "地板";
+    rows += `<div class="invRow"><span>${label}：${item.icon} ${item.name}</span><span class="qty">${RARITY_LABEL[item.rarity]} +${pts}</span></div>`;
+  });
   const level = getComfortLevel(state);
   const label = getComfortLabel(level);
   const effects = [
@@ -719,9 +767,7 @@ function snapToGridFromClientXY(canvas, clientX, clientY) {
   let topPx = (clientY - rect.top) * (ROOM_H_PX / rect.height);
   left = Math.max(0, Math.min(100, left));
   topPx = Math.max(0, Math.min(ROOM_H_PX, topPx));
-  const gx = Math.round((left - GRID_ORIGIN_LEFT) / GRID_TILE_W);
-  let gy = Math.round((topPx - WALL_PX) / ROW_PX);
-  gy = Math.max(GRID_FLOOR_ROW_MIN, Math.min(GRID_FLOOR_ROW_MAX, gy));
+  const { gx, gy } = pixelToGrid(left, topPx);
   return gridPos(gx, gy);
 }
 let homeWalkLock = false;
@@ -737,7 +783,11 @@ function bindHomeCanvasMove(canvas) {
     const dest = findReachablePos(start, target, occupied);
     if (!dest) return;
     homeWalkLock = true;
+    let prevG = start;
     animateWalk(el, dest.path, { zRole: 4, fn: (p, gx, gy, isLast) => {
+      const facing = computeFacing(gx - prevG.gx, gy - prevG.gy);
+      if (facing) { state.homeFacing = facing; applyFacingToCell(el, "character", state.appearance || "char_1", facing); }
+      prevG = { gx, gy };
       state.homePos = p;
       if (isLast) { saveGame(); homeWalkLock = false; }
     } });
@@ -775,18 +825,24 @@ function startCompanionWander() {
       if (nx < GRID_COL_MIN || nx > GRID_COL_MAX || ny < GRID_FLOOR_ROW_MIN || ny > GRID_FLOOR_ROW_MAX) continue;
       if (occupied.has(tileKey(nx, ny))) continue;
       const np = gridPos(nx, ny);
+      const facing = computeFacing(dx, dy);
+      if (facing) { state.companionFacing = facing; applyFacingToCell(el, "companion", "default", facing); }
       state.companionPos = np;
+      el.classList.add("walking");
       el.style.left = np.left;
       el.style.top = np.top;
-      el.style.zIndex = cellZ(ny, 2);
+      el.style.zIndex = cellZ(nx + ny, 2);
       const label = el.querySelector(".homeLabel");
       if (label) label.classList.toggle("lbl-above", ny === GRID_FLOOR_ROW_MAX);
+      setTimeout(() => el.classList.remove("walking"), 260);
       saveGame();
       break;
     }
   }, 6000 + Math.random() * 4000);
 }
-function bindFurnitureDrag(el, canvas, slot = "floor") {
+// v166：free-form佈置——furnitureIndex對應state.placedFurniture的陣列索引，拖曳放開後直接寫回該項的gx/gy，
+// 不再有「slot」字串/固定預設位置概念；點一下(非拖曳)睡袋仍保留切換地板樣式的彩蛋(原本綁在slot==="floor")
+function bindFurnitureDrag(el, canvas, furnitureIndex) {
   let dragging = false, startX, startY;
   const onMove = (clientX, clientY) => {
     const rect = canvas.getBoundingClientRect();
@@ -803,28 +859,24 @@ function bindFurnitureDrag(el, canvas, slot = "floor") {
     if (!dragging) return;
     dragging = false;
     el.style.transition = "";
-    if (slot === "floor" && Math.abs(clientX - startX) < 4 && Math.abs(clientY - startY) < 4) {
+    const placed = state.placedFurniture[furnitureIndex];
+    if (placed && placed.itemId === "furn_sleeping_bag" && Math.abs(clientX - startX) < 4 && Math.abs(clientY - startY) < 4) {
       showFloorPicker();
       return;
     }
     const pos = onMove(clientX, clientY);
-    const gx = Math.round((pos.left - GRID_ORIGIN_LEFT) / GRID_TILE_W);
-    let gy = Math.round((pos.topPx - WALL_PX) / ROW_PX);
-    gy = Math.max(GRID_FLOOR_ROW_MIN, Math.min(GRID_FLOOR_ROW_MAX, gy));
-    let snapped = gridPos(gx, gy);
-    const target = posToGrid(snapped);
+    const { gx, gy } = pixelToGrid(pos.left, pos.topPx);
     const playerG = posToGrid(state.homePos || gridPos(3, 3));
-    const defaultPos = slot === "table" ? gridPos(2, GRID_FLOOR_ROW_MAX) : gridPos(3, 3);
-    const blocked = getOccupiedTileKeys(state, slot).has(target.gx + "," + target.gy)
-      || (target.gx === playerG.gx && target.gy === playerG.gy);
-    if (blocked) snapped = (state.homeFurniturePos && state.homeFurniturePos[slot]) || defaultPos;
+    const blocked = getOccupiedTileKeys(state, furnitureIndex).has(tileKey(gx, gy))
+      || (gx === playerG.gx && gy === playerG.gy);
+    const finalCell = blocked ? { gx: placed.gx, gy: placed.gy } : { gx, gy };
+    const snapped = gridPos(finalCell.gx, finalCell.gy);
     el.style.left = snapped.left;
     el.style.top = snapped.top;
-    const gyFinal = posToGrid(snapped).gy;
     const label = el.querySelector(".homeLabel");
-    if (label) label.classList.toggle("lbl-above", gyFinal === GRID_FLOOR_ROW_MAX);
-    state.homeFurniturePos = state.homeFurniturePos || {};
-    state.homeFurniturePos[slot] = snapped;
+    if (label) label.classList.toggle("lbl-above", finalCell.gy === GRID_FLOOR_ROW_MAX);
+    placed.gx = finalCell.gx;
+    placed.gy = finalCell.gy;
     saveGame();
   };
   el.onpointerdown = (e) => { e.stopPropagation(); start(e.clientX, e.clientY); el.setPointerCapture(e.pointerId); };
@@ -839,6 +891,15 @@ function playerAnim(cls, callback) {
   el.classList.add(cls);
   setTimeout(callback, cls === "anim-explore" ? 480 : 700);
 }
+// v164：關燈時在玩家頭上飄一個「💤」，純氛圍動畫，跟doRest()的休息結算完全無關
+function showSleepZzz(playerCell) {
+  if (!playerCell) return;
+  const z = document.createElement("div");
+  z.className = "sleepZzz";
+  z.textContent = "💤";
+  playerCell.appendChild(z);
+  setTimeout(() => z.remove(), 1400);
+}
 
 // 2026-06-21（重大回退）：群組B(pistol_01/scrap_chainsaw/military_shovel/jacket_01)複查後
 // 確認邊緣同樣殘留污染色（跟ISO_ASSETS同一個根因），已全部撤回，icons暫時清空。
@@ -846,17 +907,92 @@ function playerAnim(cls, callback) {
 // 2026-06-21（remove_bg_tool.py成功案例）：批次2群組A重畫完成，邊緣顏色核對乾淨。
 const ICON_ASSETS = {
   knife_01: 1, pipe_01: 1, bat_01: 1, machete_01: 1,
+  vest_01: 1, scrap_plating: 1, ceramic_vest: 1, gaia_whip: 1,
+  gaia_armor: 1, ocean_pistol: 1, ocean_mace: 1, ocean_jacket: 1,
+  aero_crossbow: 1, aero_dagger: 1, aero_cloak: 1, cyber_hammer: 1,
+  cyber_suit: 1, mind_fork: 1, mind_greatsword: 1, mind_robe: 1,
+  aero_pouch: 1, merchant_token: 1, mind_eye: 1, ocean_leech: 1,
+  tesla_battery: 1, cyber_pendant: 1, mind_mirror: 1, wedding_ring: 1,
+  food_can: 1, water_bottle: 1, bandage: 1, energy_drink: 1,
+  serum_atk: 1, serum_stamina: 1, serum_vit: 1, reinforce_blueprint: 1,
+  pistol_01: 1, scrap_chainsaw: 1, military_shovel: 1, jacket_01: 1,
+  awaken_crystal: 1, appearance_token: 1, floor_sample: 1,
+  gaia_skin: 1,
 };
 function itemIconHtml(itemId, type) {
-  if (ICON_ASSETS[itemId]) return `<span class="icon inline"><img class="pixelImg" src="assets/icons/${itemId}.png?v=156" alt="${itemId}"></span>`;
+  const src = resolveAsset("icon", itemId);
+  if (src) return `<span class="icon inline"><img class="pixelImg" src="${src}" alt="${itemId}"></span>`;
   return `<span class="icon inline">${pixelIconSvg(itemId, type)}</span>`;
+}
+
+// ===== 素材管理系統（規格文件/素材管理系統_設計規格.md，2026-06-26開始實作第1~3階段）=====
+// 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
+// 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
+// condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
+const ASSET_CACHE_VERSION = 185; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_REGISTRY = {};
+function registerAsset(category, id, file) {
+  ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
+}
+function resolveAsset(category, id) {
+  const variants = ASSET_REGISTRY[`${category}:${id}`];
+  if (!variants) return null; // 沒註冊過，呼叫端自行fallback成pixelIconSvg
+  const match = variants.find(v => v.condition());
+  return match ? `${match.file}?v=${ASSET_CACHE_VERSION}` : null;
+}
+// 第1階段：現有ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS原樣併入，純重構不改變行為
+Object.keys(ISO_ASSETS).forEach(id => registerAsset("furniture", id, `assets/iso/${id}.png`));
+Object.keys(ENEMY_ASSETS).forEach(id => registerAsset("enemy", id, `assets/enemies/${id}.png`));
+Object.keys(ICON_ASSETS).forEach(id => registerAsset("icon", id, `assets/icons/${id}.png`));
+// 第2階段：玩家角色造型(CHARACTER_OPTIONS)+同伴頭像(目前所有隊員共用同一張圖)收斂進同一套機制
+CHARACTER_OPTIONS.forEach(c => registerAsset("character", c.id, `assets/characters/${c.id}.png`));
+registerAsset("companion", "default", "assets/characters/companion_default.png");
+
+// v179：角色4方向朝向——只需要"back"(背面)+"side"(側面，left用CSS鏡像翻轉side圖即可，不用畫兩張)兩款額外圖，
+// 比原本的單一正面圖額外多畫2張。2026-07-01：批次10~14美術已產出並登記於此，全4名玩家角色+同伴default都有back/side圖了。
+const DIRECTIONAL_ASSETS = {
+  "character:char_1": { back: 1, side: 1 },
+  "character:char_2": { back: 1, side: 1 },
+  "character:char_3": { back: 1, side: 1 },
+  "character:char_4": { back: 1, side: 1 },
+  "companion:default": { back: 1, side: 1 },
+};
+Object.keys(DIRECTIONAL_ASSETS).forEach(key => {
+  const [category, id] = key.split(":");
+  Object.keys(DIRECTIONAL_ASSETS[key]).forEach(dir => registerAsset(category, `${id}_${dir}`, `assets/characters/${id}_${dir}.png`));
+});
+// facing: "front"(預設，正面，即原本唯一一張圖) / "back"(背面) / "left"/"right"(側面，"left"額外加CSS鏡像)
+function computeFacing(dx, dy) {
+  if (!dx && !dy) return null;
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? "right" : "left";
+  return dy > 0 ? "front" : "back";
+}
+function resolveCharacterFacingSrc(category, id, facing) {
+  const dirKey = facing === "back" ? "back" : (facing === "left" || facing === "right") ? "side" : null;
+  if (dirKey && DIRECTIONAL_ASSETS[`${category}:${id}`] && DIRECTIONAL_ASSETS[`${category}:${id}`][dirKey]) {
+    const src = resolveAsset(category, `${id}_${dirKey}`);
+    if (src) return src;
+  }
+  return resolveAsset(category, id);
+}
+function characterSpriteHtml(category, id, facing, altText) {
+  const src = resolveCharacterFacingSrc(category, id, facing);
+  const mirror = facing === "left" ? " facingMirror" : "";
+  return `<img class="pixelImg${mirror}" src="${src}" alt="${altText}">`;
+}
+// 走路中途直接改img.src+鏡像class，不用整頁重render(跟animateWalk逐格動畫同一套效能考量)
+function applyFacingToCell(el, category, id, facing) {
+  const img = el.querySelector("img.pixelImg");
+  if (!img) return;
+  img.src = resolveCharacterFacingSrc(category, id, facing);
+  img.classList.toggle("facingMirror", facing === "left");
 }
 
 function chooseStartAppearance() {
   statusBar.innerHTML = "";
   const cardsHtml = CHARACTER_OPTIONS.map(c => `
     <div class="charCard" data-id="${c.id}">
-      <img class="pixelImg" src="assets/characters/${c.id}.png?v=156" alt="${c.name}">
+      <img class="pixelImg" src="${resolveAsset("character", c.id)}" alt="${c.name}">
       <div class="homeLabel">${c.name}</div>
         </div>`).join("");
   renderText(`<div class="subtitle">在末日來臨之前的最後一晚，你想以什麼樣的面貌活下去？選擇你的外觀造型：</div><div class="charGrid">${cardsHtml}</div>`, { kind: "event" });
@@ -877,7 +1013,7 @@ function showAppearancePicker() {
   const unlocked = state.unlockedAppearances || [state.appearance || "char_1"];
   const cardsHtml = CHARACTER_OPTIONS.filter(c => unlocked.includes(c.id)).map(c => `
     <div class="charCard${c.id === state.appearance ? " selected" : ""}" data-id="${c.id}">
-      <img class="pixelImg" src="assets/characters/${c.id}.png?v=156" alt="${c.name}">
+      <img class="pixelImg" src="${resolveAsset("character", c.id)}" alt="${c.name}">
       <div class="homeLabel">${c.name}</div>
         </div>`).join("");
   // v93：選擇造型後立即套用並返回主畫面，無需額外確認步驟
@@ -895,6 +1031,15 @@ function showAppearancePicker() {
 }
 
 let homeOpenPanel = null;
+// 任務系統：finishAction/endPhase呼叫checkQuestsAndAchievements後的結果暫存，供renderMain消費顯示一次性通知，不寫入存檔
+let pendingQuestNotice = null;
+function runQuestCheck() {
+  const result = checkQuestsAndAchievements(state);
+  if (result.completedMain || result.completedSide.length || result.unlockedAchievements.length) {
+    pendingQuestNotice = result;
+  }
+  return result;
+}
 let companionBubbleOpen = false;
 let companionBubbleLine = null;
 // 小隊同伴（艾莉/阿卡）小屋視覺化氣泡狀態，2026-06-20新增
@@ -910,6 +1055,16 @@ function togglePanel(key, showFn) {
   }
 }
 
+// 任務/成就reward用{embers,exp,scrap}簡寫，轉成formatEffect認得的形狀，純顯示用不影響數值套用
+function formatQuestReward(reward) {
+  if (!reward) return "";
+  const effect = {};
+  if (reward.embers) effect.embers = reward.embers;
+  if (reward.exp) effect.exp = reward.exp;
+  if (reward.scrap) effect.resources = { scrap: reward.scrap };
+  return formatEffect(effect);
+}
+
 function renderMain() {
   homeOpenPanel = null;
   renderStatusBar();
@@ -917,6 +1072,14 @@ function renderMain() {
   let extra = "";
   if (state.skillPoints > 0) {
         extra += `\n⭐ 你有 ${state.skillPoints} 點未使用的技能點！`;
+  }
+  // 任務系統：消費上一次finishAction/endPhase留下的完成通知，顯示一次後清空，不寫入存檔
+  if (pendingQuestNotice) {
+    const r = pendingQuestNotice;
+    if (r.completedMain) extra += `\n🎯 主線完成：${r.completedMain.title}${formatQuestReward(r.completedMain.reward)}`;
+    r.completedSide.forEach(q => { extra += `\n✅ 支線完成：${q.title}${formatQuestReward(q.reward)}`; });
+    r.unlockedAchievements.forEach(a => { extra += `\n🏆 解鎖成就：${a.title}${formatQuestReward(a.reward)}`; });
+    pendingQuestNotice = null;
   }
   // #23：徽章列表（廢料/防禦力/同伴任務等小圖示）
 const badges = [`<span class="miniBadge">📦 ${state.resources.scrap}</span>`, `<span class="miniBadge">🛡️${state.baseDefense}</span>`];
@@ -969,54 +1132,46 @@ const lowHp = state.hp <= state.hpMax * 0.25;
   bindHomeTabPills();
   const placementBtn = document.getElementById("homeTabPlacement");
   if (placementBtn) placementBtn.onclick = () => { state.homePlacementMode = !state.homePlacementMode; renderMain(); };
-  const floorCell = document.getElementById("homeFloorCell");
-  if (floorCell && roomCanvas) {
+  // v164：點燈開關——純氛圍互動，不消耗體力/不推進天數，跟doRest()完全分開
+  const lightSwitch = document.getElementById("homeLightSwitch");
+  if (lightSwitch) lightSwitch.onclick = (e) => {
+    e.stopPropagation();
+    const turningOff = !state.homeLightOff;
+    state.homeLightOff = turningOff;
+    saveGame();
+    renderMain();
+    if (turningOff) showSleepZzz(document.getElementById("homePlayerCell"));
+  };
+  // v166：free-form佈置——原本table/floor/rug三段各自的綁定迴圈收斂成一個，依陣列索引綁定，
+  // 不再有固定slot名稱；furn_sleeping_bag保留「點擊休息」的confirm-click模式，其餘專屬互動(日記/收音機/孵化巢)
+  // 仍依itemId判斷，沒有專屬互動的家具一律落入「翻找彩蛋」(v165)
+  (state.placedFurniture || []).forEach((placed, index) => {
+    const cell = document.getElementById(furnitureCellId(index));
+    if (!cell || !roomCanvas) return;
     if (state.homePlacementMode) {
-      bindFurnitureDrag(floorCell, roomCanvas, "floor");
-    } else {
-      bindConfirmAction(floorCell, () => playerAnim("anim-rest", doRest));
+      bindFurnitureDrag(cell, roomCanvas, index);
+      return;
     }
-  }
-  const tableCell = document.getElementById("homeTableCell");
-  if (tableCell && roomCanvas) {
-    if (state.homePlacementMode) {
-      bindFurnitureDrag(tableCell, roomCanvas, "table");
-    } else {
-      const tableItemId = state.baseSlots && state.baseSlots.table;
-      tableCell.onclick = (e) => {
-        e.stopPropagation();
-        if (tableItemId === "furn_diary") togglePanel("diary", showDiary);
-        else if (tableItemId === "furn_radio") {
-          const result = radioInteract(state);
-          if (result.ok) { saveGame(); renderStatusBar(); renderText(result.text, { kind: "event" }); }
-        } else if (tableItemId === "furn_egg_nest") {
-          const result = eggNestInteract(state);
-          if (result.ok) { saveGame(); renderStatusBar(); renderText(result.text, { kind: "event" }); }
-        }
-      };
+    const itemId = placed.itemId;
+    if (itemId === "furn_sleeping_bag") {
+      bindConfirmAction(cell, () => playerAnim("anim-rest", doRest));
+      return;
     }
-  }
-const table2Cell = document.getElementById("homeTable2Cell");
-  if (table2Cell && roomCanvas) {
-    if (state.homePlacementMode) {
-      bindFurnitureDrag(table2Cell, roomCanvas, "table2");
-    } else {
-      const table2ItemId = state.baseSlots && state.baseSlots.table2;
-      table2Cell.onclick = (e) => {
-        e.stopPropagation();
-        if (table2ItemId === "furn_diary") togglePanel("diary", showDiary);
-        else if (table2ItemId === "furn_radio") {
-          const result = radioInteract(state);
-          if (result.ok) { saveGame(); renderStatusBar(); renderText(result.text, { kind: "event" }); }
-        } else if (table2ItemId === "furn_egg_nest") {
-          const result = eggNestInteract(state);
-          if (result.ok) { saveGame(); renderStatusBar(); renderText(result.text, { kind: "event" }); }
-        }
-      };
-    }
-  }
-const floor2Cell = document.getElementById("homeFloor2Cell");
-  if (floor2Cell && roomCanvas && state.homePlacementMode) bindFurnitureDrag(floor2Cell, roomCanvas, "floor2");
+    cell.onclick = (e) => {
+      e.stopPropagation();
+      if (itemId === "furn_diary") togglePanel("diary", showDiary);
+      else if (itemId === "furn_radio") {
+        const result = radioInteract(state);
+        if (result.ok) { saveGame(); renderStatusBar(); renderText(result.text, { kind: "event" }); }
+      } else if (itemId === "furn_egg_nest") {
+        const result = eggNestInteract(state);
+        if (result.ok) { saveGame(); renderStatusBar(); renderText(result.text, { kind: "event" }); }
+      } else {
+        const result = furnitureEasterEggInteract(state, index);
+        if (result.ok) { saveGame(); renderStatusBar(); renderText(result.text, { kind: "event" }); }
+      }
+    };
+  });
   const companionCell = document.getElementById("homeCompanionCell");
   if (companionCell) companionCell.onclick = (e) => {
     e.stopPropagation();
@@ -1126,7 +1281,7 @@ const floor2Cell = document.getElementById("homeFloor2Cell");
   }
   // v100：點擊空白處/其他家具會關閉目前顯示的label，避免多個家具標籤同時顯示互相干擾
   const opts = [
-    ...(state.baseSlots && state.baseSlots.floor === "furn_sofa" ? [{ label: "🛋️ 沙發休息", onClick: showLounge }] : []),
+    ...(hasFurniturePlaced(state, "furn_sofa") ? [{ label: "🛋️ 沙發休息", onClick: showLounge }] : []),
     {
       label: "🛡️ 強化據點",
       hint: `：${cost}📦 / 體力-${actionStaminaCost(state, "reinforce")} / 強化據點：提升防禦力，抵擋夜襲傷害`,
@@ -1147,8 +1302,12 @@ function showPeepsPanel() {
   renderStatusBar();
   const ss = state.spouseState || {};
   const moodLine = state.dailyMoodDay === state.day ? `今日心情：${state.dailyMood}` : "今日尚未簽到心情";
+  // v180修正：lastSyncTimestamp存的是「同步當天的state.day絕對值」，不是「經過幾天」，
+  // 原本直接顯示`${ss.lastSyncTimestamp}天前`會把絕對天數誤標成相對天數(例如第15天同步，會顯示「15天前」而非「今天」)
+  const daysSinceSync = ss.hasLinked && ss.lastSyncTimestamp != null ? Math.max(0, state.day - ss.lastSyncTimestamp) : null;
+  const syncGapNote = daysSinceSync !== null && daysSinceSync >= 10 ? `\n好久沒有${ss.spouseName || "對方"}的消息了，不知道最近過得好不好……` : "";
   const linkLine = ss.hasLinked
-    ? `已連結：${ss.spouseName || "同伴"} ｜ 上次同步：${ss.lastSyncTimestamp}天前${ss.spouseMood ? `\n${ss.spouseName}的心情：${ss.spouseMood}` : ""}${ss.jointProgress ? `\n共同進度：${ss.jointProgress.mine + ss.jointProgress.theirs}` : ""}` : "尚未與任何人連結，可在下方產生同步碼分享給對方";
+    ? `已連結：${ss.spouseName || "同伴"} ｜ 上次同步：${daysSinceSync === 0 ? "今天" : daysSinceSync + "天前"}${ss.spouseMood ? `\n${ss.spouseName}的心情：${ss.spouseMood}` : ""}${ss.jointProgress ? `\n共同進度：${ss.jointProgress.mine + ss.jointProgress.theirs}` : ""}${syncGapNote}` : "尚未與任何人連結，可在下方產生同步碼分享給對方";
   const hpPct = state.hp / state.hpMax;
   const stPct = state.stamina / state.staminaMax;
   const lowFood = (state.resources.food || 0) <= 1;
@@ -1227,7 +1386,7 @@ function showPeepsPanel() {
       if (code) {
         const r = applySyncCode(state, code);
         if (r.ok) saveGame();
-                else alert("同步碼無效");
+                else alert(r.reason === "duplicate_code" ? "這張同步碼已經套用過了，請向對方索取新的同步碼" : "同步碼無效");
       }
       showPeepsPanel();
     }
@@ -1587,6 +1746,7 @@ const GATHER_TEXTS = [
 function doGather() {
   const result = spendStamina(state, "gather");
   if (state.hp <= 0) { renderGameOver(); return; }
+  state.questFlags.gatherTodayCount = (state.questFlags.gatherTodayCount || 0) + 1; // 任務系統：side_explore_daily_gather計數
   const gain = gatherYield(Math.random, state);
   if (result.overdraw) {
     for (const k in gain) gain[k] = Math.floor(gain[k] * result.resourceMultiplier);
@@ -1677,6 +1837,9 @@ ${blockText}`, { kind: "battle" });
 
 function runBloodMoonWave(waves, idx) {
   if (idx >= waves.length) {
+    // 任務系統：main_05/ach_blood_moon_streak3計數（戰敗=死亡=新局重開，questFlags隨defaultState()重置，不需要額外的「戰敗歸零」邏輯）
+    state.questFlags.bloodMoonSurvivedCount = (state.questFlags.bloodMoonSurvivedCount || 0) + 1;
+    state.questFlags.bloodMoonWinStreak = (state.questFlags.bloodMoonWinStreak || 0) + 1;
     const reward = bloodMoonRewards(state);
     document.body.classList.remove("blood-moon");
     renderStatusBar();
@@ -1782,6 +1945,19 @@ function showDawnTransition(callback) {
   setTimeout(() => { overlay.remove(); callback(); }, 2400);
 }
 
+// 任務系統：主線第7章「畢業」收尾（非遊戲結局，是無限模式下的引導結束提示）
+function showGraduationTransition(callback) {
+  const overlay = document.createElement("div");
+  overlay.className = "phaseTransition graduationTransition";
+  overlay.innerHTML = `
+    <div class="ptIcon">🎓</div>
+    <div class="ptTitle">畢　業</div>
+    <div class="ptSub">主線引導結束，之後請自由探索支線</div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(() => { overlay.remove(); callback(); }, 2400);
+}
+
 function doReinforce() {
   renderStatusBar();
   const cost = reinforceCost(state);
@@ -1821,7 +1997,9 @@ function finishAction() {
     renderGameOver();
     return;
   }
+  const qr = runQuestCheck();
   saveGame();
+  if (qr.graduated) { showGraduationTransition(() => renderMain()); return; }
   renderMain();
 }
 
@@ -1834,14 +2012,19 @@ function endPhase() {
   const prevDay = state.day;
   const prevPhase = state.phase;
   advancePhase(state);
-  if (state.day !== prevDay) addDiaryEntry();
+  if (state.day !== prevDay) {
+    addDiaryEntry();
+    state.questFlags.gatherTodayCount = 0; // 任務系統：每日重置型支線計數器，跨日清零
+  }
   if (!state.sandboxEnded && longTermGoalMet(state)) {
     state.sandboxEnded = true;
     saveGame();
     renderSandboxEnding();
     return;
   }
+  const qr = runQuestCheck();
   saveGame();
+  if (qr.graduated) { showGraduationTransition(() => renderMain()); return; }
   // D: phase transition animation
   if (prevPhase === "day" && state.phase !== "day") {
     showNightTransition(() => renderMain());
@@ -1910,8 +2093,9 @@ function renderGameOver(isPrologue) {
   saveGame();
 }
 
-// ---------- ?圈洛 ----------
+// ---------- 戰鬥 ----------
 function startBattle(enemyId, onEnd, isPrologue, opts = {}) {
+  battleSysLog = []; // v181：新戰鬥開始時清空上一場的副數據流紀錄
   const due = !isPrologue && isThreatDue(state);
   const { battleBonus, loc, bloodMoon, ...scaleOpts } = opts;
   const overpower = isPrologue ? null : getLocationOverpower(state, loc);
@@ -1923,8 +2107,10 @@ function startBattle(enemyId, onEnd, isPrologue, opts = {}) {
     isPrologue: !!isPrologue,
     battleBonus,
     overpower,
-    bloodMoon: !!bloodMoon
+    bloodMoon: !!bloodMoon,
+    loc: loc || null // v182：gaia_armor「荒野每回合回HP」判定用——有loc代表是探索遭遇戰，血月/據點防衛戰沒有loc
   };
+  pushSysLog(`[ENCOUNTER] ${enemyData.id || enemyData.name} HP=${enemyData.hp} ATK=${enemyData.atk}`);
   renderBattle(`你遭遇了${enemyData.name}，戰鬥開始！`);
 }
 
@@ -1934,9 +2120,10 @@ function renderBattle(message) {
   const pct = Math.max(0, (b.enemy.hpLeft / b.enemy.hp) * 100);
   const myStats = getEffectiveStats(state);
   const enemyDef = getShreddedDef(b.enemy);
+  const enemySrc = resolveAsset("enemy", b.enemy.id);
   renderText(`
     <div class="enemyCard">
-      <div class="icon" title="${b.enemy.icon}">${ENEMY_ASSETS[b.enemy.id] ? `<img class="pixelImg enemyImg" src="assets/enemies/${b.enemy.id}.png?v=156" alt="${b.enemy.name}">` : pixelIconSvg(b.enemy.id || b.enemy.name, "enemy")}</div>
+      <div class="icon" title="${b.enemy.icon}">${enemySrc ? `<img class="pixelImg enemyImg" src="${enemySrc}" alt="${b.enemy.name}">` : pixelIconSvg(b.enemy.id || b.enemy.name, "enemy")}</div>
       <div class="info">
         <div class="name">${b.enemy.name}</div>
         <div class="enemyHpTrack"><div class="enemyHpFill" style="width:${pct}%"></div></div>
@@ -1947,7 +2134,7 @@ function renderBattle(message) {
       <span class="vsSelf">⚔️你 ❤️${state.hp}/${state.hpMax} ⚔️${myStats.atk} 🛡️${myStats.def}</span>
       <span class="vsEnemy">${b.enemy.name} ⚔️${b.enemy.atk} 🛡️${enemyDef}</span>
     </div>
-        ${message}`, { kind: "battle" });
+        ${message}${sysLogHtml()}`, { kind: "battle" });
   renderOptions([
         { label: "⚔️ 攻擊" + (b.bloodMoon ? "（長按連擊）" : ""), variant: "danger", onClick: battleAttack, turbo: !!b.bloodMoon },
     { label: "🏃 逃跑", variant: "ghost", onClick: battleFlee }
@@ -1993,6 +2180,7 @@ function calcAttackDamage(b) {
 function battleAttack() {
   const b = pendingBattle;
   if (!b) { clearTurbo(); return; } // Turbo Click連擊時若戰鬥已結束，立即停止避免持續觸發
+  b.turn = (b.turn || 0) + 1;
   consumeAmmoForAttack(state);
   let extraText = "";
   if (!b.firstRoundDone) {
@@ -2006,6 +2194,15 @@ function battleAttack() {
       if (b.enemy.hpLeft <= 0) b.enemy.hpLeft = 0;
     }
   }
+  // v182：大氣靈能重弩(aero_crossbow)——先手率10%，每次攻擊有機率搶先造成一次額外傷害(原本「未接入先手判定」)
+  const weaponRef = getEquipRef(state, state.equipment && state.equipment.weapon);
+  if (weaponRef && weaponRef.item && weaponRef.item.id === "aero_crossbow" && b.enemy.hpLeft > 0 && Math.random() < 0.10) {
+    const preempt = calcAttackDamage(b);
+    b.enemy.hpLeft -= preempt.dmg;
+    extraText += `
+🏹 大氣靈能重弩搶得先機，額外造成${preempt.dmg}點傷害！`;
+    if (b.enemy.hpLeft <= 0) b.enemy.hpLeft = 0;
+  }
   const myStats = getEffectiveStats(state);
   const { dmg: dmgToEnemyCalc, crit } = calcAttackDamage(b);
   let dmgToEnemy = dmgToEnemyCalc;
@@ -2015,8 +2212,10 @@ function battleAttack() {
   if (maybeStunEnemy(state)) b.enemy.stunned = true; // 27.4
   const lifesteal = Math.round(dmgToEnemy * getLifestealRatio(state));
   if (lifesteal > 0) applyEffect({ hp: lifesteal });
+  pushSysLog(`[T${b.turn}] PLAYER_ATK dmg=${dmgToEnemy}${crit ? " crit=1" : ""} enemy.hp=${Math.max(0, b.enemy.hpLeft)}/${b.enemy.hp}`);
 
   if (b.enemy.hpLeft <= 0) {
+    state.questFlags.totalKills = (state.questFlags.totalKills || 0) + 1; // 任務系統：ach_kills_50計數
 let lootText = "";
     const drop = pickWeighted(b.enemy.dropTable);
     if (drop) {
@@ -2030,10 +2229,10 @@ let lootText = "";
 獲得 ${dropItem.icon} ${inst.name}，已加入背包`;
         } else {
           addItemToInventory(drop.itemId, drop.qty);
-          lootText = `\n?脣? ${dropItem.icon} ${dropItem.name} x${drop.qty}`;
+          lootText = `\n獲得 ${dropItem.icon} ${dropItem.name} x${drop.qty}`;
         }
       } else if (dropItem) {
-        lootText = `\n?脣? ${dropItem.icon} ${dropItem.name} x${drop.qty}`;
+        lootText = `\n獲得 ${dropItem.icon} ${dropItem.name} x${drop.qty}`;
       } else {
         lootText = formatEffect({ resources: { [drop.itemId]: drop.qty } });
       }
@@ -2073,6 +2272,7 @@ let lootText = "";
 
   const hit = resolveEnemyHit(b, myStats);
   const reviveText = hit.dmg > 0 ? applyEnemyDamage(hit.dmg) : "";
+  pushSysLog(`[T${b.turn}] ENEMY_ATK ${hit.stunned ? "stunned=1" : hit.dodged ? "dodged=1" : `dmg=${hit.dmg}`} player.hp=${Math.max(0, state.hp)}/${state.hpMax}`);
 
   if (state.hp <= 0) {
     const isPrologue = b.isPrologue;
@@ -2084,7 +2284,18 @@ let lootText = "";
 
     const lifestealText = lifesteal > 0 ? `（吸血+${lifesteal}）` : "";
     const counterText = hit.stunned ? "敵人被擊暈，無法反擊！" : hit.dodged ? "你閃避了敵人的攻擊！" : `敵人反擊，造成${hit.dmg}點傷害！`;
-  renderBattle(`${extraText}${critText}你攻擊了${b.enemy.name}，造成${dmgToEnemy}點傷害${lifestealText}${counterText}${reviveText}`);
+  // v182：苔蘚幾何外殼(gaia_armor)——探索遭遇戰(b.loc存在)每回合回HP+2(原本「未接入荒野回合制」)
+  let gaiaArmorText = "";
+  const armorRef = getEquipRef(state, state.equipment && state.equipment.armor);
+  if (armorRef && armorRef.item && armorRef.item.id === "gaia_armor" && b.loc && state.hp > 0) {
+    const healed = Math.min(2, state.hpMax - state.hp);
+    if (healed > 0) {
+      applyEffect({ hp: healed });
+      gaiaArmorText = `
+🌿 苔蘚幾何外殼汲取荒野生機，回復HP+${healed}`;
+    }
+  }
+  renderBattle(`${extraText}${critText}你攻擊了${b.enemy.name}，造成${dmgToEnemy}點傷害${lifestealText}${counterText}${reviveText}${gaiaArmorText}`);
 }
 
 function battleFlee() {
@@ -2092,7 +2303,7 @@ function battleFlee() {
   const myStats = getEffectiveStats(state);
   if (Math.random() < 0.5) {
     renderStatusBar();
-        renderText("你的攻擊被敵人完全擋下，沒有造成傷害。", { kind: "event" });
+        renderText("🏃 你趁機脫離了戰鬥，成功逃跑！", { kind: "event" });
     const onEnd = b.onEnd;
     pendingBattle = null;
     sessionStorage.removeItem("embers_battle_snap");
@@ -2100,6 +2311,7 @@ function battleFlee() {
   } else {
     const hit = resolveEnemyHit(b, myStats);
     const reviveText = hit.dmg > 0 ? applyEnemyDamage(hit.dmg) : "";
+    pushSysLog(`[FLEE_FAILED] ${hit.dodged ? "dodged=1" : `dmg=${hit.dmg}`} player.hp=${Math.max(0, state.hp)}/${state.hpMax}`);
     if (state.hp <= 0) {
       const isPrologue = b.isPrologue;
       pendingBattle = null;
@@ -2179,7 +2391,7 @@ function showInventory() {
         }
       });
     }
-    if (item.type === "furniture" && (!state.baseSlots || !Object.values(state.baseSlots).includes(i.itemId))) {
+    if (item.type === "furniture" && !hasFurniturePlaced(state, i.itemId)) {
       opts.push({
         label: `?喳? ${itemIconHtml(item.id, item.type)}${item.name}`,
         hint: `(${item.slot}?? ${item.desc || ""}`,
@@ -2236,6 +2448,84 @@ const replacedName = result.replaced && ITEMS[result.replaced] ? ITEMS[result.re
       }
     });
   });
+  opts.push({ label: "返回", variant: "ghost", onClick: renderMain });
+  renderOptions(opts);
+}
+
+// ---------- 任務與成就系統UI（規格文件/任務與成就系統_設計規格.md §5）----------
+const SIDE_CATEGORY_LABELS = { collect: "📦收集", companion: "👥隊員", explore: "🧭探索" };
+let questPanelTab = "main"; // "main" | "side"
+let questPanelSideCategory = "collect";
+
+function showQuestPanel() {
+  renderStatusBar();
+  let html = `<div class="subtitle">任務</div><div class="hint" style="padding-bottom:6px">主線可以不做，支線隨時可以慢慢刷</div>`;
+  if (questPanelTab === "main") {
+    const mainChapters = Object.values(QUESTS).filter(q => q.type === "main").sort((a, b) => a.chapter - b.chapter);
+    mainChapters.forEach(q => {
+      const done = state.questProgress.completedMain.includes(q.id);
+      const active = state.questProgress.activeMain === q.id;
+      const icon = done ? "✅" : active ? "🎯" : "⬜";
+      html += `<div class="invRow${done ? " furn-used" : ""}"><span>${icon} 第${q.chapter}章：${q.title}</span></div>`;
+      if (active) html += `<div class="hint" style="padding:0 0 6px 0">${q.desc}</div>`;
+    });
+  } else {
+    const cats = Object.keys(SIDE_CATEGORY_LABELS);
+    const sideQuests = Object.values(QUESTS).filter(q => q.type === "side" && q.category === questPanelSideCategory);
+    sideQuests.forEach(q => {
+      const done = !q.repeatable && state.questProgress.completedSide.includes(q.id);
+      let progressText = "";
+      if (q.counterField) {
+        const cur = Math.min(q.counterTarget, state.questFlags[q.counterField] || 0);
+        progressText = ` <span class="qty">${cur}/${q.counterTarget}</span>`;
+      }
+      html += `<div class="invRow${done ? " furn-used" : ""}"><span>${done ? "✅" : q.repeatable ? "🔁" : "⬜"} ${q.title}</span>${progressText}</div>`;
+      if (!done) html += `<div class="hint" style="padding:0 0 6px 0">${q.desc}</div>`;
+    });
+    if (!sideQuests.length) html += `<div class="hint">（目前沒有此分類的支線）</div>`;
+  }
+  renderText(html);
+
+  const opts = [];
+  opts.push({ label: questPanelTab === "main" ? "▸ 主線" : "主線", variant: questPanelTab === "main" ? "primary" : "ghost", onClick: () => { questPanelTab = "main"; showQuestPanel(); } });
+  opts.push({ label: questPanelTab === "side" ? "▸ 支線" : "支線", variant: questPanelTab === "side" ? "primary" : "ghost", onClick: () => { questPanelTab = "side"; showQuestPanel(); } });
+  if (questPanelTab === "side") {
+    Object.keys(SIDE_CATEGORY_LABELS).forEach(cat => {
+      opts.push({
+        label: SIDE_CATEGORY_LABELS[cat],
+        variant: questPanelSideCategory === cat ? "primary" : "ghost",
+        onClick: () => { questPanelSideCategory = cat; showQuestPanel(); }
+      });
+    });
+  }
+  opts.push({ label: "返回", variant: "ghost", onClick: renderMain });
+  renderOptions(opts);
+}
+
+const ACHIEVEMENT_CATEGORY_LABELS = { survival: "🏕️存活", combat: "⚔️戰鬥", collect: "📦收集", discovery: "🔍探索意外" };
+let achievementPanelCategory = "survival";
+
+function showAchievementPanel() {
+  renderStatusBar();
+  let html = `<div class="subtitle">成就</div>`;
+  const list = Object.values(ACHIEVEMENTS).filter(a => a.category === achievementPanelCategory);
+  list.forEach(a => {
+    const unlocked = state.unlockedAchievements.includes(a.id);
+    if (!unlocked && a.hidden) return; // 未解鎖的隱藏成就完全不顯示，不佔版面
+    const cls = unlocked ? "" : " furn-used";
+    html += `<div class="invRow${cls}"><span>${unlocked ? "🏆" : "❔"} ${a.title}</span></div>`;
+    html += `<div class="hint" style="padding:0 0 6px 0">${a.desc}</div>`;
+  });
+  if (!list.some(a => state.unlockedAchievements.includes(a.id) || !a.hidden)) {
+    html += `<div class="hint">（目前沒有此分類可顯示的成就）</div>`;
+  }
+  renderText(html);
+
+  const opts = Object.keys(ACHIEVEMENT_CATEGORY_LABELS).map(cat => ({
+    label: ACHIEVEMENT_CATEGORY_LABELS[cat],
+    variant: achievementPanelCategory === cat ? "primary" : "ghost",
+    onClick: () => { achievementPanelCategory = cat; showAchievementPanel(); }
+  }));
   opts.push({ label: "返回", variant: "ghost", onClick: renderMain });
   renderOptions(opts);
 }
@@ -2297,7 +2587,7 @@ function shopTabOptions(current) {
 
 function ownsFurniture(itemId) {
   if ((state.inventory || []).some(i => i.itemId === itemId && i.qty > 0)) return true;
-  return !!(state.baseSlots && Object.values(state.baseSlots).includes(itemId));
+  return hasFurniturePlaced(state, itemId);
 }
 
 function showShopConsumables(subTab = "consumable") {
@@ -2324,7 +2614,7 @@ const owned = item.type === "furniture" && ownsFurniture(item.id);
     const limitReached = item.useLimitPerGame && (state.itemUseCount[item.id] || 0) >= item.useLimitPerGame;
     const owned = item.type === "furniture" && ownsFurniture(item.id);
     opts.push({
-      label: `鞈潸眺 ${itemIconHtml(item.id, item.type)}${item.name}`,
+      label: `購買 ${itemIconHtml(item.id, item.type)}${item.name}`,
       hint: owned ? "已擁有，無法重複購買" : `🔥${item.shopPrice.embers}`,
       disabled: state.currency.embers < item.shopPrice.embers || limitReached || owned,
       onClick: () => {

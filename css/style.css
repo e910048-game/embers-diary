@@ -118,11 +118,6 @@ body.blood-moon #app {
 body.blood-moon .roomCanvas {
   filter: saturate(0.25) hue-rotate(310deg) brightness(0.65);
 }
-body.blood-moon .roomCanvas::after {
-  background-image:
-    repeating-linear-gradient(to right, rgba(255,59,59,0.07) 0 1px, transparent 1px 40px),
-    repeating-linear-gradient(to bottom, rgba(255,59,59,0.07) 0 1px, transparent 1px 40px);
-}
 body.blood-moon .companionBubble {
   background: rgba(20,0,0,0.92);
   border-color: rgba(255,59,59,0.35);
@@ -139,6 +134,8 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 }
 .nightTransition { background: linear-gradient(to bottom, #060916, #111828); }
 .dawnTransition  { background: linear-gradient(to bottom, #1a0e08, #2e1c0c); }
+.graduationTransition { background: linear-gradient(to bottom, #0a1410, #142a1e); }
+.graduationTransition .ptTitle { color: #7fe9a8; text-shadow: 0 0 14px rgba(127,233,168,0.55); }
 .phaseTransition .ptIcon {
   font-size: 46px; opacity: 0;
   animation: ptIconIn 0.75s cubic-bezier(.22,1,.36,1) 0.1s forwards;
@@ -395,14 +392,54 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
   margin-top: 12px; margin-bottom: 12px;
   overflow: hidden; cursor: pointer; box-sizing: border-box;
   border: 3px solid rgba(30,34,38,0.55);
+  background-color: #23272d; /* v162：菱形地板以外的「室外」底色，與牆面深鋼灰呼應 */
   transition: filter 0.8s ease;
 }
 /* v127：夜晚小屋深色藍調 */
 .roomCanvas.night { filter: brightness(0.72) saturate(0.7) hue-rotate(20deg); border-color: rgba(40,50,80,0.6); }
+/* v164：玩家主動關燈——比被動的.night更暗，寫在.night規則之後讓兩者同時套用時以此為準 */
+/* v176修正：原本brightness(0.4)太暗，地板紋理幾乎完全看不見；放寬到0.58並降低saturate衰減幅度，保留地板輪廓可辨識 */
+.roomCanvas.lightsOff { filter: brightness(0.58) saturate(0.7) contrast(1.08); }
+/* v176新增：關燈時窗邊應該透進一點光，而不是整個房間均勻變暗——疊一層從窗戶位置(homeWindow在left:14px,top:4px)往外擴散的冷光，
+   用mix-blend-mode:screen讓亮度疊加在已調暗的場景上，視覺上像月光/路燈光從窗外灑進來 */
+.windowGlow {
+  position: absolute; left: 0; top: 0; width: 160px; height: 180px;
+  background: radial-gradient(ellipse at 24% 14%, rgba(150,180,255,0.45), rgba(150,180,255,0.12) 55%, transparent 80%);
+  pointer-events: none; z-index: 4; mix-blend-mode: screen;
+}
+/* v164：點燈開關按鈕，跟.wallBand是平行的獨立元素(非其子層)，不受wallBand的pointer-events:none影響 */
+.lightSwitch {
+  position: absolute; width: 28px; height: 28px; border-radius: 4px;
+  border: 2px solid #1c2024; background: #2b2f36; color: #e8e8e8;
+  font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+.lightSwitch.is-on { background: #3a3f28; box-shadow: 0 0 6px 2px rgba(255,230,120,0.5), inset 0 0 0 1px rgba(255,255,255,0.08); }
+.lightSwitch:active { transform: scale(0.92); }
+/* v164：關燈瞬間在玩家頭上飄一個睡覺表情，純氛圍動畫 */
+.sleepZzz {
+  position: absolute; left: 100%; top: -6px; font-size: 14px;
+  animation: sleepZzzFloat 1.4s ease-out forwards; pointer-events: none;
+}
+@keyframes sleepZzzFloat {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(6px, -22px) scale(1.1); }
+}
 /* v129：家具今日已用——半透明灰色蒙版 */
 .roomCell.furn-used { opacity: 0.55; }
 .roomCell.furn-used .homeLabel { color: #8a9099; }
 /* v129：門格 armed 狀態——標籤改為提示文字 */
+/* v176新增：門框icon背後加一塊深色凹陷面板，讓門看起來「嵌進牆裡」而不是貼在牆面上的貼紙 */
+/* v184修正：原本只用模糊的radial-gradient，跟.homeWindow(硬邊框+陰影)的「嵌入牆面」處理方式完全不同調，
+   使用者反饋「門很突兀地長在牆壁上」——改用跟窗戶一致的硬邊框+內陰影手法，視覺語言統一 */
+.roomCell.doorCell .icon {
+  background: #15171a;
+  border: 2px solid #1c2024;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.3);
+}
 .roomCell.doorCell.armed { outline: 2px solid rgba(111,200,111,0.8); border-radius: 6px; }
 .roomCell.doorCell.armed .homeLabel::after { content: " 再點一次"; color: #7fd47f; font-size: 10px; }
 /* v122：點同伴彈出氣泡選單(7.6-C)——取代全螢幕互動流程 */
@@ -426,12 +463,14 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 }
 /* v83：上/下緣各一整排「牆面格」(12.5%≈一格高)，用磚牆紋路與地板區隔；門/牆面家具固定塞在這排格子內 */
 /* 2026-06-21：原本木紋牆面跟探索/採集門的科幻警示燈框風格衝突，改為深鋼灰金屬牆板，呼應門框與家具的科技感配色 */
+/* v162：牆面紋路改用與地板菱形(64x32，邊長斜率0.5≈26.57deg)同角度的斜紋十字交叉，呼應等距地板的視覺語言 */
 .wallBand {
   position: absolute; left: 0; right: 0; height: 12.5%; z-index: 0; pointer-events: none;
   background-color: #2b2f36;
   background-image:
-    repeating-linear-gradient(to right, rgba(0,0,0,0.3) 0 2px, transparent 2px 40px),
-    repeating-linear-gradient(to bottom, rgba(0,0,0,0.25) 0 1px, transparent 1px 8px),
+    repeating-linear-gradient(26.57deg, rgba(0,0,0,0.28) 0 1px, transparent 1px 20px),
+    repeating-linear-gradient(-26.57deg, rgba(0,0,0,0.28) 0 1px, transparent 1px 20px),
+    repeating-linear-gradient(to bottom, rgba(0,0,0,0.2) 0 1px, transparent 1px 8px),
     linear-gradient(to bottom, rgba(255,255,255,0.05), transparent);
 }
 .wallBandTop {
@@ -464,44 +503,57 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
     linear-gradient(to right, transparent calc(50% - 1px), rgba(28,32,36,0.9) calc(50% - 1px), rgba(28,32,36,0.9) calc(50% + 1px), transparent calc(50% + 1px)),
     linear-gradient(to bottom, transparent calc(50% - 1px), rgba(28,32,36,0.9) calc(50% - 1px), rgba(28,32,36,0.9) calc(50% + 1px), transparent calc(50% + 1px));
 }
-/* 比照Peeps：正方形像素網格線(40x40px)疊加在地板上，強化「正俯視棋盤格」感 */
-.roomCanvas::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0;
-  background-image:
-    repeating-linear-gradient(to right, rgba(0,0,0,0.08) 0 1px, transparent 1px 40px),
-    repeating-linear-gradient(to bottom, rgba(0,0,0,0.08) 0 1px, transparent 1px 40px);
-}
-/* #29-1：地板樣式——比照Peeps改為淺色棋盤格基調(自製8x8像素貼圖data URI以pixelated平鋪) */
+/* v163：地板紋理畫在::after，原本用clip-path裁成「內縮的菱形」(四個角對應gridPos邏輯網格最遠角)，
+   想避免「看起來是地板但邏輯上走不到」的死區，但代價是四個角落整塊被裁掉變成室外底色，
+   使用者反饋這樣不對——菱形應該是「磚紋的形狀」(地板貼圖本身是菱形磚拼接紋路)，不是「整片發光區域的外輪廓」。
+   v185修正：clip-path改成單純的矩形(只裁掉跟上下牆面重疊的部分，左右不裁)，讓菱形磚紋理鋪滿整個房間地板，
+   不再有四角死區。邏輯走路範圍(gridPos/findReachablePos/getOccupiedTileKeys)完全不受影響，純視覺調整 */
 .roomCanvas.floor-wood,
 .roomCanvas.floor-tile,
 .roomCanvas.floor-rug {
-  background-repeat: repeat;
-  background-size: 32px 32px;
-  image-rendering: pixelated;
   position: relative;
 }
 .roomCanvas.floor-wood::before,
 .roomCanvas.floor-tile::before,
+.roomCanvas.floor-rug::before,
+.roomCanvas.floor-wood::after,
+.roomCanvas.floor-tile::after,
+.roomCanvas.floor-rug::after {
+  /* v183修正：z-index:-1會把整塊地板紋理藏到.roomCanvas自己的background-color(#23272d)後面，
+     導致地板完全看不見(只剩室外底色)，使用者回報「地板不見了」就是這個原因。改成0，
+     蓋在底色之上、但仍低於家具(61+)/玩家(105)/門(1/51)/燈開關(2)等正數z-index元素 */
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  /* v185：矩形裁切，只避開上下牆面帶(各12.5%)，左右滿寬，不再裁出菱形外輪廓 */
+  clip-path: polygon(0% 12.5%, 100% 12.5%, 100% 87.5%, 0% 87.5%);
+}
+.roomCanvas.floor-wood::before,
+.roomCanvas.floor-tile::before,
 .roomCanvas.floor-rug::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(ellipse at 50% 100%, rgba(0,0,0,0.06), transparent 70%);
 }
-.roomCanvas.floor-wood {
-  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%208%208'%3E%3Crect%20width='8'%20height='8'%20fill='%23d8cdb8'/%3E%3Crect%20y='3'%20width='8'%20height='1'%20fill='%23c4b89e'/%3E%3Crect%20y='7'%20width='8'%20height='1'%20fill='%23c4b89e'/%3E%3Crect%20x='1'%20y='1'%20width='1'%20height='1'%20fill='%23e6dcc8'/%3E%3Crect%20x='5'%20y='1'%20width='1'%20height='1'%20fill='%23e6dcc8'/%3E%3Crect%20x='3'%20y='2'%20width='1'%20height='1'%20fill='%23e6dcc8'/%3E%3Crect%20x='2'%20y='5'%20width='1'%20height='1'%20fill='%23e6dcc8'/%3E%3Crect%20x='6'%20y='5'%20width='1'%20height='1'%20fill='%23e6dcc8'/%3E%3Crect%20x='4'%20y='6'%20width='1'%20height='1'%20fill='%23e6dcc8'/%3E%3C/svg%3E");
+.roomCanvas.floor-wood::after,
+.roomCanvas.floor-tile::after,
+.roomCanvas.floor-rug::after {
+  background-repeat: repeat;
+  background-size: 64px 32px;
+  image-rendering: pixelated;
 }
-.roomCanvas.floor-tile {
-  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%208%208'%3E%3Crect%20width='8'%20height='8'%20fill='%23c9d6e0'/%3E%3Crect%20width='8'%20height='1'%20fill='%23b3c2cf'/%3E%3Crect%20y='4'%20width='8'%20height='1'%20fill='%23b3c2cf'/%3E%3Crect%20width='1'%20height='8'%20fill='%23b3c2cf'/%3E%3Crect%20x='4'%20width='1'%20height='8'%20fill='%23b3c2cf'/%3E%3C/svg%3E");
+.roomCanvas.floor-wood::after {
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2032'%3E%3Crect%20width='64'%20height='32'%20fill='%23d8cdb8'/%3E%3Cpolygon%20points='32,0%2064,16%2032,32%200,16'%20fill='none'%20stroke='%23c4b89e'%20stroke-width='1'/%3E%3Cline%20x1='32'%20y1='2'%20x2='32'%20y2='30'%20stroke='%23c4b89e'%20stroke-width='1'/%3E%3Cline%20x1='16'%20y1='8'%20x2='16'%20y2='24'%20stroke='%23e6dcc8'%20stroke-width='1'/%3E%3Cline%20x1='48'%20y1='8'%20x2='48'%20y2='24'%20stroke='%23e6dcc8'%20stroke-width='1'/%3E%3C/svg%3E");
 }
-.roomCanvas.floor-rug {
-  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%208%208'%3E%3Crect%20width='8'%20height='8'%20fill='%23e8d8c8'/%3E%3Crect%20width='8'%20height='1'%20fill='%23d8c4b0'/%3E%3Crect%20y='7'%20width='8'%20height='1'%20fill='%23d8c4b0'/%3E%3Crect%20width='1'%20height='8'%20fill='%23d8c4b0'/%3E%3Crect%20x='7'%20width='1'%20height='8'%20fill='%23d8c4b0'/%3E%3Crect%20x='3'%20y='3'%20width='2'%20height='2'%20fill='%23f0c8a8'/%3E%3Crect%20x='1'%20y='1'%20width='1'%20height='1'%20fill='%23eccdb8'/%3E%3Crect%20x='6'%20y='1'%20width='1'%20height='1'%20fill='%23eccdb8'/%3E%3Crect%20x='1'%20y='6'%20width='1'%20height='1'%20fill='%23eccdb8'/%3E%3Crect%20x='6'%20y='6'%20width='1'%20height='1'%20fill='%23eccdb8'/%3E%3C/svg%3E");
+.roomCanvas.floor-tile::after {
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2032'%3E%3Crect%20width='64'%20height='32'%20fill='%23c9d6e0'/%3E%3Cpolygon%20points='32,0%2064,16%2032,32%200,16'%20fill='none'%20stroke='%23b3c2cf'%20stroke-width='1'/%3E%3Cline%20x1='0'%20y1='16'%20x2='64'%20y2='16'%20stroke='%23b3c2cf'%20stroke-width='1'/%3E%3Cline%20x1='32'%20y1='0'%20x2='32'%20y2='32'%20stroke='%23b3c2cf'%20stroke-width='1'/%3E%3C/svg%3E");
+}
+.roomCanvas.floor-rug::after {
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2032'%3E%3Crect%20width='64'%20height='32'%20fill='%23e8d8c8'/%3E%3Cpolygon%20points='32,0%2064,16%2032,32%200,16'%20fill='none'%20stroke='%23d8c4b0'%20stroke-width='1'/%3E%3Cpolygon%20points='32,8%2048,16%2032,24%2016,16'%20fill='%23f0c8a8'/%3E%3C/svg%3E");
 }
 .floorSwatch {
   width: 100%; height: 36px; border-radius: 6px;
-  background-repeat: repeat; background-size: 16px 16px; image-rendering: pixelated;
+  background-repeat: repeat; background-size: 32px 16px; image-rendering: pixelated;
 }
-.floorSwatch.floor-wood { background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%208%208'%3E%3Crect%20width='8'%20height='8'%20fill='%233a2c1c'/%3E%3Crect%20y='3'%20width='8'%20height='1'%20fill='%232a1f12'/%3E%3Crect%20y='7'%20width='8'%20height='1'%20fill='%232a1f12'/%3E%3Crect%20x='1'%20y='1'%20width='1'%20height='1'%20fill='%234a3826'/%3E%3Crect%20x='5'%20y='1'%20width='1'%20height='1'%20fill='%234a3826'/%3E%3Crect%20x='3'%20y='2'%20width='1'%20height='1'%20fill='%234a3826'/%3E%3Crect%20x='2'%20y='5'%20width='1'%20height='1'%20fill='%234a3826'/%3E%3Crect%20x='6'%20y='5'%20width='1'%20height='1'%20fill='%234a3826'/%3E%3Crect%20x='4'%20y='6'%20width='1'%20height='1'%20fill='%234a3826'/%3E%3C/svg%3E"); }
-.floorSwatch.floor-tile { background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%208%208'%3E%3Crect%20width='8'%20height='8'%20fill='%232a323a'/%3E%3Crect%20width='8'%20height='1'%20fill='%231f262c'/%3E%3Crect%20y='4'%20width='8'%20height='1'%20fill='%231f262c'/%3E%3Crect%20width='1'%20height='8'%20fill='%231f262c'/%3E%3Crect%20x='4'%20width='1'%20height='8'%20fill='%231f262c'/%3E%3C/svg%3E"); }
-.floorSwatch.floor-rug { background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%208%208'%3E%3Crect%20width='8'%20height='8'%20fill='%233a241f'/%3E%3Crect%20width='8'%20height='1'%20fill='%232a1812'/%3E%3Crect%20y='7'%20width='8'%20height='1'%20fill='%232a1812'/%3E%3Crect%20width='1'%20height='8'%20fill='%232a1812'/%3E%3Crect%20x='7'%20width='1'%20height='8'%20fill='%232a1812'/%3E%3Crect%20x='3'%20y='3'%20width='2'%20height='2'%20fill='%236a3a28'/%3E%3Crect%20x='1'%20y='1'%20width='1'%20height='1'%20fill='%234a2c20'/%3E%3Crect%20x='6'%20y='1'%20width='1'%20height='1'%20fill='%234a2c20'/%3E%3Crect%20x='1'%20y='6'%20width='1'%20height='1'%20fill='%234a2c20'/%3E%3Crect%20x='6'%20y='6'%20width='1'%20height='1'%20fill='%234a2c20'/%3E%3C/svg%3E"); }
+.floorSwatch.floor-wood { background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2032'%3E%3Crect%20width='64'%20height='32'%20fill='%233a2c1c'/%3E%3Cpolygon%20points='32,0%2064,16%2032,32%200,16'%20fill='none'%20stroke='%232a1f12'%20stroke-width='1'/%3E%3Cline%20x1='32'%20y1='2'%20x2='32'%20y2='30'%20stroke='%232a1f12'%20stroke-width='1'/%3E%3Cline%20x1='16'%20y1='8'%20x2='16'%20y2='24'%20stroke='%234a3826'%20stroke-width='1'/%3E%3Cline%20x1='48'%20y1='8'%20x2='48'%20y2='24'%20stroke='%234a3826'%20stroke-width='1'/%3E%3C/svg%3E"); }
+.floorSwatch.floor-tile { background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2032'%3E%3Crect%20width='64'%20height='32'%20fill='%232a323a'/%3E%3Cpolygon%20points='32,0%2064,16%2032,32%200,16'%20fill='none'%20stroke='%231f262c'%20stroke-width='1'/%3E%3Cline%20x1='0'%20y1='16'%20x2='64'%20y2='16'%20stroke='%231f262c'%20stroke-width='1'/%3E%3Cline%20x1='32'%20y1='0'%20x2='32'%20y2='32'%20stroke='%231f262c'%20stroke-width='1'/%3E%3C/svg%3E"); }
+.floorSwatch.floor-rug { background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2032'%3E%3Crect%20width='64'%20height='32'%20fill='%233a241f'/%3E%3Cpolygon%20points='32,0%2064,16%2032,32%200,16'%20fill='none'%20stroke='%232a1812'%20stroke-width='1'/%3E%3Cpolygon%20points='32,8%2048,16%2032,24%2016,16'%20fill='%236a3a28'/%3E%3C/svg%3E"); }
 /* v87：left/top只代表40x40px圖示的左上角基準點，水平置中用translateX，垂直不再位移，
    讓物件在y=0/y=5地板格時圖示邊緣能直接貼齊牆壁格邊界，標籤改用獨立絕對定位 */
 .roomCell {
@@ -509,16 +561,34 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
   width: 40px; height: 40px; transition: left 0.5s ease, top 0.5s ease;
 }
 /* v92：走路動畫——逐格移動時用較短的線性過渡，呈現一步一步的腳步感而非單次滑動 */
+/* v159：放慢逐格時間(0.15s→0.22s)並疊加腳步彈跳，避免角色像在「滑」過去 */
 .roomCell.walking {
-  transition: left 0.15s linear, top 0.15s linear;
+  transition: left 0.22s linear, top 0.22s linear;
+}
+@keyframes walkBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.roomCell.walking .icon {
+  animation: walkBob 0.3s ease-in-out infinite;
 }
 .roomCell .icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
 /* v90：z-index改由js依gy動態計算(inline style)，這裡不再寫死固定層級 */
 .roomCell.player { cursor: grab; touch-action: none; }
+/* v179：角色4方向朝向——"side"美術只畫一張(面朝右)，面朝左時用CSS水平鏡像，省一半美術量 */
+.pixelImg.facingMirror { transform: scaleX(-1); }
 .roomCell .icon { position: relative; z-index: 2; }
 /* 程式產生的色塊圖示比例偏大，縮小一階以免遮蓋同格標籤/比例失衡 */
 .roomCell .icon svg { width: 32px; height: 32px; }
 .roomCell.wallDeco .icon svg, .roomCell.wallDeco .pixelImg { width: 30px; height: 30px; }
+/* v160：地毯——放大鋪底視覺，文字標籤不需要強調（地毯本身不可互動） */
+.roomCell.rugDeco .icon svg, .roomCell.rugDeco .pixelImg { width: 46px; height: 46px; opacity: 0.85; }
+.roomCell.rugDeco .homeLabel { opacity: 0.6; }
+/* v179：稀有度越高的家具疊一層淡淡的微光，呼應使用者期望「家具應該有一點微光」。
+   只套用在rare以上，避免一大堆common/uncommon家具同時發光顯得吵雜 */
+.roomCell.furn-glow-rare .icon svg, .roomCell.furn-glow-rare .icon .pixelImg { filter: drop-shadow(0 0 3px rgba(150,200,255,0.55)); }
+.roomCell.furn-glow-epic .icon svg, .roomCell.furn-glow-epic .icon .pixelImg { filter: drop-shadow(0 0 4px rgba(200,150,255,0.65)); }
+.roomCell.furn-glow-legendary .icon svg, .roomCell.furn-glow-legendary .icon .pixelImg { filter: drop-shadow(0 0 5px rgba(255,210,110,0.75)); }
 .roomCell.clickable { cursor: pointer; }
 .roomCell.furniturePlaceable { cursor: pointer; }
 .roomCanvas.placementMode .roomCell.furniturePlaceable { cursor: grab; outline: 2px dashed rgba(111,174,115,0.7); border-radius: 8px; }
@@ -646,6 +716,19 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
   padding: 6px 10px; margin: 6px 0 10px;
 }
 .vsCompare .vsEnemy { color: #ff9a8d; }
+
+/* v181：終端機美學提案Phase3最後一項——副數據流(System Matrix Log)，跟主敘事並行的快速技術戰報，
+   小字體+monospace+終端機綠，營造「邊看劇情邊看後台高速運算」的硬派科技感。固定高度+overflow讓最新幾行自然往上推 */
+.sysLog {
+  margin-top: 8px; padding: 6px 8px; max-height: 84px; overflow: hidden;
+  background: rgba(0,0,0,0.35); border-radius: 6px; border-left: 2px solid rgba(0,255,102,0.4);
+  font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.5; color: rgba(0,255,102,0.65);
+}
+.sysLogLine { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.85; }
+.sysLogLine:last-child { color: rgba(0,255,102,0.95); opacity: 1; }
+body.blood-moon .sysLog { border-left-color: rgba(255,59,59,0.5); }
+body.blood-moon .sysLogLine { color: rgba(255,120,120,0.65); }
+body.blood-moon .sysLogLine:last-child { color: #ff3b3b; }
 
 /* #34：狀態欄欄位說明清單 */
 .helpList { padding-left: 1.4em; line-height: 1.8; font-size: 14px; color: #c8cdd2; }

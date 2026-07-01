@@ -1025,6 +1025,55 @@ test("29.2/29.3 generateSyncCode/applySyncCode: 雙人QR互掃後白板/冰箱/w
   assert.ok(Math.abs(L.getCritChance(b) - L.getCritChance(L.defaultState()) - 0.15) < 1e-9);
 });
 
+test("v180 applySyncCode: 同一張同步碼重複套用會被拒絕，不能重複領取冰箱物資(36.5防重複掃描)", () => {
+  const a = L.defaultState();
+  a.sharedFridge.food = 2;
+  const codeA = L.generateSyncCode(a);
+  const b = L.defaultState();
+  const r1 = L.applySyncCode(b, codeA);
+  assert.strictEqual(r1.ok, true);
+  assert.strictEqual(r1.extractedFood, 2);
+  const foodAfterFirst = b.resources.food;
+  const r2 = L.applySyncCode(b, codeA);
+  assert.strictEqual(r2.ok, false);
+  assert.strictEqual(r2.reason, "duplicate_code");
+  assert.strictEqual(b.resources.food, foodAfterFirst); // 第二次套用沒有再加一次
+});
+
+test("v180 applySyncCode: 提取對方冰箱物資會被resourceCaps封頂，不會像舊版一樣無上限累加(36.5不對稱天數同步)", () => {
+  const a = L.defaultState();
+  a.sharedFridge.food = 999; // 模擬對方囤了大量物資(不對稱天數情境)
+  const codeA = L.generateSyncCode(a);
+  const b = L.defaultState();
+  const cap = L.getResourceCap(b, "food");
+  L.applySyncCode(b, codeA);
+  assert.ok(b.resources.food <= cap);
+});
+
+test("v182 getSkillBonusRatio：【共鳴的】前綴只放大流派加成部分，不影響裝備本身固定加成/wedding_ring等非流派來源", () => {
+  const s = L.defaultState();
+  // 手動建立一個帶【共鳴的】前綴的飾品實例，避開instantiateEquipment的隨機前綴抽選
+  s.weaponInstances = [{ id: "inst_test_resonant", baseItemId: "merchant_token", name: "【共鳴的】黑市VIP徽章", rarity: "epic", durability: 100, stats: {}, prefix: { id: "resonant", effect: { skillBonusRatio: 0.1 } } }];
+  s.equipment.accessory = "inst_test_resonant";
+  assert.ok(Math.abs(L.getSkillBonusRatio(s) - 0.1) < 1e-9);
+
+  // 暴擊率：aero T1流派加成0.05，套用+10%後應為0.055
+  s.skills.faction = "aero";
+  s.skills.tier = 1;
+  const sNoAcc = { ...s, equipment: { ...s.equipment, accessory: null } };
+  const baseAeroCrit = L.getCritChance(sNoAcc);
+  const boostedCrit = L.getCritChance(s);
+  assert.ok(baseAeroCrit > 0);
+  assert.ok(Math.abs(boostedCrit - baseAeroCrit * 1.1) < 1e-9);
+});
+
+test("v182 gaia_armor/aero_crossbow：原本「未接入」的兩項裝備效果已接上(文案已更新，不再是純裝飾)", () => {
+  const armorItem = require("../js/data.js").ITEMS.gaia_armor;
+  const weaponItem = require("../js/data.js").ITEMS.aero_crossbow;
+  assert.ok(!armorItem.desc.includes("未接入"));
+  assert.ok(!weaponItem.desc.includes("未接入"));
+});
+
 test("placeFurniture/getFurnitureDefBonus: 陳列槓塔後baseDefense+25，v112每槽位開放第二格故第二件牆面家具改放wall2並疊加", () => {
   const s = L.defaultState();
   s.inventory.push({ itemId: "furn_turret", qty: 1 }, { itemId: "furn_flag", qty: 1 }, { itemId: "furn_mirror", qty: 1 });
@@ -1058,7 +1107,7 @@ test("raidChance: 重力晶簇掛鏡陳列時夜襲機率-0.05", () => {
 test("restSanRegen: 發光霓虹水母燈陳列時SAN回復+15", () => {
   const s = L.defaultState();
   const before = L.restSanRegen(s);
-  s.baseSlots.table = "furn_jelly_lamp";
+  s.placedFurniture.push({ itemId: "furn_jelly_lamp", gx: 0, gy: 0 });
   assert.strictEqual(L.restSanRegen(s), before + 15);
 });
 
@@ -1067,7 +1116,7 @@ test("loungeInteract: 沙發互動回滿SAN並暫時+10 hpMax", () => {
   s.san = 10;
   const hpMaxBefore = s.hpMax;
   assert.strictEqual(L.loungeInteract(s, null).ok, false);
-  s.baseSlots.floor = "furn_sofa";
+  s.placedFurniture.push({ itemId: "furn_sofa", gx: 0, gy: 0 });
   const r = L.loungeInteract(s, "雷恩");
   assert.ok(r.ok);
   assert.strictEqual(s.san, s.sanMax);
@@ -1078,6 +1127,85 @@ test("rollGacha: 回傳的itemId必為武器/護甲/飾品/家具", () => {
   const id = L.rollGacha(() => 0.999);
   const item = L.ITEMS[id];
   assert.ok(["weapon", "armor", "accessory", "furniture"].includes(item.type));
+});
+
+// v166：free-form佈置——placeFurniture對table/floor/rug類不再受容量上限，自動找空格放入placedFurniture
+test("placeFurniture: table/floor/rug類free-form放置，無容量上限，依itemId可同時擁有多件不同家具", () => {
+  const s = L.defaultState(); // 已內建1件furn_sleeping_bag於placedFurniture
+  s.inventory.push({ itemId: "furn_bench", qty: 1 }, { itemId: "rug_plain", qty: 1 }, { itemId: "furn_sofa", qty: 1 });
+  const r1 = L.placeFurniture(s, "furn_bench");
+  assert.ok(r1.ok);
+  assert.strictEqual(r1.replaced, null);
+  const r2 = L.placeFurniture(s, "rug_plain");
+  assert.ok(r2.ok);
+  const r3 = L.placeFurniture(s, "furn_sofa");
+  assert.ok(r3.ok);
+  // 4件家具(含預設睡袋)同時存在，彼此不覆蓋、座標不重疊
+  assert.strictEqual(s.placedFurniture.length, 4);
+  const ids = s.placedFurniture.map(f => f.itemId);
+  assert.ok(ids.includes("furn_sleeping_bag") && ids.includes("furn_bench") && ids.includes("rug_plain") && ids.includes("furn_sofa"));
+  const coordKeys = s.placedFurniture.map(f => f.gx + "," + f.gy);
+  assert.strictEqual(new Set(coordKeys).size, coordKeys.length); // 座標皆不重疊
+  assert.ok(L.hasFurniturePlaced(s, "furn_sofa"));
+  assert.strictEqual(s.baseDefense, L.getFurnitureDefBonus(s)); // floor類家具也會觸發syncBaseDefense
+});
+
+// v166：家具彩蛋改用placedFurniture陣列索引——空索引不給、每日每件限一次、晶燼確實增加
+test("furnitureEasterEggInteract: 空索引不給獎勵；同一天同一件只能翻找一次；晶燼增加3~8", () => {
+  const s = L.defaultState();
+  s.placedFurniture = [];
+  const emptyResult = L.furnitureEasterEggInteract(s, 0);
+  assert.strictEqual(emptyResult.ok, false);
+
+  s.placedFurniture.push({ itemId: "furn_bench", gx: 1, gy: 1 });
+  const before = s.currency.embers;
+  const first = L.furnitureEasterEggInteract(s, 0, () => 0);
+  assert.strictEqual(first.ok, true);
+  assert.strictEqual(s.currency.embers, before + 3);
+
+  const second = L.furnitureEasterEggInteract(s, 0, () => 0);
+  assert.strictEqual(second.ok, false);
+  assert.strictEqual(second.reason, "already_used");
+  assert.strictEqual(s.currency.embers, before + 3); // 第二次未再加成
+
+  // 不同家具互不影響
+  s.placedFurniture.push({ itemId: "rug_plain", gx: 2, gy: 2 });
+  const other = L.furnitureEasterEggInteract(s, 1, () => 0.999);
+  assert.strictEqual(other.ok, true);
+  assert.strictEqual(s.currency.embers, before + 3 + 8);
+});
+
+// v168：free-form改版後複查發現，main_02_settle_in/side_collect_furnish_full/ach_full_house三個
+// 任務/成就條件原本寫`Object.values(state.baseSlots)...`，改版後baseSlots只剩wall/wall2，這三個條件
+// 會永遠算不到table/floor/rug類家具。本測試鎖定data.js的condition直接讀placedFurniture後算對數量
+test("任務/成就的家具數量門檻條件：擺放table/floor/rug類家具也要算進去(free-form改版後的回歸測試)", () => {
+  const s = L.defaultState(); // 已內建1件furn_sleeping_bag於placedFurniture
+  const settleIn = L.QUESTS.main_02_settle_in;
+  const furnishFull = L.QUESTS.side_collect_furnish_full;
+  const fullHouse = L.ACHIEVEMENTS.ach_full_house;
+
+  assert.strictEqual(settleIn.condition(s), true); // 預設的睡袋就算一件家具，門檻"擺上一件"已達成
+  assert.strictEqual(furnishFull.condition(s), false); // 只有1件，未達4件門檻
+  assert.strictEqual(fullHouse.condition(s), false);
+
+  s.placedFurniture.push(
+    { itemId: "furn_bench", gx: 0, gy: 0 },
+    { itemId: "rug_plain", gx: 1, gy: 0 },
+    { itemId: "furn_sofa", gx: 2, gy: 0 }
+  ); // 連同睡袋共4件
+  assert.strictEqual(furnishFull.condition(s), true);
+  assert.strictEqual(fullHouse.condition(s), false); // 還差「解鎖全部3種地板樣式」
+
+  s.unlockedFloors = ["wood", "tile", "rug"];
+  assert.strictEqual(fullHouse.condition(s), true);
+
+  // 牆面家具也要計入總數(wall+wall2)
+  const s2 = L.defaultState();
+  s2.placedFurniture = [];
+  s2.baseSlots.wall = "furn_turret";
+  s2.baseSlots.wall2 = "furn_flag";
+  assert.strictEqual(settleIn.condition(s2), true);
+  assert.strictEqual(furnishFull.condition(s2), false); // 僅2件，未達4件
 });
 
 // #21-1：CI剛性斷言 - 所有ITEMS effects與PREFIX_POOL effect中的比例型數值須介於0~1
