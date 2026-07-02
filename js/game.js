@@ -429,7 +429,7 @@ const ISO_ASSETS = {
   furn_appearance_mirror: 1, furn_photo_frame: 1, furn_turret: 1, furn_flag: 1,
   furn_egg_nest: 1, furn_diary: 1, furn_potted_plant: 1, furn_mirror: 1, furn_generator: 1,
   rug_plain: 1, rug_woven: 1, rug_round: 1,
-  door_explore: 1, door_gather: 1, furn_couple_wall: 1,
+  furn_couple_wall: 1,
 };
 function isoIconHtml(itemId, fallbackCategory) {
   const src = resolveAsset("furniture", itemId);
@@ -650,8 +650,9 @@ const windowCls = `homeWindow ${state.phase === "night" ? "is-night" : "is-day"}
   items.unshift(`<div class="wallBand wallBandTop"><div class="${windowCls}"><div class="homeWindowFrame"></div></div></div><div class="wallBand wallBandBottom"></div>`);
   // v164：點燈開關——純氛圍互動，跟state.phase的被動變暗濾鏡是兩件事，玩家可隨時主動關燈
   items.push(`<button class="lightSwitch${state.homeLightOff ? " is-off" : " is-on"}" id="homeLightSwitch" style="right:14px;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0) + 1}" title="${state.homeLightOff ? "點擊開燈" : "點擊關燈"}">${state.homeLightOff ? "🌑" : "💡"}</button>`);
-  items.push(`<div class="roomCell doorCell clickable" id="homeExploreDoorCell" style="left:50%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="探索門（點擊探索）"><div class="icon">${isoIconHtml("door_explore", "furniture")}</div><div class="homeLabel">探索</div></div>`);
-  items.push(`<div class="roomCell doorCell clickable" id="homeGatherDoorCell" style="left:50%;top:${ROOM_H_PX - WALL_PX + WALL_ICON_OFFSET}px;z-index:${cellZ(GRID_FLOOR_ROW_MAX)}" title="採集門（點擊採集）"><div class="icon">${isoIconHtml("door_gather", "furniture")}</div><div class="homeLabel lbl-above">採集</div></div>`);
+  // 2026-07-02：門改為純CSS繪製（跟homeWindow同一套手法），不再用等角透視PNG貼進平面牆帶，避免黑邊/違和
+  items.push(`<div class="roomCell doorCell doorExplore clickable" id="homeExploreDoorCell" style="left:50%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="探索門（點擊探索）"><div class="icon"><div class="doorSeam"></div></div><div class="homeLabel">探索</div></div>`);
+  items.push(`<div class="roomCell doorCell doorGather clickable" id="homeGatherDoorCell" style="left:50%;top:${ROOM_H_PX - WALL_PX + WALL_ICON_OFFSET}px;z-index:${cellZ(GRID_FLOOR_ROW_MAX)}" title="採集門（點擊採集）"><div class="icon"><div class="doorSeam"></div></div><div class="homeLabel lbl-above">採集</div></div>`);
   // V2.0 7.6：Lv/晶燼/食物等資訊併入statusExtra，避免畫面重複顯示
   // v95：背包/商店面板入口統一改用頂部按鈕(invBtn/shopBtn)，避免重複
   // 2026-06-21：peepsBtn(👥)已移除，另一半QR同步面板改走「⋯」展開列的statusPeepsBtn(💌)，小屋頭像旁「+邀請隊友」改開showCompanionPanel(小隊夥伴)
@@ -929,7 +930,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 187; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 189; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
