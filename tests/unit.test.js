@@ -346,7 +346,7 @@ test("getMilestoneEvent: 已記錄於milestonesShown後不再回傳", () => {
 
 test("getMilestoneEvent: 非里程碑天數回傳null", () => {
   const s = L.defaultState();
-  s.day = 5;
+  s.day = 3; // 2026-07-02：day5新增了里程碑事件(milestone_day5)，改用確定不是里程碑的day3
   assert.strictEqual(L.getMilestoneEvent(s), null);
 });
 
