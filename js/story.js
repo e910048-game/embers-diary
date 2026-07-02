@@ -195,56 +195,11 @@ const MILESTONE_EVENTS = [
   }
 ];
 
-// 沙盒模式長期目標結局（四大設備滿Lv3＋擊敗終域Boss後依狀態判定）
-// 2026-07-02：三段基底文案原寫死「三十天過去了」，但實際觸發條件早已改為longTermGoalMet(設備+Boss)而非固定天數，
-// 移除寫死天數，改由game.js的renderSandboxEnding()依state.day動態組出開頭句
-const SANDBOX_ENDINGS = {
-  stronghold: {
-    title: "據點・屹立不搖",
-    text: "你和夥伴把這座據點打造成了周圍少見的安全堡壘——高聳的防禦工事、充足的物資儲備，甚至開始有零星的倖存者前來投靠。\n\n在這片廢墟之中，你們守住了一個真正的「家」。"
-  },
-  survivor: {
-    title: "倖存・繼續前行",
-    text: "日子過得不算輕鬆，但你一步一步撐了下來——據點還算穩固，物資勉強夠用，你依然活著。\n\n故事還沒結束，但至少，今天又是平安的一天。"
-  },
-  barely: {
-    title: "倖存・搖搖欲墜",
-    text: "你拖著傷痕累累的身體，靠著最後一點意志撐到了今天。據點殘破，物資匱乏，隨時都可能崩潰。\n\n但你還活著——這已經是奇蹟了。"
-  }
-};
-
-// 2026-07-02新增：結局個人化尾聲——依玩家實際選擇(流派/是否有夥伴/收復幾個Tier行政區)組合出不同段落，
-// 附加在SANDBOX_ENDINGS的固定文案之後，讓「同樣拿到stronghold」的兩位玩家看到不完全一樣的收尾
-const FACTION_EPILOGUES = {
-  gaia: "這些日子以來，你體內流淌的蓋亞血脈早已與這片廢墟悄悄共生——牆縫裡冒出的雜草、院子裡頑強的作物，似乎都因你的存在而長得更好一些。",
-  ocean: "洋流帶來的力量始終潛伏在你的血液裡，每當夜深人靜，你仍能感覺到體內那股涼意隨著遠方看不見的潮汐微微起伏。",
-  aero: "你早已習慣風裡藏著的細碎訊息，那股大氣賦予的直覺，不知不覺間成了你判斷危險與機會的第六感。",
-  cyber: "體內的機械義軀運轉得比誰都穩定，你偶爾會想起自己曾經是個純粹的人類，但如今這具身體，已經是撐過末日的證明。",
-  mind: "意識深處那些破碎又清晰的回聲從未停止過，你漸漸學會與它們共存——或許這正是你比其他倖存者多撐下來的原因。"
-};
-const COMPANION_EPILOGUES = {
-  withCompanion: "身旁的夥伴依然在，這一路上你們吵過、扶持過，如今回頭看，能撐到這裡，少不了彼此的那份陪伴。",
-  alone: "這一路你始終獨自走著。孤獨曾讓夜晚格外漫長，但也讓你學會了，一個人也能把日子過得踏實。"
-};
-// 依flags.tier1_liberated~tier3_liberated的true數量(0~3)分級
-const LIBERATION_EPILOGUES = [
-  "外頭那些淪陷的行政區，你始終沒能力氣去收復，只能守著這一方小小的據點，盡量把日子過下去。",
-  "你陸續收復了幾處淪陷的行政區，插上旗幟的那一刻，總算感覺到這座城市不再只是任人宰割的廢墟。",
-  "大半座城市的行政區都已經插上了你的旗幟，倖存者們口耳相傳著這個據點的名字——你已經不只是在「生存」，而是在「收復」。",
-  "母體核心也被你踏平了。收復四個行政區的旗幟在風中獵獵作響，這座城市，終於有一部分真正回到了人類手中。"
-];
-function countLiberatedTiers(state) {
-  const flags = state.flags || {};
-  return ["tier1_liberated", "tier2_liberated", "tier3_liberated"].filter(f => flags[f]).length;
-}
-function getSandboxEndingExtras(state) {
-  const parts = [];
-  const faction = state.skills && state.skills.faction;
-  if (faction && FACTION_EPILOGUES[faction]) parts.push(FACTION_EPILOGUES[faction]);
-  parts.push(state.companion ? COMPANION_EPILOGUES.withCompanion : COMPANION_EPILOGUES.alone);
-  parts.push(LIBERATION_EPILOGUES[countLiberatedTiers(state)]);
-  return parts.join("\n\n");
-}
+// 2026-07-02移除：SANDBOX_ENDINGS/getSandboxEndingExtras（沙盒模式「長期目標結局」文案+個人化尾聲）。
+// 這套文案是為了配合logic.js已移除的longTermGoalMet/evaluateSandboxEnding而寫的，該機制本身與規格文件
+// 「無限模式沒有結局，只收斂到畢業」的決定矛盾且無法透過正常遊玩觸發，一併移除。若未來想在「畢業」(showGraduationTransition)
+// 畫面加入依流派/夥伴/收復進度變化的個人化文字，這裡曾經寫過的FACTION_EPILOGUES/COMPANION_EPILOGUES/LIBERATION_EPILOGUES
+// 素材可以參考git歷史(commit 2c2154c)重用，不需要重寫。
 
 // #26-2：過勞(體力硬撐)敘事化文案——取代系統debug語氣「😩 你已經過於疲憊（過勞）...」
 const OVERDRAW_TEXTS = [
@@ -255,14 +210,12 @@ const OVERDRAW_TEXTS = [
 ];
 
 if (typeof module !== "undefined") {
-  module.exports = { PROLOGUE_SCENES, PROLOGUE_ENDINGS, PROLOGUE_SCENES_2, PROLOGUE_ENDINGS_2, PROLOGUE_CHAPTERS, SANDBOX_ENDINGS, MILESTONE_EVENTS, OVERDRAW_TEXTS, getSandboxEndingExtras };
+  module.exports = { PROLOGUE_SCENES, PROLOGUE_ENDINGS, PROLOGUE_SCENES_2, PROLOGUE_ENDINGS_2, PROLOGUE_CHAPTERS, MILESTONE_EVENTS, OVERDRAW_TEXTS };
 } else {
   window.PROLOGUE_SCENES = PROLOGUE_SCENES;
   window.PROLOGUE_ENDINGS = PROLOGUE_ENDINGS;
   window.PROLOGUE_SCENES_2 = PROLOGUE_SCENES_2;
   window.PROLOGUE_ENDINGS_2 = PROLOGUE_ENDINGS_2;
   window.PROLOGUE_CHAPTERS = PROLOGUE_CHAPTERS;
-  window.SANDBOX_ENDINGS = SANDBOX_ENDINGS;
   window.MILESTONE_EVENTS = MILESTONE_EVENTS;
-  window.getSandboxEndingExtras = getSandboxEndingExtras;
 }

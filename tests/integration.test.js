@@ -251,25 +251,8 @@ test("完整流程：60天模擬中，資源/HP/裝備等狀態欄位全程維�
   }
 });
 
-// ===== 22.1 長期目標（四大設備全滿Lv3＋擊敗終域Boss，取代day180判定）=====
-
-test("完整流程：四設備升至Lv3＋擊敗終域Boss後，longTermGoalMet為true且evaluateSandboxEnding回傳有效結局", () => {
-  const s = L.defaultState();
-  s.companion = true;
-  L.applyPrologueEnding(s, "companion");
-
-  assert.strictEqual(L.longTermGoalMet(s), false);
-
-  s.facilities = { command: 3, greenhouse: 3, workshop: 3, radar: 3 };
-  assert.strictEqual(L.longTermGoalMet(s), false, "尚未擊敗終域Boss不應達標");
-
-  s.flags.finalBossDefeated = true;
-  s.flags.bossesDefeated = 4;
-  assert.strictEqual(L.longTermGoalMet(s), true);
-
-  const endingId = L.evaluateSandboxEnding(s);
-  assert.ok(["stronghold", "survivor", "barely"].includes(endingId));
-});
+// 2026-07-02移除：22.1長期目標(四大設備全滿Lv3＋擊敗終域Boss→longTermGoalMet/evaluateSandboxEnding)整套測試。
+// 與規格文件已定案的「無限模式沒有結局，只收斂到畢業」矛盾，且無法透過正常遊玩觸發，機制本身已移除，測試同步拿掉
 
 test("里程碑事件：第10/20天觸發後標記shown，再次到達不重複觸發；day20防禦選項生效", () => {
   const s = L.defaultState();

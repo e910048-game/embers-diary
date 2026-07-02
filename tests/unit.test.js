@@ -167,35 +167,9 @@ test("REINFORCE_COST 為正數", () => {
   assert.ok(L.REINFORCE_COST > 0);
 });
 
-test("evaluateSandboxEnding: 四設備皆滿+多次擊敗Boss -> stronghold（26.1：取代day180判定）", () => {
-  const s = L.defaultState();
-  s.facilities = { command: 3, greenhouse: 3, workshop: 3, radar: 3 };
-  s.flags.bossesDefeated = 4;
-  assert.strictEqual(L.evaluateSandboxEnding(s), "stronghold");
-});
-
-test("evaluateSandboxEnding: 設備等級偏低但HP過半 -> survivor", () => {
-  const s = L.defaultState();
-  s.facilities = { command: 1, greenhouse: 0, workshop: 0, radar: 0 };
-  s.hp = s.hpMax;
-  assert.strictEqual(L.evaluateSandboxEnding(s), "survivor");
-});
-
-test("evaluateSandboxEnding: 設備等級偏低且HP過低 -> barely", () => {
-  const s = L.defaultState();
-  s.facilities = { command: 0, greenhouse: 0, workshop: 0, radar: 0 };
-  s.hp = Math.floor(s.hpMax * 0.3);
-  assert.strictEqual(L.evaluateSandboxEnding(s), "barely");
-});
-
-test("longTermGoalMet: 四設備皆Lv3且擊敗終域Boss才算達成（22.1，取代SANDBOX_GOAL_DAY）", () => {
-  const s = L.defaultState();
-  assert.strictEqual(L.longTermGoalMet(s), false);
-  s.facilities = { command: 3, greenhouse: 3, workshop: 3, radar: 3 };
-  assert.strictEqual(L.longTermGoalMet(s), false); // 尚未擊敗終域Boss
-  s.flags.finalBossDefeated = true;
-  assert.strictEqual(L.longTermGoalMet(s), true);
-});
+// 2026-07-02移除：evaluateSandboxEnding/longTermGoalMet相關4個測試。該機制(四大設備全Lv3+擊敗終域Boss→沙盒結局)
+// 與規格文件已定案的「無限模式沒有結局，只收斂到畢業」矛盾，且flags.finalBossDefeated從未在正常遊玩中被設置過，
+// 是無法觸發的死程式碼，已隨logic.js/game.js/story.js一併移除，測試也同步拿掉
 
 test("resolveLocation: rng < encounterChance 時回傳battle", () => {
   const loc = L.LOCATIONS[0];

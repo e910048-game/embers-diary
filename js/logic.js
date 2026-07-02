@@ -201,7 +201,6 @@
       companionTask: "gather",
       companions: { "雷恩": "locked", "艾莉": "locked", "阿卡": "locked" }, // 28.1
       prologueDone: false,
-      sandboxEnded: false,
       milestonesShown: [],
       flags: {},
       log: [],
@@ -947,23 +946,12 @@
     ) || null;
   }
 
-  // 22.1：長期目標 = 四大設備(22.2)全數達Lv3 ＋ 擊敗終域(tier3)分級Boss（取代原SANDBOX_GOAL_DAY/day180判定）
-  function longTermGoalMet(state) {
-    const f = state.facilities || {};
-    const allMaxed = ["command", "greenhouse", "workshop", "radar"].every(k => (f[k] || 0) >= 3);
-    return allMaxed && !!(state.flags && state.flags.finalBossDefeated);
-  }
-
-  // 達成長期目標後的最終總結評價：依四大設備總等級＋已擊敗的分級Boss數量分級
-  function evaluateSandboxEnding(state) {
-    const f = state.facilities || {};
-    const facilitiesSum = ["command", "greenhouse", "workshop", "radar"].reduce((s, k) => s + (f[k] || 0), 0);
-    const bossesDefeated = (state.flags && state.flags.bossesDefeated) || 0;
-    const score = facilitiesSum + bossesDefeated * 3;
-    if (score >= 20) return "stronghold";
-    if (state.hp >= state.hpMax * 0.5) return "survivor";
-    return "barely";
-  }
+  // 2026-07-02移除：longTermGoalMet/evaluateSandboxEnding（原22.1「四大設備全Lv3＋擊敗終域Boss→沙盒結局」設計）。
+  // 已被V2.0血月狂潮藍圖(規格文件/V2_血月狂潮_設計藍圖.md「核心轉變一覽」表)與任務系統規格(規格文件/任務與成就系統_設計規格.md
+  // 「主線不收斂到結局，而是收斂到畢業」)明確取代，但程式碼一直沒清掉，導致沙盒/無限模式仍會被這組寫死的舊條件強制彈出結局畫面、
+  // 提供「重新挑戰一次」清空存檔——跟兩份規格文件的決定矛盾。且`flags.finalBossDefeated`從未在任何實際遊戲流程中被設置過
+  // (全域搜尋只有測試檔手動塞值)，代表這條件在正常遊玩中根本無法達成，是純粹的死程式碼。移除後「主線完成」的提示改由
+  // 既有的畢業機制(runQuestCheck().graduated → showGraduationTransition())獨力負責，不需要新增任何東西。
 
   const REINFORCE_COST = 5; // 強化據點消耗廢料（基礎值，實際請用reinforceCost）
 
@@ -1621,7 +1609,7 @@
     placeFurniture, getFurnitureDefBonus, getFurnitureRaidChanceDelta, loungeInteract, sumFurnitureEffect,
     hasFurniturePlaced, allPlacedFurnitureIds, findEmptyGridCell,
     getComfortLevel, getComfortLabel, radioInteract, eggNestInteract, furnitureEasterEggInteract,
-    longTermGoalMet, evaluateSandboxEnding, getMilestoneEvent, MILESTONE_EVENTS,
+    getMilestoneEvent, MILESTONE_EVENTS,
     triggerAwakening, spendSkillPoint, enemyTier, getScaledEnemy, TIER_PREFIXES, getLocationOverpower,
     checkUpcomingThreat, isThreatDue, clearUpcomingThreat, THREAT_LEAD_DAYS, BLOOD_MOON_CYCLE_MIN, BLOOD_MOON_CYCLE_MAX,
     resolveBloodMoonDefense, bloodMoonRewards, TIER_ZONES, getTierZoneForBloodMoonWin,

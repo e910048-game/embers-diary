@@ -929,7 +929,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 186; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 187; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -2146,12 +2146,9 @@ function endPhase() {
     addDiaryEntry();
     state.questFlags.gatherTodayCount = 0; // 任務系統：每日重置型支線計數器，跨日清零
   }
-  if (!state.sandboxEnded && longTermGoalMet(state)) {
-    state.sandboxEnded = true;
-    saveGame();
-    renderSandboxEnding();
-    return;
-  }
+  // 2026-07-02移除：舊「四大設備全Lv3+擊敗終域Boss→沙盒結局」判斷(longTermGoalMet/renderSandboxEnding)，
+  // 與規格文件已定案的「無限模式沒有結局，只收斂到畢業」矛盾，且該條件在正常遊玩中無法達成(finalBossDefeated從未被設置)，
+  // 純屬死程式碼。「主線完成」的提示改由下面既有的畢業機制單獨負責，不需要新增任何東西。
   const qr = runQuestCheck();
   saveGame();
   if (qr.graduated) { showGraduationTransition(() => renderMain()); return; }
@@ -2163,28 +2160,6 @@ function endPhase() {
   } else {
     renderMain();
   }
-}
-
-
-function renderSandboxEnding() {
-  statusBar.innerHTML = "";
-  const endingId = evaluateSandboxEnding(state);
-  const ending = SANDBOX_ENDINGS[endingId];
-  // 2026-07-02：開頭改用實際state.day動態組句(取代寫死「三十天過去了」)，並附加依流派/夥伴/收復進度組成的個人化尾聲
-  const fullText = `第${state.day}天，你終於達成了長久以來的目標。\n\n${ending.text}\n\n${getSandboxEndingExtras(state)}`;
-  screen.innerHTML = `<div class="storyCard gameover"><h1>${ending.title}</h1>${fullText.replace(/\n/g, "<br>")}</div>`;
-  const box = document.createElement("div");
-  box.className = "optionBox";
-  const btn = document.createElement("button");
-  btn.className = "choiceBtn primary";
-  btn.textContent = "重新挑戰一次";
-  btn.onclick = () => {
-    localStorage.removeItem(SAVE_KEY);
-    state = defaultState();
-    startPrologue();
-  };
-  box.appendChild(btn);
-  screen.appendChild(box);
 }
 
 function renderGameOver(isPrologue) {
