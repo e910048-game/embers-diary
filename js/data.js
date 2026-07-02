@@ -24,9 +24,15 @@ const ITEMS = {
   bat_01: { id: "bat_01", name: "球棒", type: "weapon", icon: "🏏", stats: { atk: 4 }, rarity: "uncommon" },
   machete_01: { id: "machete_01", name: "開山刀", type: "weapon", icon: "🔪", stats: { atk: 6 }, rarity: "rare" },
   pistol_01: { id: "pistol_01", name: "手槍", type: "weapon", icon: "🔫", stats: { atk: 8 }, rarity: "epic", ranged: true, desc: "遠程武器：戰鬥中每次攻擊消耗1🔋彈藥；彈藥耗盡時攻擊力加成減半" },
+  // 2026-07-01新增：早期常見武器補充，降低前期只有5把武器可選的單調感
+  crowbar_01: { id: "crowbar_01", name: "生鏽撬棍", type: "weapon", icon: "🔨", stats: { atk: 5 }, rarity: "uncommon" },
+  nail_bat_01: { id: "nail_bat_01", name: "釘刺球棒", type: "weapon", icon: "🏏", stats: { atk: 7 }, rarity: "rare", effects: { lifestealBonus: 0.05 }, desc: "球棒外層釘滿鐵釘，攻擊額外+5%吸血" },
   // 防具
   jacket_01: { id: "jacket_01", name: "厚外套", type: "armor", icon: "🧥", stats: { def: 1 }, rarity: "common" },
   vest_01: { id: "vest_01", name: "防彈背心", type: "armor", icon: "🦺", stats: { def: 3 }, rarity: "rare" },
+  // 2026-07-01新增：早期常見防具補充
+  leather_coat_01: { id: "leather_coat_01", name: "磨舊皮革大衣", type: "armor", icon: "🧥", stats: { def: 2 }, rarity: "common" },
+  riot_shield_vest: { id: "riot_shield_vest", name: "防暴盾牌背心", type: "armor", icon: "🛡️", stats: { def: 2 }, rarity: "uncommon", effects: { battleDamageReductionBonus: 0.05 }, desc: "厚重的防暴裝備，物理傷害減免+5%" },
   // 消耗品
   food_can: { id: "food_can", name: "罐頭食品", type: "consumable", icon: "🥫", useEffect: { resources: { food: 3 } }, rarity: "common" },
   water_bottle: { id: "water_bottle", name: "瓶裝水", type: "consumable", icon: "💧", useEffect: { resources: { water: 3 } }, rarity: "common" },
@@ -86,6 +92,10 @@ const ITEMS = {
   ocean_mace: { id: "ocean_mace", name: "水銀液態流星錘", type: "weapon", icon: "⚒️", stats: { atk: 7 }, rarity: "epic", factionTag: "ocean", desc: "25%機率使敵暈眩1回合（27.4 stun）" },
   mind_fork: { id: "mind_fork", name: "神經干擾音叉", type: "weapon", icon: "🍴", stats: { atk: 3 }, rarity: "epic", factionTag: "mind", desc: "每擊扣目標1AP（未接入敵方AP機制，文案保留）" },
   mind_greatsword: { id: "mind_greatsword", name: "重力晶格巨劍", type: "weapon", icon: "🗡️", stats: { atk: 14 }, rarity: "legendary", factionTag: "mind", desc: "閃避歸零但暴擊倍率200%", effects: { critMultiplierOverride: 2.0 } },
+  // 2026-07-01新增：各流派裝備補充，蓋亞原本只有1把武器明顯偏少，順便補齊其餘流派
+  gaia_spore_dart: { id: "gaia_spore_dart", name: "孢子噴射匕首", type: "weapon", icon: "🍄", stats: { atk: 4 }, rarity: "uncommon", factionTag: "gaia", desc: "刃口塗滿活化孢子，攻擊額外+5%吸血（與活化荊棘刺鞭分開計算）", effects: { lifestealBonus: 0.05 } },
+  ocean_harpoon: { id: "ocean_harpoon", name: "深海倒鉤魚叉", type: "weapon", icon: "🔱", stats: { atk: 10 }, rarity: "epic", factionTag: "ocean", desc: "深海生物的獠牙倒鉤，撕裂傷口讓你額外回復+8%生命", effects: { lifestealBonus: 0.08 } },
+  cyber_drone_arm: { id: "cyber_drone_arm", name: "無人機協同義肢", type: "weapon", icon: "🦿", stats: { atk: 12 }, rarity: "legendary", factionTag: "cyber", desc: "內建輔助瞄準系統，暴擊倍率180%", effects: { critMultiplierOverride: 1.8 } },
   // 防具(8)
   scrap_plating: { id: "scrap_plating", name: "廢棄鐵皮外殼", type: "armor", icon: "🛡️", stats: { def: 1 }, rarity: "common", factionTag: "none", desc: "" },
   ceramic_vest: { id: "ceramic_vest", name: "陶瓷防彈插板", type: "armor", icon: "🦺", stats: { def: 2 }, rarity: "common", factionTag: "none", desc: "免疫流血（27.4 bleedImmune）／初始護甲", effects: { bleedImmune: true } },
@@ -103,7 +113,11 @@ const ITEMS = {
   tesla_battery: { id: "tesla_battery", name: "高壓儲能電容", type: "accessory", icon: "🔋", rarity: "rare", factionTag: "cyber", desc: "流派主動技能30%額外觸發（未接入主動技能機制，文案保留）" },
   cyber_pendant: { id: "cyber_pendant", name: "內燃機核心吊墜", type: "accessory", icon: "📿", rarity: "epic", factionTag: "cyber", desc: "戰鬥首回合必定觸發一次額外攻擊" },
   mind_mirror: { id: "mind_mirror", name: "重力晶簇掛鏡", type: "accessory", icon: "🪞", rarity: "legendary", factionTag: "mind", desc: "夜襲機率-5%且sanMax+10", effects: { raidChanceDelta: -0.05, sanMaxBonus: 10 } },
-  wedding_ring: { id: "wedding_ring", name: "失落的結婚戒指", type: "accessory", icon: "💍", rarity: "epic", factionTag: "none", desc: "單人裝備：sanMax+10；雙人QR互掃確認後雙方暴擊率永久+15%（29.3，留待#9）", effects: { sanMaxBonus: 10 } }
+  wedding_ring: { id: "wedding_ring", name: "失落的結婚戒指", type: "accessory", icon: "💍", rarity: "epic", factionTag: "none", desc: "單人裝備：sanMax+10；雙人QR互掃確認後雙方暴擊率永久+15%（29.3，留待#9）", effects: { sanMaxBonus: 10 } },
+  // 2026-07-01新增：蓋亞原本沒有任何飾品，補上一件；順便補齊大氣/心靈流派各一件飾品
+  gaia_seed_pouch: { id: "gaia_seed_pouch", name: "活化種子囊", type: "accessory", icon: "🌾", rarity: "rare", factionTag: "gaia", desc: "隨身攜帶尚未發芽的活化種子，hpMax+8（傳說能在末日裡種出些什麼）", effects: { hpMaxBonus: 8 } },
+  aero_barometer: { id: "aero_barometer", name: "大氣氣壓感測儀", type: "accessory", icon: "🌀", rarity: "uncommon", factionTag: "aero", desc: "提前預警氣壓異常，夜襲機率-3%", effects: { raidChanceDelta: -0.03 } },
+  mind_lens: { id: "mind_lens", name: "折射透鏡單片眼鏡", type: "accessory", icon: "🕶️", rarity: "rare", factionTag: "mind", desc: "扭曲光線的透鏡片，sanMax+15", effects: { sanMaxBonus: 15 } }
 };
 
 // 27.1：前綴詞池(5)，rare以上裝備掉落時隨機附加並實例化為weaponInstances
@@ -237,7 +251,13 @@ const FACTION_IDS = ["gaia", "cyber", "ocean", "aero", "mind"];
 const LOCATIONS = [
   {
     id: "loc_residential", name: "住宅區", icon: "🏠", riskLevel: 1, distance: "near", unlockDay: 1, levelCap: 4,
-    anomalyText: "牆壁的壁紙下透出淡淡的螢光紋路，像是建築物有了呼吸。電視機自行開啟，播放著雜訊與細碎低語。",
+    anomalyTextPool: [
+      "牆壁的壁紙下透出淡淡的螢光紋路，像是建築物有了呼吸。電視機自行開啟，播放著雜訊與細碎低語。",
+      "客廳的相框一字排開，每張照片裡的人臉都被一層薄薄的螢光霧氣覆蓋，看不清五官。",
+      "廚房水龍頭滴著水，落地時卻沒有聲音，只留下一圈圈逐漸擴散的螢光漣漪。",
+      "兒童房的玩具在無人碰觸下自己緩緩轉動，發條聲斷斷續續，像是在等待誰回家。",
+      "樓梯扶手上覆著一層極細的石英粉塵，你的手一碰上去，指尖就傳來一陣輕微的刺麻感。"
+    ],
     lootTable: [
       { itemId: "food_can", qty: 1, weight: 30 },
       { itemId: "water_bottle", qty: 1, weight: 30 },
@@ -250,7 +270,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_park", name: "公園", icon: "🌳", riskLevel: 1, distance: "near", unlockDay: 1, levelCap: 4,
-    anomalyText: "枯死的樹根泛著螢光，沿著步道蜿蜒生長。風中傳來細碎的呢喃，像是無數聲音重疊在一起。",
+    anomalyTextPool: [
+      "枯死的樹根泛著螢光，沿著步道蜿蜒生長。風中傳來細碎的呢喃，像是無數聲音重疊在一起。",
+      "生鏽的鞦韆自顧自地前後搖晃，鏈條摩擦聲規律得不像是風造成的。",
+      "池塘表面結著一層詭異的薄膜，倒映出的天空顏色跟頭頂上的完全不同。",
+      "草地上踩出一圈完美的圓形焦痕，中心插著一根不知從何而來的螢光枯枝。",
+      "涼亭的柱子上纏繞著發光的藤蔓，隨著你的靠近微微收縮，像是察覺到了什麼。"
+    ],
     lootTable: [
       { itemId: "water_bottle", qty: 1, weight: 35 },
       { itemId: "scrap", qty: 1, weight: 35 },
@@ -262,7 +288,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_gas_station", name: "加油站", icon: "⛽", riskLevel: 2, distance: "near", unlockDay: 1, levelCap: 7,
-    anomalyText: "油槽的指示燈詭異地閃爍著綠光，地面滲出的油漬竟微微蠕動，彷彿有生命般朝你的方向靠近。",
+    anomalyTextPool: [
+      "油槽的指示燈詭異地閃爍著綠光，地面滲出的油漬竟微微蠕動，彷彿有生命般朝你的方向靠近。",
+      "收銀台後的監視器螢幕不斷重播同一段畫面，畫面裡空無一人，時間戳卻在飛速跳動。",
+      "加油機的螢幕顯示著不存在的金額，數字持續攀升，喇叭裡傳出斷斷續續的計價聲。",
+      "輪胎堆疊成一座詭異的高塔，最頂端的那顆還在緩緩滾動，卻沒有任何東西推動它。",
+      "空氣裡瀰漫著揮發油混著臭氧的氣味，遠處某個角落傳來規律的滴答聲，像是計時器。"
+    ],
     lootTable: [
       { itemId: "scrap", qty: 2, weight: 45 },
       { itemId: "water_bottle", qty: 1, weight: 25 },
@@ -274,7 +306,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_store", name: "便利商店", icon: "🏪", riskLevel: 2, distance: "near", unlockDay: 1, levelCap: 7,
-    anomalyText: "貨架上的商品標籤全被細小的螢光符文覆蓋，冷凍櫃裡傳出規律的心跳聲，卻找不到任何生物。",
+    anomalyTextPool: [
+      "貨架上的商品標籤全被細小的螢光符文覆蓋，冷凍櫃裡傳出規律的心跳聲，卻找不到任何生物。",
+      "收銀機的抽屜自己彈開又關上，裡頭的零錢隨著某種節奏輕輕震動作響。",
+      "過期的報紙攤在櫃台上，頭版標題的字跡正緩慢地扭曲重組，變成你看不懂的符號。",
+      "自動門對著空無一人的走道反覆開闔，感應器的紅光在昏暗中一閃一閃。",
+      "貨架深處傳來包裝袋窸窣的聲響，走近一看卻只剩下滿地散落、還微微發燙的包裝紙。"
+    ],
     lootTable: [
       { itemId: "food_can", qty: 1, weight: 35 },
       { itemId: "water_bottle", qty: 1, weight: 35 },
@@ -286,7 +324,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_school", name: "學校", icon: "🏫", riskLevel: 2, distance: "far", unlockDay: 1, levelCap: 7,
-    anomalyText: "教室黑板上寫滿了無人能解的符文公式，課桌椅排列成詭異的同心圓，彷彿曾有什麼在此集會。",
+    anomalyTextPool: [
+      "教室黑板上寫滿了無人能解的符文公式，課桌椅排列成詭異的同心圓，彷彿曾有什麼在此集會。",
+      "走廊盡頭的廣播喇叭斷斷續續放送著早已停辦的朝會口令，聲音因潮濕而扭曲變調。",
+      "置物櫃一排排自動開啟又關上，裡頭的課本書頁全被螢光墨跡填滿，寫著看不懂的字。",
+      "操場中央的旗杆頂端纏著一團發光的絲線，隨風擺動時發出細微如耳語的聲響。",
+      "音樂教室的鋼琴無人彈奏卻自己發出斷續的音符，琴鍵上覆著一層淡淡的螢光指印。"
+    ],
     lootTable: [
       { itemId: "food_can", qty: 2, weight: 30 },
       { itemId: "bandage", qty: 1, weight: 30 },
@@ -298,7 +342,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_hospital", name: "醫院藥局", icon: "🏥", riskLevel: 3, distance: "far", unlockDay: 1, levelCap: 10,
-    anomalyText: "病歷櫃裡的紙張全被發光的石英粉塵覆蓋，每翻動一頁，耳邊就傳來一句破碎的呢喃。",
+    anomalyTextPool: [
+      "病歷櫃裡的紙張全被發光的石英粉塵覆蓋，每翻動一頁，耳邊就傳來一句破碎的呢喃。",
+      "病床的心電監護儀螢幕還亮著，顯示著早已不可能存在的心跳曲線，規律地起伏。",
+      "藥局的架子上，藥瓶標籤全被侵蝕成模糊的螢光斑點，瓶身卻異常地乾淨完整。",
+      "走廊盡頭的手術燈無故亮起又熄滅，地板上拖著一道尚未乾涸的螢光痕跡。",
+      "太平間的抽屜一格格微微震動，金屬碰撞聲在寂靜的走廊裡格外清晰刺耳。"
+    ],
     lootTable: [
       { itemId: "bandage", qty: 2, weight: 40 },
       { itemId: "bandage", qty: 1, weight: 30 },
@@ -310,7 +360,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_factory", name: "廢棄工廠", icon: "🏭", riskLevel: 3, distance: "far", unlockDay: 1, levelCap: 10,
-    anomalyText: "斷電的生產線上，機械臂仍規律地揮動著，金屬表面爬滿發光的菌絲紋路，彷彿被某種意識重新啟動。",
+    anomalyTextPool: [
+      "斷電的生產線上，機械臂仍規律地揮動著，金屬表面爬滿發光的菌絲紋路，彷彿被某種意識重新啟動。",
+      "輸送帶無聲地緩緩轉動，上頭載著早已鏽蝕的零件，每一件都覆著一層薄薄的螢光鏽斑。",
+      "高聳的儲料倉頂端傳來規律的金屬敲擊聲，像是有什麼東西正一下一下地想敲開出口。",
+      "控制室的儀表板全數失靈，指針卻同步指向同一個方向，隨著某種頻率微微顫動。",
+      "廠房深處的通風管道傳出低沉的嗡鳴，管壁縫隙滲出的螢光霧氣正緩緩往外擴散。"
+    ],
     lootTable: [
       { itemId: "scrap", qty: 3, weight: 40 },
       { itemId: "pipe_01", qty: 1, weight: 20 },
@@ -322,7 +378,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_warehouse", name: "倉庫", icon: "🏚️", riskLevel: 4, distance: "far", unlockDay: 1, levelCap: 13,
-    anomalyText: "貨架在黑暗中投下不該存在的影子，木箱縫隙滲出螢光綠霧氣，緩緩在地面匯聚成奇異的圖形。",
+    anomalyTextPool: [
+      "貨架在黑暗中投下不該存在的影子，木箱縫隙滲出螢光綠霧氣，緩緩在地面匯聚成奇異的圖形。",
+      "成堆的貨箱被人整齊地排成一道迷宮般的通道，盡頭卻只有一面滲著螢光水漬的牆。",
+      "生鏽的起重機吊臂無風自動，鐵鍊碰撞的聲響在挑高的倉庫裡迴盪，久久不散。",
+      "角落堆疊的紙箱裡傳出細微的窸窣聲，你靠近時聲音倏地停止，彷彿在刻意屏息。",
+      "天花板的燈管一排排接連熄滅又亮起，光影交錯間，貨架的陰影似乎微微移動了位置。"
+    ],
     lootTable: [
       { itemId: "scrap", qty: 3, weight: 35 },
       { itemId: "bat_01", qty: 1, weight: 20 },
@@ -335,7 +397,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_military", name: "軍警設施", icon: "🪖", riskLevel: 4, distance: "far", unlockDay: 1, levelCap: 13,
-    anomalyText: "軍用終端機的螢幕無故亮起，顯示著無法辨識的座標與倒數，警報燈光泛著不祥的暗紅色。",
+    anomalyTextPool: [
+      "軍用終端機的螢幕無故亮起，顯示著無法辨識的座標與倒數，警報燈光泛著不祥的暗紅色。",
+      "鐵絲網外圍的警戒燈規律閃爍，掃描光束掠過地面時，能看見一層極淡的螢光殘留反光。",
+      "彈藥庫的重型門扉半掩著，門縫裡滲出的冷氣混著一絲若有似無、規律起伏的機械運轉聲。",
+      "監控室的螢幕牆全數轉為雜訊畫面，唯獨一格仍顯示著早已無人的走廊，畫面卻在緩緩位移。",
+      "廢棄的裝甲車殘骸旁散落著扭曲的金屬碎片，表面泛著一層詭異的暗紅色螢光紋路。"
+    ],
     lootTable: [
       { itemId: "machete_01", qty: 1, weight: 15 },
       { itemId: "pistol_01", qty: 1, weight: 5 },
@@ -347,7 +415,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_camp", name: "倖存者營地", icon: "⛺", riskLevel: 1, distance: "near", unlockDay: 10, levelCap: 4,
-    anomalyText: "篝火的火光泛著詭異的螢光綠，倖存者們的低語聲中，偶爾夾雜著幾句不屬於人類語言的字句。",
+    anomalyTextPool: [
+      "篝火的火光泛著詭異的螢光綠，倖存者們的低語聲中，偶爾夾雜著幾句不屬於人類語言的字句。",
+      "帳篷外掛著幾串風鈴般的金屬零件，隨風輕響，聲音卻在你靠近時忽然整齊地安靜下來。",
+      "有人在木板上刻下密密麻麻的正字記號，數到最後一排卻戛然而止，留下一道深深的刀痕。",
+      "曬衣繩上晾著的衣物在無風時輕輕晃動，其中一件的袖口沾著一小片乾涸的螢光粉塵。",
+      "營地邊界插著一圈簡陋的警戒旗，旗面圖案是手繪的符號，隱約與地脈異變的紋路相似。"
+    ],
     lootTable: [
       { itemId: "food_can", qty: 1, weight: 30 },
       { itemId: "water_bottle", qty: 1, weight: 30 },
@@ -359,7 +433,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_ruins_lab", name: "舊世研究所遺址", icon: "🧪", riskLevel: 5, distance: "far", unlockDay: 20, levelCap: 13,
-    anomalyText: "實驗艙內殘留的培養液仍在發光循環，牆上監視器反覆播放著早已停止運作的研究員最後身影。",
+    anomalyTextPool: [
+      "實驗艙內殘留的培養液仍在發光循環，牆上監視器反覆播放著早已停止運作的研究員最後身影。",
+      "走廊牆面的警示燈規律地明滅，廣播系統斷續播放著一段聽不清楚的倒數指令。",
+      "培養皿裡的樣本早已乾涸，卻仍隱隱透出脈動般的螢光，彷彿某種節律尚未停止。",
+      "資料室的檔案櫃全數敞開，紙張散落一地，每一頁邊緣都燒著一圈焦黑的螢光痕跡。",
+      "地下樓層的電梯門反覆開闔，樓層顯示器停留在一個不存在的負樓層數字上。"
+    ],
     lootTable: [
       { itemId: "scrap", qty: 4, weight: 30 },
       { itemId: "ocean_pistol", qty: 1, weight: 8 },
@@ -374,7 +454,13 @@ const LOCATIONS = [
   // v1.6新增遠征地點（SA 34 / v1.6四）
   {
     id: "loc_sunken_subway", name: "淹沒的靈能地鐵站", icon: "🚇", riskLevel: 4, distance: "far", unlockDay: 20, unlockFlag: "bloodmoon_breach_1", levelCap: 13,
-    anomalyText: "長滿發光地脈菌絲的列車靜止在軌道上。空氣中瀰漫著高濃度的發光石英粉塵，隱約能聽到無數人在耳邊低語。",
+    anomalyTextPool: [
+      "長滿發光地脈菌絲的列車靜止在軌道上。空氣中瀰漫著高濃度的發光石英粉塵，隱約能聽到無數人在耳邊低語。",
+      "月台的電子看板持續跳動著早已停駛的班次資訊，積水中倒映的燈光顏色詭異地扭曲著。",
+      "隧道深處傳來規律的金屬摩擦聲，像是列車仍在行駛，但軌道上什麼也沒有。",
+      "剪票口的閘門一開一闔，卻沒有任何人通過，感應燈規律地亮起又熄滅。",
+      "積水沒過腳踝，水面下隱約可見一層蠕動的螢光菌絲，正緩緩朝你所站的方向蔓延。"
+    ],
     lootTable: [
       { itemId: "mind_greatsword", qty: 1, weight: 5 },
       { itemId: "mind_eye", qty: 1, weight: 40 },
@@ -385,7 +471,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_cyber_factory", name: "舊世重工業自動化機廠", icon: "🏭", riskLevel: 4, distance: "far", unlockDay: 20, levelCap: 13,
-    anomalyText: "巨大的機械手臂在斷電的情況下依然在瘋狂揮舞，與活化組織融合成扭曲的鋼鐵巨怪，散發著暗紅色的微光。",
+    anomalyTextPool: [
+      "巨大的機械手臂在斷電的情況下依然在瘋狂揮舞，與活化組織融合成扭曲的鋼鐵巨怪，散發著暗紅色的微光。",
+      "生產線深處傳來規律的液壓聲，管線接口處滲出的暗紅色液體正緩緩沿著鋼架往下滴落。",
+      "巨型齒輪組無聲地空轉著，齒縫間卡著早已風化的有機組織殘骸，隨轉動微微顫動。",
+      "控制中樞的主螢幕反覆重播一段扭曲的啟動程序，語音合成器發出斷斷續續的雜訊。",
+      "廠房頂端懸吊的鋼纜隨著某種頻率規律擺盪，纜線接點處爆出細碎的暗紅色電光。"
+    ],
     lootTable: [
       { itemId: "cyber_hammer", qty: 1, weight: 15 },
       { itemId: "scrap", qty: 4, weight: 55 },
@@ -396,7 +488,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_flooded_hospital", name: "洋流寄生積水醫院", icon: "🏥", riskLevel: 3, distance: "far", unlockDay: 15, levelCap: 10,
-    anomalyText: "地下水滲出帶有強烈金屬味的酸性積水，醫院的病床和牆壁長滿了滑膩的深海寄生蛭。",
+    anomalyTextPool: [
+      "地下水滲出帶有強烈金屬味的酸性積水，醫院的病床和牆壁長滿了滑膩的深海寄生蛭。",
+      "積水中漂浮著早已泡發的病歷紙張，字跡暈染成一片模糊的青綠色斑塊。",
+      "天花板持續滴落帶著鹹味的水珠，水痕蔓延處的牆面爬滿細小、微微蠕動的寄生蟲卵。",
+      "病房的窗簾早已被泡爛，透過破洞能看見外頭積水中緩緩游動的模糊黑影。",
+      "護理站的呼叫鈴一盞盞亮起又熄滅，積水倒映的燈光裡似乎藏著什麼在窺視你。"
+    ],
     lootTable: [
       { itemId: "ocean_mace", qty: 1, weight: 15 },
       { itemId: "medicine", qty: 2, weight: 50 },
@@ -407,7 +505,13 @@ const LOCATIONS = [
   },
   {
     id: "loc_aero_broadcasting", name: "大氣高頻廣播電塔", icon: "📡", riskLevel: 3, distance: "far", unlockDay: 15, levelCap: 10,
-    anomalyText: "低壓濃霧伴隨劇烈的靜電風暴，電塔周圍的廢棄車輛和鐵皮竟如同失去重力般在空中緩慢懸浮。",
+    anomalyTextPool: [
+      "低壓濃霧伴隨劇烈的靜電風暴，電塔周圍的廢棄車輛和鐵皮竟如同失去重力般在空中緩慢懸浮。",
+      "電塔基座的控制面板持續發出高頻嗶聲，指針在錶盤上瘋狂繞圈，卻沒有任何規律可循。",
+      "空氣中漂浮著細小的金屬碎屑，它們並非墜落，而是緩緩朝電塔頂端匯聚而去。",
+      "廣播天線傳來陣陣靜電雜音，偶爾夾雜著清晰得不自然的人聲片段，聽不出內容。",
+      "腳下的地面傳來輕微的震動，抬頭一看，頭頂的雲層正以不自然的速度緩緩旋轉。"
+    ],
     lootTable: [
       { itemId: "aero_crossbow", qty: 1, weight: 15 },
       { itemId: "ammo", qty: 5, weight: 50 },
@@ -415,6 +519,118 @@ const LOCATIONS = [
     ],
     encounterChance: 0.50,
     encounterEnemyIds: ["enemy_walker_armed", "enemy_walker_weak"]
+  },
+  // 2026-07-01新增：6個新地點，補足近距離早期地點的稀缺(原本近距離只有住宅區/公園/加油站/便利商店)，
+  // 並補上蓋亞流派專屬地點(原本蓋亞裝備完全沒有對應掉落地點)，以及ruins_lab以外的終局地點變化
+  {
+    id: "loc_parking_garage", name: "廢棄立體停車場", icon: "🅿️", riskLevel: 2, distance: "near", unlockDay: 1, levelCap: 7,
+    anomalyTextPool: [
+      "層層疊起的停車格空空蕩蕩，只剩幾輛鏽蝕的車殼，車窗上凝結的水氣勾勒出詭異的螺旋紋路。",
+      "電梯井傳來規律的鋼纜摩擦聲，樓層顯示燈在無人按動下一層層往上跳動，卻始終沒有電梯抵達。",
+      "地下樓層的排水溝渠泛著微弱螢光，緩緩流動的積水裡，隱約能看見反射出不屬於這裡的光影。",
+      "收費機的螢幕反覆閃現同一組車牌號碼，喇叭裡傳出斷斷續續的提示音，卻辨識不出語意。",
+      "牆面的方向指標箭頭全數指向同一個方向——通往地下最深的樓層，油漆邊緣還滲著淡淡螢光。"
+    ],
+    lootTable: [
+      { itemId: "scrap", qty: 2, weight: 35 },
+      { itemId: "crowbar_01", qty: 1, weight: 15 },
+      { itemId: "bandage", qty: 1, weight: 25 },
+      { itemId: "water_bottle", qty: 1, weight: 25 }
+    ],
+    encounterChance: 0.25,
+    encounterEnemyIds: ["enemy_walker_weak", "enemy_walker_armed"]
+  },
+  {
+    id: "loc_flea_market", name: "黑市跳蚤市場", icon: "🏮", riskLevel: 1, distance: "near", unlockDay: 3, levelCap: 4,
+    anomalyTextPool: [
+      "攤位上的商品雜亂堆疊，價格標籤全用不明符號書寫，攤主早已不知去向，只留下滿地雜貨。",
+      "布棚頂端垂掛的燈籠無風自轉，光線忽明忽暗地投射在攤位上，映出一地扭曲晃動的影子。",
+      "秤台上的砝碼自己緩緩移動，指針停在一個誰也沒放上東西的空盤上，數字卻持續跳動。",
+      "空氣中混雜著香料與鐵鏽的氣味，攤位間的走道異常安靜，只剩風吹動布幔的窸窣聲。",
+      "角落一張折疊桌上擺著整齊的交易紀錄本，最後一頁的字跡愈寫愈潦草，戛然而止。"
+    ],
+    lootTable: [
+      { itemId: "scrap", qty: 2, weight: 30 },
+      { itemId: "food_can", qty: 1, weight: 30 },
+      { itemId: "merchant_token", qty: 1, weight: 8 },
+      { itemId: "water_bottle", qty: 1, weight: 32 }
+    ],
+    encounterChance: 0.10,
+    encounterEnemyIds: ["enemy_walker_weak"]
+  },
+  {
+    id: "loc_farmstead", name: "廢棄農莊", icon: "🌾", riskLevel: 2, distance: "far", unlockDay: 5, levelCap: 7,
+    anomalyTextPool: [
+      "穀倉裡堆積的乾草泛著淡淡螢光，倉頂破洞灑下的光束中，浮塵緩緩懸浮，彷彿失去了重力。",
+      "田埂間的作物早已枯死，唯獨幾株頑強地存活下來，葉片邊緣透著不自然的翠綠光澤。",
+      "生鏽的風車扇葉無風自轉，吱呀聲規律得像是某種計時裝置，久久沒有停下的跡象。",
+      "水井深處傳來低沉的回聲，探頭往下看時，水面竟隱約倒映著與頭頂不同的天色。",
+      "曬穀場上散落著半成型的稻草人，其中一個的姿勢與其他幾個明顯不同，像是曾經動過。"
+    ],
+    lootTable: [
+      { itemId: "food_can", qty: 2, weight: 35 },
+      { itemId: "gaia_spore_dart", qty: 1, weight: 10 },
+      { itemId: "scrap", qty: 2, weight: 30 },
+      { itemId: "water_bottle", qty: 1, weight: 25 }
+    ],
+    encounterChance: 0.30,
+    encounterEnemyIds: ["enemy_walker_weak", "enemy_walker_armed"]
+  },
+  {
+    id: "loc_greenhouse_ruins", name: "蓋亞靈能溫室遺跡", icon: "🪴", riskLevel: 3, distance: "far", unlockDay: 8, levelCap: 10,
+    anomalyTextPool: [
+      "破碎的玻璃穹頂下，藤蔓早已攀滿整座溫室骨架，葉脈間流動著肉眼可見的螢光汁液。",
+      "灌溉系統的水管仍規律地滴水，落地處的青苔以肉眼可見的速度緩緩擴張蔓延。",
+      "培育架上的植株互相纏繞成一張巨大的網，中心處隱約傳出類似心跳般的搏動聲。",
+      "空氣濕熱得不尋常，混雜著植物腐敗與甜膩花香的氣味，讓人分不清是生機還是危險。",
+      "溫室深處的地面裂開一道縫隙，根系從裂縫中探出，正緩緩朝著溫熱的方向蠕動延伸。"
+    ],
+    lootTable: [
+      { itemId: "gaia_whip", qty: 1, weight: 10 },
+      { itemId: "gaia_armor", qty: 1, weight: 10 },
+      { itemId: "gaia_seed_pouch", qty: 1, weight: 8 },
+      { itemId: "scrap", qty: 2, weight: 40 },
+      { itemId: "food_can", qty: 1, weight: 32 }
+    ],
+    encounterChance: 0.35,
+    encounterEnemyIds: ["enemy_walker_armed", "enemy_walker_weak"]
+  },
+  {
+    id: "loc_church", name: "傾頹的教堂", icon: "⛪", riskLevel: 3, distance: "far", unlockDay: 12, levelCap: 10,
+    anomalyTextPool: [
+      "彩繪玻璃大半碎裂，殘存的碎片仍持續折射出不屬於任何光源的螢光色斑，灑落一地。",
+      "管風琴無人彈奏卻自行發出低沉的和聲，音符斷斷續續，像是被什麼東西哽住了喉嚨。",
+      "祭壇上的燭火早已熄滅，燭芯卻仍冒著一縷若有似無的青煙，久久不曾真正散去。",
+      "長椅整齊地排列著，唯獨最前排的一張微微傾斜，彷彿曾有什麼重物長時間壓在上頭。",
+      "鐘樓的大鐘無人敲擊卻偶爾自鳴，聲音悶啞而扭曲，迴盪在空蕩的殿堂裡久久不散。"
+    ],
+    lootTable: [
+      { itemId: "mind_lens", qty: 1, weight: 10 },
+      { itemId: "mind_fork", qty: 1, weight: 6 },
+      { itemId: "bandage", qty: 2, weight: 35 },
+      { itemId: "scrap", qty: 2, weight: 49 }
+    ],
+    encounterChance: 0.40,
+    encounterEnemyIds: ["enemy_walker_armed", "enemy_walker_weak"]
+  },
+  {
+    id: "loc_bunker", name: "深埋地下避難所", icon: "🚪", riskLevel: 5, distance: "far", unlockDay: 25, levelCap: 13,
+    anomalyTextPool: [
+      "厚重的氣密門半掩著，門後的長廊燈光規律地明滅，牆上的輻射警示標誌泛著暗紅微光。",
+      "生活艙室裡的個人物品被整齊地留在原處，床鋪甚至還維持著被掀開的樣子，彷彿主人隨時會回來。",
+      "中央控制室的主機仍在運轉，螢幕上跑著早已無人閱讀的日誌紀錄，數字持續累加。",
+      "通風系統傳出低頻的嗡鳴，混雜著一絲若有似無的金屬敲擊聲，從更深處的樓層傳來。",
+      "儲藏室的門上被人用尖銳物刻下密密麻麻的劃痕，一排排數到最後戛然而止，力道異常深。"
+    ],
+    lootTable: [
+      { itemId: "cyber_drone_arm", qty: 1, weight: 6 },
+      { itemId: "ocean_harpoon", qty: 1, weight: 6 },
+      { itemId: "aero_barometer", qty: 1, weight: 8 },
+      { itemId: "scrap", qty: 4, weight: 45 },
+      { itemId: "bandage", qty: 2, weight: 35 }
+    ],
+    encounterChance: 0.60,
+    encounterEnemyIds: ["enemy_walker_brute", "enemy_walker_armed"]
   }
 ];
 
@@ -1329,6 +1545,247 @@ const EVENTS = [
     text: "你環顧據點裡這些一點一滴添置起來的家具，雖然多半是從廢墟裡撿來、修補過的二手物，但擺在這裡，總算有了一點「家」的樣子。",
     options: [
       { label: "稍作休息", effect: { embers: 2 }, resultText: "你靠著牆坐下，難得地什麼都不做，只是發了一會兒呆。（獲得🔥2）" }
+    ]
+  },
+  // 2026-07-01新增：24個事件，補足「附近搜刮」的隨機事件池，降低多輪遊玩時的重複感
+  {
+    id: "evt_broken_vending", title: "故障的自動販賣機",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 10,
+    text: "巷口那台自動販賣機的螢幕仍詭異地閃爍著雜訊光點，商品早已被搜刮一空，唯獨最底層卡著一罐看起來還完整的飲料。",
+    options: [
+      {
+        label: "用力搖晃機台",
+        roll: {
+          chance: 0.6,
+          success: { effect: { resources: { water: 2 } }, resultText: "你用力搖晃機台，卡住的飲料總算掉了下來，罐身雖帶著一絲微光，喝起來卻沒什麼異狀。" },
+          fail: { effect: { hp: -3 }, resultText: "機台突然傾倒，你被邊角狠狠撞了一下，那罐飲料也摔得四分五裂，只留下滿地狼藉。" }
+        }
+      },
+      { label: "放棄，直接離開", resultText: "你看了看搖搖欲墜的機台，決定不冒這個險，轉身繼續往前走。" }
+    ]
+  },
+  {
+    id: "evt_abandoned_bicycle", title: "廢棄的腳踏車",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 10,
+    text: "巷弄深處倒著一輛生鏽的腳踏車，輪胎早已扁掉，車籃裡卻還放著幾樣沒被翻動過的雜物。",
+    options: [
+      { label: "翻找車籃", effect: { resources: { scrap: 2 } }, resultText: "你蹲下身翻了翻車籃，撿到幾件還能用的金屬零件，收進了背包。" }
+    ]
+  },
+  {
+    id: "evt_bookstore_relic", title: "書店裡的殘卷",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 8,
+    text: "傾頹的書店裡，大半書架已經倒塌，但角落一本書頁泛著螢光的精裝書意外地保存完好。",
+    options: [
+      { label: "翻閱這本書", effect: { exp: 5 }, resultText: "書頁裡記載著末日前的知識，你讀得入神，不知不覺又多懂了一些道理。" }
+    ]
+  },
+  {
+    id: "evt_glowing_puddle", title: "發光的水窪",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 8,
+    text: "路面凹陷處積著一灘泛著螢光的水窪，水面平靜無波，卻隱約透出一股不屬於這個世界的寒意。",
+    options: [
+      {
+        label: "涉水撿起水窪中的反光物",
+        roll: {
+          chance: 0.5,
+          success: { effect: { resources: { scrap: 2 }, exp: 3 }, resultText: "你伸手撈起水裡的反光物，是幾件被螢光浸透的金屬零件，狀況出乎意料地好。" },
+          fail: { effect: { hp: -6 }, resultText: "手才碰到水面，一陣刺痛感瞬間竄上手臂，你趕緊縮手，皮膚上留下一道淡淡的灼痕。" }
+        }
+      },
+      { label: "繞道而行", resultText: "你決定不冒險，繞了條遠路離開，那灘水窪在你身後靜靜地泛著微光。" }
+    ]
+  },
+  {
+    id: "evt_community_garden", title: "荒廢的社區菜園",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 9,
+    text: "社區中庭的小菜園早已荒廢多時，雜草叢生，但幾株耐旱的作物頑強地存活了下來，結出了果實。",
+    options: [
+      { label: "採收剩餘的作物", effect: { resources: { food: 2 } }, resultText: "你摘下幾顆還算新鮮的果實，心想著哪天或許該找個地方，自己也種點什麼。" }
+    ]
+  },
+  {
+    id: "evt_market_haggle", title: "黑市攤販的討價還價",
+    minDay: 3, maxDay: null, phase: ["day"], weight: 8,
+    text: "一個獨眼的攤販在廢墟間擺了個小攤，用警惕的眼神打量著你。「廢料換食物，要不要？」他壓低聲音問。",
+    options: [
+      { label: "用廢料交換", requiresResource: { scrap: 3 }, effect: { resources: { scrap: -3, food: 3 } }, resultText: "你遞出廢料，攤販俐落地清點過後，丟給你幾罐食物，一句話也沒多說就轉身收攤離開。" },
+      { label: "婉拒離開", resultText: "你搖搖頭表示不需要，攤販也不勉強，只是聳聳肩繼續盯著往來的路人。" }
+    ]
+  },
+  {
+    id: "evt_solar_panel", title: "拾荒者的太陽能板",
+    minDay: 2, maxDay: null, phase: ["day"], weight: 7,
+    text: "屋頂邊緣架著一塊傾斜的太陽能板，接線裸露在外，但面板本身看起來還完好無損。",
+    options: [
+      { label: "拆下面板", effect: { resources: { scrap: 3 } }, resultText: "你小心翼翼地拆下太陽能板，雖然費了不少功夫，但這塊材料絕對能派上用場。" }
+    ]
+  },
+  {
+    id: "evt_pigeon_flock", title: "屋簷下的異變鴿群",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 7,
+    text: "屋簷下棲息著一群羽毛泛著螢光斑點的鴿子，牠們對你的靠近毫不在意，咕咕叫著低頭啄食地上的碎屑。",
+    options: [
+      { label: "驅趕鴿群翻找地面", effect: { resources: { scrap: 1, food: 1 } }, resultText: "鴿群被你嚇得振翅飛散，地上散落著牠們啄剩的東西，你順手撿了一些能用的。" },
+      { label: "安靜地看著牠們", effect: { san: 3 }, resultText: "你安靜地站在原地看著鴿群，牠們的存在莫名讓你感到一絲寬慰——至少還有生命在這裡延續著。" }
+    ]
+  },
+  {
+    id: "evt_kids_treasure_map", title: "孩子畫的藏寶圖",
+    minDay: 5, maxDay: null, phase: ["day"], weight: 6,
+    text: "你在廢棄的兒童房裡撿到一張皺巴巴的手繪地圖，歪歪扭扭地標示著「寶藏」的位置，看起來像是孩子的塗鴉。",
+    options: [
+      {
+        label: "按圖索驥",
+        roll: {
+          chance: 0.45,
+          success: { effect: { resources: { scrap: 3 }, exp: 5 }, resultText: "你半信半疑地按圖走到標示地點，牆角的鬆動磚塊後面，真的藏著一小罐零件！" },
+          fail: { effect: { stamina: -1 }, resultText: "你找遍了地圖標示的角落，除了灰塵什麼也沒有——大概真的只是孩子的想像遊戲。" }
+        }
+      },
+      { label: "當作紀念收起來", effect: { san: 2 }, resultText: "你把地圖仔細摺好收進背包，想著這孩子曾經懷抱過怎樣天真的夢。" }
+    ]
+  },
+  {
+    id: "evt_toolshed_find", title: "後院工具棚",
+    minDay: 4, maxDay: null, phase: ["day"], weight: 5,
+    text: "後院一間東倒西歪的工具棚裡，堆滿了雜亂的五金用品，其中一件看起來還能當武器用。",
+    options: [
+      { label: "翻找工具棚", effect: { equipment_pool: ["crowbar_01"], exp: 3 }, resultText: "你翻出一根生鏽但堅固的撬棍，掂了掂重量，應付一般的威脅應該綽綽有餘。" }
+    ]
+  },
+  {
+    id: "evt_greenhouse_seed_gaia", title: "溫室的蓋亞種子",
+    minDay: 6, maxDay: null, phase: ["day"], weight: 5,
+    text: "廢棄溫室的角落，一株攀滿藤蔓的植株結出了一顆會發出微光的種子囊，觸感異常溫熱。",
+    options: [
+      { label: "摘下種子囊", effect: { equipment_pool: ["gaia_seed_pouch"], exp: 3 }, resultText: "你小心摘下種子囊貼身收好，隱約能感覺到裡頭似乎藏著某種蓬勃的生命力。" }
+    ]
+  },
+  {
+    id: "evt_flickering_streetlight", title: "忽明忽暗的路燈",
+    minDay: 1, maxDay: null, phase: ["night"], weight: 8,
+    text: "窗外唯一一盞還亮著的路燈忽明忽暗地閃爍著，光影在牆上投下扭曲晃動的輪廓，看久了讓人心裡發毛。",
+    options: [
+      { label: "移開視線繼續休息", resultText: "你拉上窗簾，決定不再多看，很快便沉入了淺眠。" }
+    ]
+  },
+  {
+    id: "evt_distant_howl", title: "遠方的嚎叫",
+    minDay: 1, maxDay: null, phase: ["night"], weight: 9,
+    text: "遠方傳來一聲拉長的嚎叫，尾音帶著奇異的顫音，久久回盪在空曠的街道上，接著便歸於死寂。",
+    options: [
+      { label: "警戒地聽著動靜", resultText: "你屏息聽了許久，確認聲音沒有再靠近，才慢慢放鬆下來，但今晚恐怕很難真正安睡。" }
+    ]
+  },
+  {
+    id: "evt_power_surge", title: "詭異的電力突波",
+    minDay: 1, maxDay: null, phase: ["night"], weight: 7,
+    text: "據點裡所有電器突然同時亮起又熄滅，一陣電流的焦味瞬間瀰漫開來，接著一切又恢復平靜。",
+    options: [
+      { label: "檢查線路", effect: { resources: { scrap: 1 } }, resultText: "你檢查了一圈線路，沒發現明顯損壞，只在插座附近撿到一小塊燒焦的零件。" }
+    ]
+  },
+  {
+    id: "evt_shadow_on_wall", title: "牆上的影子",
+    minDay: 1, maxDay: null, phase: ["night"], weight: 8,
+    text: "月光透過破窗投射進來，牆上竟出現一道不屬於任何家具的細長影子，隨著你的呼吸微微晃動。",
+    options: [
+      {
+        label: "鼓起勇氣查看",
+        roll: {
+          chance: 0.6,
+          success: { effect: { san: 3 }, resultText: "你顫抖著靠近查看，原來只是掛在鉤子上的舊外套被風吹得晃動——虛驚一場，你鬆了口氣。" },
+          fail: { effect: { san: -5 }, resultText: "你越靠近，那道影子的形狀越發不對勁，你猛地後退，再也不敢直視那個角落，一夜難眠。" }
+        }
+      },
+      { label: "假裝沒看見，蒙頭睡覺", effect: { san: -2 }, resultText: "你把毯子一路拉到頭頂，告訴自己那只是錯覺，但那道影子的殘像卻在腦海裡揮之不去。" }
+    ]
+  },
+  {
+    id: "evt_insomnia", title: "難以入眠的夜",
+    minDay: 1, maxDay: null, phase: ["night"], weight: 6,
+    text: "翻來覆去了大半夜，思緒像斷了線的收音機一樣雜亂無章，怎麼也無法真正安穩地睡著。",
+    options: [
+      { label: "起身做點雜事", effect: { resources: { scrap: 1 }, stamina: -1 }, resultText: "你乾脆起身整理雜物，雖然犧牲了一點體力，但至少比躺著發呆有意義。" },
+      { label: "閉眼硬撐到天亮", effect: { san: -3 }, resultText: "你閉著眼睛硬撐到天亮，雖然沒睡好，但至少撐過了這漫長的一夜。" }
+    ]
+  },
+  {
+    id: "evt_locked_room_sound", title: "鎖住房間裡的聲音",
+    minDay: 3, maxDay: null, phase: ["night"], weight: 6,
+    text: "隔壁一間反鎖的房間裡，隱約傳出規律的敲擊聲，一下、一下，像是有什麼東西正試圖從裡面出來。",
+    options: [
+      {
+        label: "撬開房門查看",
+        roll: {
+          chance: 0.5,
+          success: { effect: { resources: { scrap: 2 }, exp: 5 }, resultText: "你撬開門鎖，裡頭只是一台故障的排風扇規律地敲著牆面——你順手拆了幾個能用的零件。" },
+          fail: { battle: "enemy_walker_weak", resultText: "門一打開，一道身影猛地竄了出來——原來真的有東西被困在裡面！" }
+        }
+      },
+      { label: "不去招惹，離開這層樓", resultText: "你決定不去自找麻煩，敲擊聲在你走遠後依然規律地持續著。" }
+    ]
+  },
+  {
+    id: "evt_scrap_windfall", title: "意外的廢料堆",
+    minDay: 1, maxDay: null, phase: ["day", "night"], weight: 10,
+    text: "轉角處堆著一小堆沒人注意到的廢棄零件，散落在瓦礫之間，看起來還算完整。",
+    options: [
+      { label: "收集起來", effect: { resources: { scrap: 2 } }, resultText: "你把散落的零件一一撿起，分類收進背包，又是一筆實用的收穫。" }
+    ]
+  },
+  {
+    id: "evt_quiet_hope", title: "一絲希望",
+    minDay: 1, maxDay: null, phase: ["day", "night"], weight: 8,
+    text: "你無意間看見牆縫裡冒出一株倔強的小草，在這片灰敗的廢墟中，綠意顯得格外刺眼又溫柔。",
+    options: [
+      { label: "駐足看了一會兒", effect: { san: 4 }, resultText: "你蹲下身看了好一會兒，心裡某個緊繃的角落，似乎也跟著鬆動了一些。" }
+    ]
+  },
+  {
+    id: "evt_faction_static_gaia", title: "血脈裡的低語",
+    minDay: 5, maxDay: null, phase: ["day"], weight: 5,
+    condition: (state) => !!(state.skills && state.skills.faction === "gaia"),
+    text: "血液裡彷彿有什麼東西正緩緩甦醒，你能隱約感覺到牆縫雜草的生長，像是與萬物產生了共鳴。",
+    options: [
+      { label: "順著感覺伸手觸碰", effect: { resources: { food: 1 }, san: 2 }, resultText: "你伸手觸碰身旁的雜草，指尖傳來一陣溫熱的搏動感，隨後掌心多了一顆飽滿的野生果實。" }
+    ]
+  },
+  {
+    id: "evt_faction_static_ocean", title: "潮汐般的心跳",
+    minDay: 5, maxDay: null, phase: ["night"], weight: 5,
+    condition: (state) => !!(state.skills && state.skills.faction === "ocean"),
+    text: "你的心跳莫名與遠方的潮聲同步起伏，一陣涼意順著血管緩緩擴散，卻不覺得難受，反而格外平靜。",
+    options: [
+      { label: "跟隨這股韻律呼吸", effect: { hp: 5 }, resultText: "你跟著那股韻律緩慢呼吸，身體裡湧起一股奇異的恢復力，傷口似乎也癒合得快了一些。" }
+    ]
+  },
+  {
+    id: "evt_faction_static_aero", title: "風中的低語",
+    minDay: 5, maxDay: null, phase: ["day"], weight: 5,
+    condition: (state) => !!(state.skills && state.skills.faction === "aero"),
+    text: "風忽然從四面八方同時吹來，捲起滿地塵埃，你卻能隱約「聽見」風裡藏著的細碎訊息。",
+    options: [
+      { label: "閉眼聆聽風的訊息", effect: { exp: 5 }, resultText: "你閉眼專注聆聽，那些破碎的訊息漸漸拼湊出一點方向感，你若有所悟地睜開眼。" }
+    ]
+  },
+  {
+    id: "evt_faction_static_cyber", title: "訊號雜訊中的機械低語",
+    minDay: 5, maxDay: null, phase: ["night"], weight: 5,
+    condition: (state) => !!(state.skills && state.skills.faction === "cyber"),
+    text: "體內的機械義軀忽然傳來一陣細微的震動，混雜著只有你能聽懂的雜訊訊號，像是某種遙遠的呼喚。",
+    options: [
+      { label: "專注感受這股訊號", effect: { embers: 5, san: 2 }, resultText: "你閉上眼專注感受，那股訊號雖然模糊，卻讓你莫名安心——彷彿你並不是唯一的存在。" }
+    ]
+  },
+  {
+    id: "evt_faction_static_mind", title: "意識深處的回聲",
+    minDay: 5, maxDay: null, phase: ["night"], weight: 5,
+    condition: (state) => !!(state.skills && state.skills.faction === "mind"),
+    text: "闔眼的瞬間，無數破碎的思緒湧入腦海，像是別人的記憶片段，卻又混雜著說不出的熟悉感。",
+    options: [
+      { label: "任由思緒流動", effect: { san: 5 }, resultText: "你不再抗拒，任由那些思緒自然流過，醒來時精神竟出奇地清明，彷彿卸下了什麼重擔。" }
     ]
   }
 ];
