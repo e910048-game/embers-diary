@@ -1050,7 +1050,7 @@ const EVENTS = [
   {
     id: "evt_garden_attempt", title: "陽台上的綠意",
     minDay: 3, maxDay: null, phase: ["day"], weight: 5,
-    text: "你注意到隔壁陽台上，有人在末日來臨前種下的幾株蔬菜，竟頑強地活了下來，葉片在風中搖曳。",
+    text: "你注意到隔壁陽台上，有人在末日來臨前種下的幾株蔬菜，竟頑強地活了下來，葉片邊緣泛著一絲若有似無的螢光，在風中搖曳生長。",
     options: [
       { label: "摘採可食用的部分", effect: { resources: { food: 2 } }, resultText: "你小心翼翼地摘下幾片還算新鮮的葉菜，雖然賣相不佳，但確實是難得的新鮮食物來源。" },
       { label: "留著讓它繼續生長", effect: { resources: { food: 1 } }, resultText: "你只摘了一點點，把大部分留下——也許過幾天再來，這裡會長出更多。" }
@@ -1521,7 +1521,7 @@ const EVENTS = [
     minDay: 1, maxDay: null, phase: ["day"], weight: 4,
     condition: (state) => !isFurniturePlacedInData(state, "furn_potted_plant")
       && !(state.inventory || []).some(i => i.itemId === "furn_potted_plant"),
-    text: "廢棄公寓的窗台上，一株不知名的小植物頑強地活了下來，葉片在裂縫透進的光線中微微搖晃。你猶豫了一下，最終把它連著盆一起帶走。",
+    text: "廢棄公寓的窗台上，一株不知名的小植物頑強地活了下來，葉脈間隱約流動著淡淡的螢光紋路，在裂縫透進的光線中微微搖晃。你猶豫了一下，最終把它連著盆一起帶走。",
     options: [
       { label: "帶回據點", effect: { furniture: ["furn_potted_plant"] }, resultText: "你小心翼翼地把盆栽抱在懷裡，一路上格外留意，怕一個不小心就把它顛壞了。" }
     ]
@@ -1567,7 +1567,7 @@ const EVENTS = [
   {
     id: "evt_abandoned_bicycle", title: "廢棄的腳踏車",
     minDay: 1, maxDay: null, phase: ["day"], weight: 10,
-    text: "巷弄深處倒著一輛生鏽的腳踏車，輪胎早已扁掉，車籃裡卻還放著幾樣沒被翻動過的雜物。",
+    text: "巷弄深處倒著一輛生鏽的腳踏車，車架縫隙間積著一層淡淡的螢光鏽斑，輪胎早已扁掉，車籃裡卻還放著幾樣沒被翻動過的雜物。",
     options: [
       { label: "翻找車籃", effect: { resources: { scrap: 2 } }, resultText: "你蹲下身翻了翻車籃，撿到幾件還能用的金屬零件，收進了背包。" }
     ]
@@ -1599,7 +1599,7 @@ const EVENTS = [
   {
     id: "evt_community_garden", title: "荒廢的社區菜園",
     minDay: 1, maxDay: null, phase: ["day"], weight: 9,
-    text: "社區中庭的小菜園早已荒廢多時，雜草叢生，但幾株耐旱的作物頑強地存活了下來，結出了果實。",
+    text: "社區中庭的小菜園早已荒廢多時，雜草叢生，但幾株耐旱的作物頑強地存活了下來，葉片邊緣泛著一圈極淡的螢光，結出的果實比記憶中更加飽滿。",
     options: [
       { label: "採收剩餘的作物", effect: { resources: { food: 2 } }, resultText: "你摘下幾顆還算新鮮的果實，心想著哪天或許該找個地方，自己也種點什麼。" }
     ]
@@ -1607,7 +1607,7 @@ const EVENTS = [
   {
     id: "evt_market_haggle", title: "黑市攤販的討價還價",
     minDay: 3, maxDay: null, phase: ["day"], weight: 8,
-    text: "一個獨眼的攤販在廢墟間擺了個小攤，用警惕的眼神打量著你。「廢料換食物，要不要？」他壓低聲音問。",
+    text: "一個獨眼的攤販在廢墟間擺了個小攤，攤位角落的提燈泛著不自然的螢光藍，他用警惕的眼神打量著你。「廢料換食物，要不要？」他壓低聲音問。",
     options: [
       { label: "用廢料交換", requiresResource: { scrap: 3 }, effect: { resources: { scrap: -3, food: 3 } }, resultText: "你遞出廢料，攤販俐落地清點過後，丟給你幾罐食物，一句話也沒多說就轉身收攤離開。" },
       { label: "婉拒離開", resultText: "你搖搖頭表示不需要，攤販也不勉強，只是聳聳肩繼續盯著往來的路人。" }
@@ -1616,7 +1616,7 @@ const EVENTS = [
   {
     id: "evt_solar_panel", title: "拾荒者的太陽能板",
     minDay: 2, maxDay: null, phase: ["day"], weight: 7,
-    text: "屋頂邊緣架著一塊傾斜的太陽能板，接線裸露在外，但面板本身看起來還完好無損。",
+    text: "屋頂邊緣架著一塊傾斜的太陽能板，接線裸露在外，板面殘留的螢光鏽跡隨光線角度微微變化，但面板本身看起來還完好無損。",
     options: [
       { label: "拆下面板", effect: { resources: { scrap: 3 } }, resultText: "你小心翼翼地拆下太陽能板，雖然費了不少功夫，但這塊材料絕對能派上用場。" }
     ]
@@ -1649,7 +1649,7 @@ const EVENTS = [
   {
     id: "evt_toolshed_find", title: "後院工具棚",
     minDay: 4, maxDay: null, phase: ["day"], weight: 5,
-    text: "後院一間東倒西歪的工具棚裡，堆滿了雜亂的五金用品，其中一件看起來還能當武器用。",
+    text: "後院一間東倒西歪的工具棚裡，堆滿了雜亂的五金用品，牆角滲出的螢光粉塵靜靜覆蓋在工具表面，其中一件看起來還能當武器用。",
     options: [
       { label: "翻找工具棚", effect: { equipment_pool: ["crowbar_01"], exp: 3 }, resultText: "你翻出一根生鏽但堅固的撬棍，掂了掂重量，應付一般的威脅應該綽綽有餘。" }
     ]
@@ -1673,7 +1673,7 @@ const EVENTS = [
   {
     id: "evt_distant_howl", title: "遠方的嚎叫",
     minDay: 1, maxDay: null, phase: ["night"], weight: 9,
-    text: "遠方傳來一聲拉長的嚎叫，尾音帶著奇異的顫音，久久回盪在空曠的街道上，接著便歸於死寂。",
+    text: "遠方傳來一聲拉長的嚎叫，尾音帶著一絲不屬於任何生物的顫音，久久回盪在空曠的街道上，接著便歸於死寂。",
     options: [
       { label: "警戒地聽著動靜", resultText: "你屏息聽了許久，確認聲音沒有再靠近，才慢慢放鬆下來，但今晚恐怕很難真正安睡。" }
     ]
@@ -1681,7 +1681,7 @@ const EVENTS = [
   {
     id: "evt_power_surge", title: "詭異的電力突波",
     minDay: 1, maxDay: null, phase: ["night"], weight: 7,
-    text: "據點裡所有電器突然同時亮起又熄滅，一陣電流的焦味瞬間瀰漫開來，接著一切又恢復平靜。",
+    text: "據點裡所有電器突然同時亮起又熄滅，一陣電流的焦味混著一絲若有似無的螢光殘影瞬間瀰漫開來，接著一切又恢復平靜。",
     options: [
       { label: "檢查線路", effect: { resources: { scrap: 1 } }, resultText: "你檢查了一圈線路，沒發現明顯損壞，只在插座附近撿到一小塊燒焦的零件。" }
     ]
@@ -1714,7 +1714,7 @@ const EVENTS = [
   {
     id: "evt_locked_room_sound", title: "鎖住房間裡的聲音",
     minDay: 3, maxDay: null, phase: ["night"], weight: 6,
-    text: "隔壁一間反鎖的房間裡，隱約傳出規律的敲擊聲，一下、一下，像是有什麼東西正試圖從裡面出來。",
+    text: "隔壁一間反鎖的房間裡，門縫底下滲出一絲極淡的螢光粉塵，隱約傳出規律的敲擊聲，一下、一下，像是有什麼東西正試圖從裡面出來。",
     options: [
       {
         label: "撬開房門查看",
@@ -1730,7 +1730,7 @@ const EVENTS = [
   {
     id: "evt_scrap_windfall", title: "意外的廢料堆",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 10,
-    text: "轉角處堆著一小堆沒人注意到的廢棄零件，散落在瓦礫之間，看起來還算完整。",
+    text: "轉角處堆著一小堆沒人注意到的廢棄零件，表面覆著一層薄薄的螢光鏽跡，散落在瓦礫之間，看起來還算完整。",
     options: [
       { label: "收集起來", effect: { resources: { scrap: 2 } }, resultText: "你把散落的零件一一撿起，分類收進背包，又是一筆實用的收穫。" }
     ]
