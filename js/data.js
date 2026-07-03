@@ -2213,8 +2213,38 @@ const ACHIEVEMENTS = {
   },
 };
 
+// 草稿3：血月降臨開場白/獲勝結算開場輪替文案，取代原本寫死的單一字串
+const BLOOD_MOON_INTRO_TEXTS = [
+  "天色驟然轉為詭異的血紅色，遠方傳來低頻的嗡鳴——血月狂潮，如期而至。",
+  "空氣中瀰漫的螢光粉塵驟然變得濃烈，天邊那輪血月冷冷俯視著這座城市。",
+  "警報聲劃破寧靜，你抬頭望向天空——月亮正一點一點被血紅色侵染。",
+  "地脈活化的震動從腳底傳來，你知道，屬於今晚的考驗已經無可迴避。",
+  "遠方傳來此起彼落的咆哮，混雜著異變生物的嘶吼——血月的氣息已經瀰漫整座城市。",
+  "你望著窗外，那輪血紅的月亮正緩緩爬上天際，今晚註定不會平靜。",
+  "螢光紋路順著地面裂縫蔓延開來，像是整座城市都在為即將到來的狂潮做準備。",
+  "低沉的嗡鳴聲從四面八方湧來，你握緊手中的武器——血月來了。",
+  "空氣變得粘稠而壓抑，你能感覺到某種龐大的意識正在聚集，朝著這座據點而來。",
+  "天邊的血月比以往更加刺眼，你知道，今晚的狂潮恐怕會比預期中更加猛烈。",
+  "遠處建築的輪廓在血色月光下扭曲變形，異變生物的低吼聲越來越近。",
+  "你深吸一口氣，看著那輪血月完全染紅天際——不管準備得夠不夠，戰鬥都要開始了。"
+];
+const BLOOD_MOON_VICTORY_TEXTS = [
+  "最後一波攻勢終於被擊退，血月的紅光漸漸褪去，你靠著牆大口喘著氣。",
+  "天邊的血月緩緩恢復成原本的銀白色，你知道，這一夜總算是撐過去了。",
+  "異變生物的咆哮聲漸漸遠去，據點的警報也隨之解除——又是一次驚險的勝利。",
+  "你環顧滿目瘡痍的據點，雖然狼狽，但每個人都還站著，這就足夠了。",
+  "血月的氣息逐漸散去，你這才發現自己全身早已被冷汗浸濕。",
+  "最後一隻異變生物倒下的瞬間，天邊的血色也開始褪去，黎明將至。",
+  "你癱坐在地上，聽著據點外逐漸恢復的寂靜——這份寂靜，此刻聽起來格外美好。",
+  "螢光粉塵漸漸沉澱，血月的威脅暫時解除，你和夥伴們相視一笑，卻笑得有些疲憊。",
+  "據點的防禦工事雖然傷痕累累，但終究撐住了——你摸了摸牆面，像是在感謝它。",
+  "天空一點一點找回原本的顏色，你知道，這座據點又活過了一次血月狂潮。",
+  "你清點了一下彼此的傷勢，所幸都不算太重——比起上一次，這次的損失已經好很多了。",
+  "血月的紅光徹底消散，取而代之的是熟悉的夜色，你終於敢放鬆緊繃了一整晚的肩膀。"
+];
+
 if (typeof module !== "undefined") {
-  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES };
+  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
   window.ITEMS = ITEMS;
@@ -2229,4 +2259,6 @@ if (typeof module !== "undefined") {
   window.ACHIEVEMENTS = ACHIEVEMENTS;
   window.CROPS = CROPS;
   window.SPECIES = SPECIES;
+  window.BLOOD_MOON_INTRO_TEXTS = BLOOD_MOON_INTRO_TEXTS;
+  window.BLOOD_MOON_VICTORY_TEXTS = BLOOD_MOON_VICTORY_TEXTS;
 }

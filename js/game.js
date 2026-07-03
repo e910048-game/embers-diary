@@ -1251,7 +1251,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 198; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 199; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -2278,7 +2278,8 @@ function startBloodMoonNight() {
       ? `🛡️ 你的防禦設施擋下了這波攻擊的大半，損失減輕了不少！`
       : `🛡️ 防禦力不足，僅能抵擋${pct}%的攻勢，準備迎戰吧！`;
     renderStatusBar();
-    renderText(`🌙 血月狂潮席捲而來！第一波襲擊即將開始……
+    const introText = BLOOD_MOON_INTRO_TEXTS[Math.floor(Math.random() * BLOOD_MOON_INTRO_TEXTS.length)];
+    renderText(`🌙 ${introText}
 ${blockText}`, { kind: "battle" });
 
     const waves = [];
@@ -2304,7 +2305,8 @@ function runBloodMoonWave(waves, idx) {
 
 🔓 你在血月之夜的勝利解鎖了新的地點：${loc ? loc.icon + " " + loc.name : reward.unlockedLocation}，可以前往探索了！`;
     }
-    renderText(`🎉 你撐過了血月狂潮的攻勢！${formatEffect(reward)}${unlockText}`, { kind: "event" });
+    const victoryText = BLOOD_MOON_VICTORY_TEXTS[Math.floor(Math.random() * BLOOD_MOON_VICTORY_TEXTS.length)];
+    renderText(`🎉 ${victoryText}${formatEffect(reward)}${unlockText}`, { kind: "event" });
 
     const zone = getTierZoneForBloodMoonWin(state);
     if (zone) {
