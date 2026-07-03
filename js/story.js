@@ -209,8 +209,107 @@ const OVERDRAW_TEXTS = [
   "一陣暈眩襲來，眼前的景象短暫模糊了一下。你靠著意志撐住，但這份疲憊顯然也讓這趟收穫縮水不少。"
 ];
 
+// 草稿2：day90後每20天觸發一次的「城市現況回顧」，取代已移除的沙盒結局(getSandboxEndingExtras)，
+// 差異是這裡每個維度有3個變體會隨機輪替，且不是「結局」而是週期性里程碑，呼應「無限模式沒有結局」的定案
+const CITY_REVIEW_FACTION = {
+  gaia: [
+    "這些日子以來，你體內流淌的蓋亞血脈早已與這片廢墟悄悄共生——牆縫裡冒出的雜草、院子裡頑強的作物，似乎都因你的存在而長得更好一些。",
+    "你偶爾會在觸碰植物時感覺到一絲奇異的共鳴，彷彿這座城市殘存的綠意，正透過某種你說不清楚的方式與你對話。",
+    "血脈裡的力量依然安靜地流淌著，你已經學會不去抗拒它，反而視為身體的一部分。"
+  ],
+  ocean: [
+    "洋流帶來的力量始終潛伏在你的血液裡，每當夜深人靜，你仍能感覺到體內那股涼意隨著遠方看不見的潮汐微微起伏。",
+    "你偶爾會夢見深海，醒來時分不清那是記憶還是血脈裡帶來的異象，但已經不再感到恐懼。",
+    "那股潮濕而冰涼的力量依然守護著你，像一層看不見的鎧甲，貼著你的血管流動。"
+  ],
+  aero: [
+    "你早已習慣風裡藏著的細碎訊息，那股大氣賦予的直覺，不知不覺間成了你判斷危險與機會的第六感。",
+    "每當風向轉變，你總能比旁人早一步察覺到什麼——這份敏銳，如今已經是你生存的本能之一。",
+    "你偶爾會站在高處，任風吹過全身，感受那股力量提醒你，這座城市依然在呼吸。"
+  ],
+  cyber: [
+    "體內的機械義軀運轉得比誰都穩定，你偶爾會想起自己曾經是個純粹的人類，但如今這具身體，已經是撐過末日的證明。",
+    "齒輪與電流的低鳴已經成了你熟悉的背景音，你不再去區分哪部分是「原本的你」，哪部分不是。",
+    "這具改造過的身軀依然可靠地運作著，你偶爾會想，或許這就是這個時代生存下來該有的樣子。"
+  ],
+  mind: [
+    "意識深處那些破碎又清晰的回聲從未停止過，你漸漸學會與它們共存——或許這正是你比其他倖存者多撐下來的原因。",
+    "你偶爾能聽見別人聽不見的低語，一開始很不安，如今卻成了提前示警的能力。",
+    "那些湧入腦海的破碎思緒依然存在，但你已經學會分辨哪些該聽、哪些該放下。"
+  ]
+};
+const CITY_REVIEW_COMPANION = {
+  alone: [
+    "這一路你始終獨自走著。孤獨曾讓夜晚格外漫長，但也讓你學會了，一個人也能把日子過得踏實。",
+    "沒有人分擔的日子並不輕鬆，但你早已練就了照顧自己的本事，這也是一種收穫。",
+    "你偶爾會想像，如果當初做了不同的選擇，現在會不會不一樣——但轉念一想，這樣的自己，其實也不壞。"
+  ],
+  one: [
+    "身旁的夥伴依然在，這一路上你們吵過、扶持過，如今回頭看，能撐到這裡，少不了彼此的那份陪伴。",
+    "有人陪著走過這麼長的路，你早已分不清這份情感該叫依賴還是別的什麼，只知道少了對方會很不習慣。",
+    "你們一起經歷了太多，如今任何一句抱怨都帶著熟悉的默契，這大概就是「夥伴」該有的樣子。"
+  ],
+  many: [
+    "據點裡的人聲已經成了日常的一部分，你偶爾會想起最初孤身一人的日子，恍如隔世。",
+    "這群人各自帶著不同的過去聚在一起，磨合的過程並不總是順利，但你從沒後悔把他們留下來。",
+    "看著大家各司其職的樣子，你第一次覺得，自己守護的不只是一個據點，而是一群願意留下來的人。"
+  ]
+};
+const CITY_REVIEW_LIBERATION = [
+  [
+    "外頭那些淪陷的行政區，你始終沒能力氣去收復，只能守著這一方小小的據點，盡量把日子過下去。",
+    "收復失土對現在的你來說還太遙遠，眼下能守住自己的一方天地，已經耗盡了全力。",
+    "城市的傷口依然遍布各處，你只能盡量不去想那些還在淪陷中的地方。"
+  ],
+  [
+    "你陸續收復了一處淪陷的行政區，插上旗幟的那一刻，總算感覺到這座城市不再只是任人宰割的廢墟。",
+    "第一面旗幟插下之後，你偶爾會刻意繞去那附近看看，確認一切依然安好。",
+    "一處收復區不算多，但那份「事情正在變好」的感覺，足夠支撐你繼續走下去。"
+  ],
+  [
+    "兩處收復區逐漸連成一種微弱的網絡，你開始感覺到自己不再是孤軍奮戰。",
+    "越來越多倖存者聚集在收復區附近，你偶爾會想，這座城市或許真的還有救。",
+    "兩面旗幟迎風飄揚，你站在據點屋頂，能眺望的安全範圍也比以前更遠了。"
+  ],
+  [
+    "大半座城市的行政區都已經插上了你的旗幟，倖存者們口耳相傳著這個據點的名字——你已經不只是在「生存」，而是在「收復」。",
+    "只剩最後一塊淪陷區，你反而變得格外謹慎，不想在終點前功虧一簣。",
+    "這座城市正在你眼前，一點一點地變回原本的樣子，你偶爾會為此感到一陣鼻酸。"
+  ],
+  [
+    "母體核心也被你踏平了。收復四個行政區的旗幟在風中獵獵作響，這座城市，終於有一部分真正回到了人類手中。",
+    "你站在曾經最危險的行政區邊界，望著眼前重新亮起的燈火，一時說不出話來。",
+    "收復戰打完了，但你知道，重建才剛要開始——這反而讓你有種奇異的踏實感。"
+  ]
+];
+
+function getCityReviewText(state) {
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const faction = (state.skills && state.skills.faction) || "gaia";
+  const companionCount = Object.values(state.companions || {}).filter((v) => v !== "locked").length;
+  const companionLevel = companionCount === 0 ? "alone" : companionCount === 1 ? "one" : "many";
+  const liberatedCount = ["tier0_liberated", "tier1_liberated", "tier2_liberated", "tier3_liberated"]
+    .filter((f) => state.flags && state.flags[f]).length;
+  return [
+    pick(CITY_REVIEW_FACTION[faction] || CITY_REVIEW_FACTION.gaia),
+    pick(CITY_REVIEW_COMPANION[companionLevel]),
+    pick(CITY_REVIEW_LIBERATION[liberatedCount])
+  ].join("\n\n");
+}
+
+// day90後每20天觸發一次；回傳null表示尚未到觸發時機
+function getCityReviewEvent(state) {
+  if (state.day <= 90) return null;
+  const last = state.lastCityReviewDay || 90;
+  if (state.day - last < 20) return null;
+  return {
+    id: "city_review",
+    textFn: getCityReviewText
+  };
+}
+
 if (typeof module !== "undefined") {
-  module.exports = { PROLOGUE_SCENES, PROLOGUE_ENDINGS, PROLOGUE_SCENES_2, PROLOGUE_ENDINGS_2, PROLOGUE_CHAPTERS, MILESTONE_EVENTS, OVERDRAW_TEXTS };
+  module.exports = { PROLOGUE_SCENES, PROLOGUE_ENDINGS, PROLOGUE_SCENES_2, PROLOGUE_ENDINGS_2, PROLOGUE_CHAPTERS, MILESTONE_EVENTS, OVERDRAW_TEXTS, getCityReviewText, getCityReviewEvent };
 } else {
   window.PROLOGUE_SCENES = PROLOGUE_SCENES;
   window.PROLOGUE_ENDINGS = PROLOGUE_ENDINGS;
@@ -218,4 +317,6 @@ if (typeof module !== "undefined") {
   window.PROLOGUE_ENDINGS_2 = PROLOGUE_ENDINGS_2;
   window.PROLOGUE_CHAPTERS = PROLOGUE_CHAPTERS;
   window.MILESTONE_EVENTS = MILESTONE_EVENTS;
+  window.getCityReviewText = getCityReviewText;
+  window.getCityReviewEvent = getCityReviewEvent;
 }

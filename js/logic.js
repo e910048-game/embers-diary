@@ -204,6 +204,7 @@
       companions: { "雷恩": "locked", "艾莉": "locked", "阿卡": "locked" }, // 28.1
       prologueDone: false,
       milestonesShown: [],
+      lastCityReviewDay: null, // 草稿2：城市現況回顧上次觸發的day，day90後每20天觸發一次
       flags: {},
       log: [],
       awakening: null,
