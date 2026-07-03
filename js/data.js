@@ -39,6 +39,20 @@ const ITEMS = {
   bandage: { id: "bandage", name: "繃帶", type: "consumable", icon: "🩹", useEffect: { resources: { medicine: 1 } }, rarity: "common" },
   // 材料
   scrap: { id: "scrap", name: "廢料", type: "material", icon: "🔩", rarity: "common" },
+  mutant_berry_extract: { id: "mutant_berry_extract", name: "變異漿果精華", type: "material", icon: "🧪", rarity: "rare", desc: "從變異漿果榨取的濃縮精華，加工區原料（配方待加工區系統設計）" },
+
+  // 種子（農場區，2026-07-02，見規格文件/農場區_設計規格.md）
+  seed_potato: { id: "seed_potato", name: "馬鈴薯種子", type: "seed", icon: "🥔", rarity: "common", shopPrice: { embers: 8 }, cropId: "crop_potato" },
+  seed_greens: { id: "seed_greens", name: "野菜種子", type: "seed", icon: "🥬", rarity: "common", shopPrice: { embers: 6 }, cropId: "crop_greens" },
+  seed_mutant_berry: { id: "seed_mutant_berry", name: "變異漿果種子", type: "seed", icon: "🫐", rarity: "rare", cropId: "crop_mutant_berry" }, // 不上架商城，只從loc_farmstead掉落
+
+  // 動物（養殖區，2026-07-02，見規格文件/養殖區_設計規格.md）
+  chick_token: { id: "chick_token", name: "雛雞", type: "animal", icon: "🐣", rarity: "common", shopPrice: { embers: 10 }, speciesId: "species_chicken" },
+  lamb_token: { id: "lamb_token", name: "小羊羔", type: "animal", icon: "🐑", rarity: "common", shopPrice: { embers: 14 }, speciesId: "species_sheep" },
+  mutant_hen_token: { id: "mutant_hen_token", name: "變異母雞", type: "animal", icon: "🐔", rarity: "rare", speciesId: "species_mutant_hen" }, // 不上架商城，只從loc_farmstead掉落
+  egg: { id: "egg", name: "蛋", type: "material", icon: "🥚", rarity: "common", desc: "可食用，也是加工區原料" },
+  wool: { id: "wool", name: "羊毛", type: "material", icon: "🧶", rarity: "common", desc: "加工區原料" },
+  mutant_egg_essence: { id: "mutant_egg_essence", name: "變異蛋精華", type: "material", icon: "🧪", rarity: "rare", desc: "從變異母雞取得的濃縮精華，加工區原料（配方待加工區系統設計）" },
   // 25.3/25.4 商城道具
   energy_drink: { id: "energy_drink", name: "機能飲料", type: "consumable", icon: "🥤", useEffect: { stamina: 2 }, rarity: "uncommon", shopPrice: { embers: 8 }, desc: "立即恢復體力+2（不超過上限）" },
   serum_atk: { id: "serum_atk", name: "素質強化劑·力量", type: "consumable", icon: "💉", useEffect: { statBoost: { atk: 1 } }, useLimitPerGame: 3, rarity: "rare", shopPrice: { embers: 30 }, desc: "永久攻擊力+1" },
@@ -118,6 +132,30 @@ const ITEMS = {
   gaia_seed_pouch: { id: "gaia_seed_pouch", name: "活化種子囊", type: "accessory", icon: "🌾", rarity: "rare", factionTag: "gaia", desc: "隨身攜帶尚未發芽的活化種子，hpMax+8（傳說能在末日裡種出些什麼）", effects: { hpMaxBonus: 8 } },
   aero_barometer: { id: "aero_barometer", name: "大氣氣壓感測儀", type: "accessory", icon: "🌀", rarity: "uncommon", factionTag: "aero", desc: "提前預警氣壓異常，夜襲機率-3%", effects: { raidChanceDelta: -0.03 } },
   mind_lens: { id: "mind_lens", name: "折射透鏡單片眼鏡", type: "accessory", icon: "🕶️", rarity: "rare", factionTag: "mind", desc: "扭曲光線的透鏡片，sanMax+15", effects: { sanMaxBonus: 15 } }
+};
+
+// 農場區(2026-07-02，見規格文件/農場區_設計規格.md)：作物資料表，種子ITEMS的cropId對應到這裡。
+// phasesToMature/stages/yield皆為草案數值，待試玩調整
+const CROPS = {
+  crop_potato: { id: "crop_potato", name: "馬鈴薯", phasesToMature: 4, stages: 3,
+    yield: { resources: { food: 3 } } },
+  crop_greens: { id: "crop_greens", name: "野菜", phasesToMature: 2, stages: 2,
+    yield: { resources: { food: 2 } } },
+  crop_mutant_berry: { id: "crop_mutant_berry", name: "變異漿果", phasesToMature: 6, stages: 3,
+    yield: { resources: { food: 2 }, bonusItemId: "mutant_berry_extract" } },
+};
+
+// 養殖區(2026-07-02，見規格文件/養殖區_設計規格.md，2026-07-03改版V2星露谷式)：物種資料表，
+// 動物ITEMS的speciesId對應到這裡。跟作物不同，動物是持久資產、收成後不會消失，producePhases是
+// 「距離上次收成」的循環週期（雞快產出但要更頻繁回來收，羊慢產出但可以放著不管，取捨仍在）。
+// V2移除了satietyDecayPerPhase(會衰減的飽食度)，好感度(happiness)改成只漲不跌，只影響品質暴擊機率
+const SPECIES = {
+  species_chicken: { id: "species_chicken", name: "雞", producePhases: 2,
+    yield: { itemId: "egg", qty: 1 } },
+  species_sheep: { id: "species_sheep", name: "羊", producePhases: 4,
+    yield: { itemId: "wool", qty: 1 } },
+  species_mutant_hen: { id: "species_mutant_hen", name: "變異母雞", producePhases: 3,
+    yield: { itemId: "egg", qty: 1 }, bonusItemId: "mutant_egg_essence" },
 };
 
 // 27.1：前綴詞池(5)，rare以上裝備掉落時隨機附加並實例化為weaponInstances
@@ -571,7 +609,9 @@ const LOCATIONS = [
       { itemId: "food_can", qty: 2, weight: 35 },
       { itemId: "gaia_spore_dart", qty: 1, weight: 10 },
       { itemId: "scrap", qty: 2, weight: 30 },
-      { itemId: "water_bottle", qty: 1, weight: 25 }
+      { itemId: "water_bottle", qty: 1, weight: 25 },
+      { itemId: "seed_mutant_berry", qty: 1, weight: 8 }, // 農場區(2026-07-02)：稀有種子，比照gaia_spore_dart的權重量級
+      { itemId: "mutant_hen_token", qty: 1, weight: 8 } // 養殖區(2026-07-02)：稀有動物，同一權重量級
     ],
     encounterChance: 0.30,
     encounterEnemyIds: ["enemy_walker_weak", "enemy_walker_armed"]
@@ -1884,6 +1924,18 @@ const QUESTS = {
     condition: (state) => ["command", "greenhouse", "workshop", "radar"].every(k => (state.facilities[k] || 0) >= 1),
     reward: { scrap: 20 },
   },
+  side_collect_farm: {
+    id: "side_collect_farm", type: "side", category: "collect",
+    title: "開墾庭院", desc: "解鎖庭院的全部6塊農地。",
+    condition: (state) => !!(state.farm && Object.values(state.farm.plots).every(p => p.unlocked)),
+    reward: { scrap: 15 },
+  },
+  side_collect_pens: {
+    id: "side_collect_pens", type: "side", category: "collect",
+    title: "擴建獸欄", desc: "解鎖獸欄的全部4個欄位。",
+    condition: (state) => !!(state.pens && Object.values(state.pens.plots).every(p => p.unlocked)),
+    reward: { scrap: 15 },
+  },
 
   // ===== 支線·👥隊員 =====
   side_companion_full_squad: {
@@ -2002,6 +2054,18 @@ const ACHIEVEMENTS = {
     condition: (state) => countPlacedFurnitureInData(state) >= 4 && (state.unlockedFloors || []).length >= 3,
     reward: { scrap: 15 }, hidden: false,
   },
+  ach_farm_harvest: {
+    id: "ach_farm_harvest", category: "collect",
+    title: "第一次收成", desc: "在庭院收成一次作物。",
+    condition: (state) => (state.questFlags && state.questFlags.farmHarvestCount) >= 1,
+    reward: { embers: 10 }, hidden: false,
+  },
+  ach_pen_collect: {
+    id: "ach_pen_collect", category: "collect",
+    title: "第一份蛋（或毛）", desc: "在獸欄收成一次動物產出。",
+    condition: (state) => (state.questFlags && state.questFlags.penCollectCount) >= 1,
+    reward: { embers: 10 }, hidden: false,
+  },
   ach_wedding_ring: {
     id: "ach_wedding_ring", category: "collect",
     title: "至死不渝", desc: "取得並裝備婚戒。",
@@ -2040,7 +2104,7 @@ const ACHIEVEMENTS = {
 };
 
 if (typeof module !== "undefined") {
-  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS };
+  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
   window.ITEMS = ITEMS;
@@ -2053,4 +2117,6 @@ if (typeof module !== "undefined") {
   window.PREFIX_POOL = PREFIX_POOL;
   window.QUESTS = QUESTS;
   window.ACHIEVEMENTS = ACHIEVEMENTS;
+  window.CROPS = CROPS;
+  window.SPECIES = SPECIES;
 }

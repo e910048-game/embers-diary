@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS } = data;
+  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -192,6 +192,8 @@
       baseDefense: 0,
       baseRaidChance: 0.12,
       facilities: { command: 0, greenhouse: 0, workshop: 0, radar: 0 }, // 22.2
+      farm: { plots: FARM_PLOT_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, crop: null }; return acc; }, {}) }, // 農場區(2026-07-02)：僅第一塊地預設解鎖
+      pens: { plots: PEN_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, animal: null }; return acc; }, {}) }, // 養殖區(2026-07-02)：僅第一個欄位預設解鎖
       bonusDefense: 0, // 22.2：事件/道具給予的舊式baseDefense加成，疊加於facilities.command*2之上
       baseSlots: { wall: null, wall2: null }, // 27.2陳列格(僅牆面，固定2格——牆面是固定掛點，跟地板/桌面的free-form擺放邏輯不同，故保留)
       placedFurniture: [{ itemId: "furn_sleeping_bag", gx: 3, gy: 3 }], // v166：table/floor/rug改為free-form擺放，取代原本wall/table/floor/rug四類固定槓位制度；每項{itemId,gx,gy}，無容量上限(僅受9x6邏輯網格範圍限制)。#31：初始小屋僅一張睡袋+人物
@@ -1108,6 +1110,201 @@
 
   const FACILITY_KEYS = ["command", "greenhouse", "workshop", "radar"];
 
+  // ---------- 農場區（2026-07-02，見規格文件/農場區_設計規格.md，2026-07-03改版V2星露谷式） ----------
+  // 地塊固定佈局：gx/gy給game.js的等角走路系統(gridPos/animateWalk/findReachablePos)定位——
+  // V1曾改用平面網格，但那套系統跟小屋室內的「點擊走過去互動」共用一套函式，繫死在等角投影上，
+  // 無法直接套用平面座標。改回gx/gy，但吸取V1教訓：相鄰地塊只差1格(不再留空隙)，減少同一排的落差。
+  // id列表也是defaultState()/驗證時的唯一依據，避免兩處各存一份地塊清單
+  const FARM_PLOT_LAYOUT = [
+    { id: "plot_1", gx: 2, gy: 2 },
+    { id: "plot_2", gx: 3, gy: 2 },
+    { id: "plot_3", gx: 4, gy: 2 },
+    { id: "plot_4", gx: 2, gy: 4 },
+    { id: "plot_5", gx: 3, gy: 4 },
+    { id: "plot_6", gx: 4, gy: 4 },
+  ];
+
+  // 沒有真實時鐘離線結算機制，用「第幾個天/夜階段」當生長時間軸，回合制推進即天然達成離線也會生長
+  function currentPhaseIndex(state) {
+    return state.day * 2 + (state.phase === "night" ? 1 : 0);
+  }
+
+  // 每塊地各自獨立解鎖，花費隨已解鎖地塊數遞增。plot_1從一開始就解鎖，故用(n-1)讓「第1次要花錢解鎖的地塊」
+  // 成本從基礎值6起算，而不是被plot_1的既有解鎖狀態多墊一階（6,10,14,18,22 而非10,14,18,22,26）
+  function farmPlotUnlockCost(state) {
+    const n = Object.values(state.farm.plots).filter(p => p.unlocked).length;
+    return 6 + (n - 1) * 4;
+  }
+
+  function unlockFarmPlot(state, plotId) {
+    const plot = state.farm.plots[plotId];
+    if (!plot) return { ok: false, reason: "invalid_plot" };
+    if (plot.unlocked) return { ok: false, reason: "already_unlocked" };
+    const cost = farmPlotUnlockCost(state);
+    if ((state.resources.scrap || 0) < cost) return { ok: false, reason: "insufficient_scrap" };
+    state.resources.scrap -= cost;
+    plot.unlocked = true;
+    return { ok: true, cost };
+  }
+
+  function plantSeed(state, plotId, seedId) {
+    const plot = state.farm.plots[plotId];
+    if (!plot) return { ok: false, reason: "invalid_plot" };
+    if (!plot.unlocked) return { ok: false, reason: "locked" };
+    if (plot.crop) return { ok: false, reason: "occupied" };
+    const seedItem = ITEMS[seedId];
+    if (!seedItem || seedItem.type !== "seed") return { ok: false, reason: "invalid_seed" };
+    const slot = state.inventory.find(i => i.itemId === seedId && i.qty > 0);
+    if (!slot) return { ok: false, reason: "no_seed" };
+    slot.qty -= 1;
+    if (slot.qty <= 0) state.inventory = state.inventory.filter(i => i !== slot);
+    plot.crop = { seedId, plantedAtPhaseIndex: currentPhaseIndex(state), waterBonusPhases: 0, lastWateredDay: null };
+    return { ok: true };
+  }
+
+  // V2星露谷式(2026-07-03)：澆水是「加速」不是「門檻」——原始企劃明確要求「離線也會生長」，
+  // 不澆水一樣會長(只是比較慢)，跟Gemini提案「不澆水就停滯」的每日照顧制是互斥的兩種哲學，
+  // 使用者選了保留離線成長，所以澆水只疊加waterBonusPhases，不影響elapsed的基礎計算方式
+  function waterPlot(state, plotId) {
+    const plot = state.farm.plots[plotId];
+    if (!plot) return { ok: false, reason: "invalid_plot" };
+    if (!plot.crop) return { ok: false, reason: "empty" };
+    if (plot.crop.lastWateredDay === state.day) return { ok: false, reason: "already_today" };
+    plot.crop.waterBonusPhases = (plot.crop.waterBonusPhases || 0) + 1;
+    plot.crop.lastWateredDay = state.day;
+    return { ok: true };
+  }
+
+  // 惰性計算成長階段，不掛勾天/夜切換的tick——只要重新算一次跟種下時的phase差值即可，
+  // 不用擔心離線期間漏算，也不用每塊地各自存「剩餘回合數」欄位。waterBonusPhases是澆水疊加的
+  // 額外進度，即使完全不澆水，elapsed基礎值一樣會隨phase推進累積到成熟，只是比較慢
+  function getCropStage(state, plot) {
+    if (!plot.crop) return null;
+    const seedItem = ITEMS[plot.crop.seedId];
+    const crop = seedItem && CROPS[seedItem.cropId];
+    if (!crop) return null;
+    const elapsed = currentPhaseIndex(state) - plot.crop.plantedAtPhaseIndex + (plot.crop.waterBonusPhases || 0);
+    const stageIdx = Math.min(crop.stages - 1, Math.floor(elapsed / (crop.phasesToMature / crop.stages)));
+    return { stageIdx, mature: elapsed >= crop.phasesToMature, crop };
+  }
+
+  function harvestFarmPlot(state, plotId) {
+    const plot = state.farm.plots[plotId];
+    if (!plot || !plot.crop) return { ok: false, reason: "empty" };
+    const stage = getCropStage(state, plot);
+    if (!stage || !stage.mature) return { ok: false, reason: "not_mature" };
+    const crop = stage.crop;
+    if (crop.yield.resources) applyEffect(state, { resources: crop.yield.resources });
+    if (crop.yield.bonusItemId) {
+      const existing = state.inventory.find(i => i.itemId === crop.yield.bonusItemId);
+      if (existing) existing.qty += 1;
+      else state.inventory.push({ itemId: crop.yield.bonusItemId, qty: 1 });
+    }
+    plot.crop = null;
+    state.questFlags.farmHarvestCount = (state.questFlags.farmHarvestCount || 0) + 1;
+    return { ok: true, crop };
+  }
+
+  // ---------- 養殖區（2026-07-02，見規格文件/養殖區_設計規格.md，2026-07-03改版V2星露谷式） ----------
+  // 欄位固定佈局：gx/gy給等角走路系統定位，理由跟FARM_PLOT_LAYOUT一致
+  const PEN_LAYOUT = [
+    { id: "pen_1", gx: 2, gy: 2 },
+    { id: "pen_2", gx: 3, gy: 2 },
+    { id: "pen_3", gx: 2, gy: 3 },
+    { id: "pen_4", gx: 3, gy: 3 },
+  ];
+
+  const FEED_COST = 3; // 餵食消耗的food
+  // 使用者明確表示「小屋活動要輕鬆寫意，不要有壓力」——澆水/餵食刻意不消耗體力，不跟探索/採集/強化據點
+  // 那套會被體力預算卡住的生存經濟綁在一起，農場/獸欄是悠閒的附屬活動，不是要跟正事搶體力的行動
+
+  // V2版重寫：取消會衰減的飽食度與「歸零時白跑一輪零產出」的懲罰，全面改成只漲不跌的好感度(happiness)，
+  // 基本產出永遠保證拿到，好感度只決定「品質暴擊」機率——正向回饋取代生存壓力式懲罰
+  // 跟作物的getCropStage同一種「用phase差值惰性推算」手法，差別是這裡算「距離上次收成」而非「距離種下」——
+  // 動物是持久資產，收成後不會消失，可以無限循環產出下一輪
+  function getPenProductionState(state, pen) {
+    if (!pen.animal) return null;
+    const species = SPECIES[pen.animal.speciesId];
+    const elapsed = currentPhaseIndex(state) - pen.animal.lastCollectedAtPhaseIndex;
+    return { ready: elapsed >= species.producePhases, species };
+  }
+
+  function penUnlockCost(state) {
+    const n = Object.values(state.pens.plots).filter(p => p.unlocked).length;
+    return 10 + (n - 1) * 6;
+  }
+
+  function unlockPen(state, penId) {
+    const pen = state.pens.plots[penId];
+    if (!pen) return { ok: false, reason: "invalid_pen" };
+    if (pen.unlocked) return { ok: false, reason: "already_unlocked" };
+    const cost = penUnlockCost(state);
+    if ((state.resources.scrap || 0) < cost) return { ok: false, reason: "insufficient_scrap" };
+    state.resources.scrap -= cost;
+    pen.unlocked = true;
+    return { ok: true, cost };
+  }
+
+  function placeAnimal(state, penId, animalItemId) {
+    const pen = state.pens.plots[penId];
+    if (!pen) return { ok: false, reason: "invalid_pen" };
+    if (!pen.unlocked) return { ok: false, reason: "locked" };
+    if (pen.animal) return { ok: false, reason: "occupied" };
+    const animalItem = ITEMS[animalItemId];
+    if (!animalItem || animalItem.type !== "animal") return { ok: false, reason: "invalid_animal" };
+    const slot = state.inventory.find(i => i.itemId === animalItemId && i.qty > 0);
+    if (!slot) return { ok: false, reason: "no_animal" };
+    slot.qty -= 1;
+    if (slot.qty <= 0) state.inventory = state.inventory.filter(i => i !== slot);
+    pen.animal = { speciesId: animalItem.speciesId, happiness: 0, lastPetDay: null, lastFedDay: null, lastCollectedAtPhaseIndex: currentPhaseIndex(state) };
+    return { ok: true };
+  }
+
+  // 餵食消耗food（農場收成的食物在這裡有明確去處），不消耗體力，每日限一次，+15好感度——比撫摸更花成本，也回饋更多
+  function feedAnimal(state, penId) {
+    const pen = state.pens.plots[penId];
+    if (!pen || !pen.animal) return { ok: false, reason: "empty" };
+    if (pen.animal.lastFedDay === state.day) return { ok: false, reason: "already_today" };
+    if ((state.resources.food || 0) < FEED_COST) return { ok: false, reason: "insufficient_food" };
+    state.resources.food -= FEED_COST;
+    pen.animal.happiness = Math.min(100, pen.animal.happiness + 15);
+    pen.animal.lastFedDay = state.day;
+    return { ok: true };
+  }
+
+  // 撫摸免費、每日限一次+10好感度，比照companionBubbleLove的「每日一次小互動」手法
+  function petAnimal(state, penId) {
+    const pen = state.pens.plots[penId];
+    if (!pen || !pen.animal) return { ok: false, reason: "empty" };
+    if (pen.animal.lastPetDay === state.day) return { ok: false, reason: "already_today" };
+    pen.animal.happiness = Math.min(100, pen.animal.happiness + 10);
+    pen.animal.lastPetDay = state.day;
+    return { ok: true };
+  }
+
+  function collectPen(state, penId, rng = Math.random) {
+    const pen = state.pens.plots[penId];
+    if (!pen || !pen.animal) return { ok: false, reason: "empty" };
+    const prod = getPenProductionState(state, pen);
+    if (!prod.ready) return { ok: false, reason: "not_ready" };
+    const species = prod.species;
+    const happiness = pen.animal.happiness;
+    let qty = species.yield.qty; // 基本產出永遠保證拿到，不再有「白跑一輪」的懲罰
+    let crit = false;
+    if (happiness >= 60 && rng() < happiness / 100) { qty += species.yield.qty; crit = true; } // 品質暴擊：雙倍產出
+    const existing = state.inventory.find(i => i.itemId === species.yield.itemId);
+    if (existing) existing.qty += qty;
+    else state.inventory.push({ itemId: species.yield.itemId, qty });
+    if (species.bonusItemId) {
+      const existingBonus = state.inventory.find(i => i.itemId === species.bonusItemId);
+      if (existingBonus) existingBonus.qty += 1;
+      else state.inventory.push({ itemId: species.bonusItemId, qty: 1 });
+    }
+    pen.animal.lastCollectedAtPhaseIndex = currentPhaseIndex(state); // 動物不清空，只重設收成計時，可無限循環
+    state.questFlags.penCollectCount = (state.questFlags.penCollectCount || 0) + 1;
+    return { ok: true, qty, crit, species };
+  }
+
   // 22.2：休息時SAN回復量；生態溫室Lv3時回復效率+50%
   function restSanRegen(state) {
     let regen = 10;
@@ -1606,6 +1803,8 @@
     gainExp, LEVEL_UP_HP_BONUS, LEVEL_UP_ATK_BONUS, applyPrologueEnding,
     COMPANION_TASKS, recruitCompanion, refreshCompanionUnlocks, dispatchCompanion, companionAssigned,
     FACILITY_KEYS, syncBaseDefense, reinforceFacility, restSanRegen,
+    FARM_PLOT_LAYOUT, CROPS, currentPhaseIndex, farmPlotUnlockCost, unlockFarmPlot, plantSeed, waterPlot, getCropStage, harvestFarmPlot,
+    PEN_LAYOUT, SPECIES, FEED_COST, getPenProductionState, penUnlockCost, unlockPen, placeAnimal, feedAnimal, petAnimal, collectPen,
     placeFurniture, getFurnitureDefBonus, getFurnitureRaidChanceDelta, loungeInteract, sumFurnitureEffect,
     hasFurniturePlaced, allPlacedFurnitureIds, findEmptyGridCell,
     getComfortLevel, getComfortLabel, radioInteract, eggNestInteract, furnitureEasterEggInteract,

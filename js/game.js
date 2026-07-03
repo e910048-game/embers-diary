@@ -46,7 +46,7 @@ function sysLogHtml() {
 function saveGame() {
   localStorage.setItem(SAVE_KEY, JSON.stringify(state));
 }
-const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress"];
+const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress", "farm", "pens"];
 // v167相容：v166以前的存檔把table/floor/rug類家具放在baseSlots的這些鍵裡，free-form改版後這些鍵已不再被
 // 任何程式碼讀取——若不搬移，舊存檔讀進來的家具會「卡在baseSlots裡但形同消失」（不在room顯示、不算舒適度、
 // 也回不去背包）。讀檔時偵測到就搬進placedFurniture，搬完即從baseSlots刪除，只需做這一次
@@ -72,6 +72,16 @@ function loadGame() {
       const cell = findEmptyGridCell(merged);
       merged.placedFurniture.push({ itemId, gx: cell.gx, gy: cell.gy });
     });
+  }
+  // 農場區(2026-07-02)：上面NESTED_STATE_FIELDS的淺層合併只做到state.farm這一層，若之後FARM_PLOT_LAYOUT
+  // 尾端新增地塊，舊存檔的saved.farm.plots會整包覆蓋掉defaults.farm.plots，新地塊的預設值就消失——這裡額外
+  // 對plots做一次合併，讓舊存檔讀進來時自動補上新地塊的預設「未解鎖」狀態
+  if (saved.farm && saved.farm.plots) {
+    merged.farm.plots = { ...defaults.farm.plots, ...saved.farm.plots };
+  }
+  // 養殖區(2026-07-02)：同一種淺層合併的坑，比照farm的處理方式
+  if (saved.pens && saved.pens.plots) {
+    merged.pens.plots = { ...defaults.pens.plots, ...saved.pens.plots };
   }
   return merged;
 }
@@ -664,6 +674,8 @@ const windowCls = `homeWindow ${state.phase === "night" ? "is-night" : "is-day"}
     <button class="homePill homeTabBtn" id="homeTabSkill">⭐ 技能</button>
     <button class="homePill homeTabBtn${state.homePlacementMode ? " active" : ""}" id="homeTabPlacement">${state.homePlacementMode ? "結束佈置" : "🛋️ 佈置家具"}</button>
     <button class="homePill" id="homeComfortPill" title="居住舒適度">🛋️ 舒適 ${getComfortLevel(state)}（${getComfortLabel(getComfortLevel(state))}）</button>
+    <button class="homePill homeTabBtn" id="homeTabYard">🌾 庭院</button>
+    <button class="homePill homeTabBtn" id="homeTabPen">🐑 獸欄</button>
   </div>`;
 const avatarRow = `<div class="homeAvatarRow">
     <div class="homeAvatar">
@@ -688,12 +700,321 @@ function bindHomeTabPills() {
     homeTabSkill: () => togglePanel("skill", showSkillPanel),
     homeTabPeepsInvite: showCompanionPanel,
     homeComfortPill: () => togglePanel("comfort", showComfortDetail),
-    homeQuestTargetPill: () => togglePanel("quest", () => showQuestPanel())
+    homeQuestTargetPill: () => togglePanel("quest", () => showQuestPanel()),
+    homeTabYard: renderYardScene,
+    homeTabPen: renderPenScene
   };
   for (const id in map) {
     const el = document.getElementById(id);
     if (el) el.onclick = map[id];
   }
+}
+
+// ---------- 農場區/獸欄 戶外場景（V2星露谷式，2026-07-03，見規格文件/農場區_設計規格.md/養殖區_設計規格.md） ----------
+// 重用小屋室內同一套「點擊→走路→抵達」管線(findReachablePos/animateWalk/snapToGridFromClientXY)，
+// 故沿用等角gx/gy網格與共用的GRID_COL_MAX/GRID_FLOOR_ROW_MAX邊界，不另建平面座標系統
+let outdoorScene = null, outdoorPlayerPos = null, outdoorWalkLock = false;
+function outdoorSpawnPos(scene) {
+  return scene === "pen" ? gridPos(0, 2) : gridPos(0, 3);
+}
+function outdoorPlayerCellHtml(scene) {
+  const pos = outdoorPlayerPos || outdoorSpawnPos(scene);
+  const pg = posToGrid(pos);
+  return `<div class="roomCell player" id="outdoorPlayerCell" style="left:${pos.left};top:${pos.top};z-index:${cellZ(pg.gx + pg.gy, 4)}"><div class="icon">${characterSpriteHtml("character", state.appearance || "char_1", state.homeFacing || "front", "玩家")}</div><div class="homeLabel">${state.playerName || "旅人"}</div></div>`;
+}
+// 點擊地塊/欄位不再直接跳選單，先讓玩家角色走過去，抵達後才開互動面板（呼應「星露谷式」要有實際走位互動）；
+// 地塊本身視為不可站立的障礙物，findReachablePos找不到剛好落在目標格時，會自動退而求其次走到最近的可站格
+function bindOutdoorWalk(canvas, scene, layout, onArrive) {
+  canvas.onclick = (e) => {
+    if (outdoorWalkLock) return;
+    const el = document.getElementById("outdoorPlayerCell");
+    if (!el) return;
+    const snapped = snapToGridFromClientXY(canvas, e.clientX, e.clientY);
+    const clickedGrid = posToGrid(snapped);
+    const targetDef = layout.find(p => p.gx === clickedGrid.gx && p.gy === clickedGrid.gy);
+    const occupied = new Set(layout.map(p => tileKey(p.gx, p.gy)));
+    const start = posToGrid(outdoorPlayerPos || outdoorSpawnPos(scene));
+    const dest = findReachablePos(start, clickedGrid, occupied);
+    if (!dest) {
+      if (targetDef && onArrive) onArrive(targetDef.id); // 已經站在旁邊，直接觸發互動
+      return;
+    }
+    outdoorWalkLock = true;
+    let prevG = start;
+    animateWalk(el, dest.path, { zRole: 4, fn: (p, gx, gy, isLast) => {
+      const facing = computeFacing(gx - prevG.gx, gy - prevG.gy);
+      if (facing) { state.homeFacing = facing; applyFacingToCell(el, "character", state.appearance || "char_1", facing); }
+      prevG = { gx, gy };
+      outdoorPlayerPos = p;
+      if (isLast) {
+        outdoorWalkLock = false;
+        if (targetDef && onArrive) onArrive(targetDef.id);
+      }
+    } });
+  };
+}
+// 動作/收成成功時的粒子回饋：向上漂浮並淡出，比冷冰冰的文字結算更有回饋感。呼叫時機是renderXxxScene()之後，
+// 確保目標格子的DOM已經重新畫出來
+function spawnFloatParticle(cellId, emoji) {
+  const cell = document.getElementById(cellId);
+  if (!cell) return;
+  const p = document.createElement("div");
+  p.className = "floatParticle";
+  p.textContent = emoji;
+  cell.appendChild(p);
+  setTimeout(() => p.remove(), 900);
+}
+
+// ---------- 農場區/庭院場景 ----------
+const FARM_STAGE_ICONS = ["🌱", "🌿", "🌾"];
+function yardPlotCellHtml(state, plotDef) {
+  const plot = state.farm.plots[plotDef.id];
+  const pos = gridPos(plotDef.gx, plotDef.gy);
+  const z = cellZ(plotDef.gx + plotDef.gy);
+  if (!plot.unlocked) {
+    const cost = farmPlotUnlockCost(state);
+    return `<div class="roomCell farmPlot locked alwaysLabel" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="解鎖地塊：${cost}📦"><div class="icon">🔒</div><div class="homeLabel">解鎖 ${cost}📦</div></div>`;
+  }
+  if (!plot.crop) {
+    return `<div class="roomCell farmPlot empty alwaysLabel" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊種植"><div class="icon">🟫</div><div class="homeLabel">空地（點種植）</div></div>`;
+  }
+  const stage = getCropStage(state, plot);
+  const icon = stage.mature ? "✅" : (FARM_STAGE_ICONS[stage.stageIdx] || "🌱");
+  const label = stage.mature ? `${stage.crop.name}（可收成）` : `${stage.crop.name} ${stage.stageIdx + 1}/${stage.crop.stages}`;
+  const stateCls = stage.mature ? " mature" : " growing";
+  return `<div class="roomCell farmPlot${stateCls} alwaysLabel" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}"><div class="icon">${icon}</div><div class="homeLabel">${label}</div></div>`;
+}
+function yardSceneHtml(state) {
+  if (outdoorScene !== "yard") { outdoorScene = "yard"; outdoorPlayerPos = null; }
+  const items = FARM_PLOT_LAYOUT.map(p => yardPlotCellHtml(state, p));
+  items.push(outdoorPlayerCellHtml("yard"));
+  // 庭院是室外土地，不沿用state.roomFloor(小屋室內地板樣式)，改用專屬的ground-farmland紋理
+  return `<div class="homeScene"><div class="homePillRow homeTabPills"><button class="homePill" id="yardBackBtn">← 返回小屋</button></div><div class="roomCanvas ground-farmland" id="yardCanvas">${items.join("")}</div></div>`;
+}
+function renderYardScene() {
+  renderStatusBar();
+  renderText(yardSceneHtml(state));
+  const backBtn = document.getElementById("yardBackBtn");
+  if (backBtn) backBtn.onclick = renderMain;
+  const canvas = document.getElementById("yardCanvas");
+  if (canvas) bindOutdoorWalk(canvas, "yard", FARM_PLOT_LAYOUT, showFarmPlotPanel);
+}
+function showPlantSeedPanel(plotId) {
+  renderStatusBar();
+  const seedEntries = (state.inventory || []).filter(i => { const item = ITEMS[i.itemId]; return item && item.type === "seed" && i.qty > 0; });
+  renderText(`<div class="subtitle">選擇要種植的種子</div>${seedEntries.length ? "" : `<div class="hint">背包裡沒有種子，先去商城購買或探索取得。</div>`}`);
+  const opts = seedEntries.map(i => {
+    const item = ITEMS[i.itemId];
+    return {
+      label: `${item.icon} ${item.name}`,
+      hint: `x${i.qty}`,
+      onClick: () => {
+        const result = plantSeed(state, plotId, i.itemId);
+        if (result.ok) saveGame();
+        renderYardScene();
+      }
+    };
+  });
+  opts.push({ label: "返回", variant: "ghost", onClick: renderYardScene });
+  renderOptions(opts);
+}
+// 玩家走到地塊旁後才會呼叫這個面板；依地塊狀態分派到對應互動（解鎖/種植/澆水/收成）
+function showFarmPlotPanel(plotId) {
+  renderStatusBar();
+  const plot = state.farm.plots[plotId];
+  if (!plot.unlocked) {
+    const cost = farmPlotUnlockCost(state);
+    renderText(`<div class="subtitle">解鎖地塊</div><div class="hint">花費 ${cost}📦 開墾這塊地。</div>`);
+    renderOptions([
+      { label: `解鎖（${cost}📦）`, disabled: (state.resources.scrap || 0) < cost, onClick: () => {
+        const result = unlockFarmPlot(state, plotId);
+        if (result.ok) { runQuestCheck(); saveGame(); renderStatusBar(); }
+        renderYardScene();
+      } },
+      { label: "返回", variant: "ghost", onClick: renderYardScene }
+    ]);
+    return;
+  }
+  if (!plot.crop) { showPlantSeedPanel(plotId); return; }
+  const stage = getCropStage(state, plot);
+  if (stage.mature) {
+    renderText(`<div class="subtitle">${stage.crop.name}</div><div class="hint">可以收成了！</div>`);
+    renderOptions([
+      { label: "✅ 收成", onClick: () => {
+        const result = harvestFarmPlot(state, plotId);
+        if (result.ok) runQuestCheck();
+        saveGame(); renderStatusBar();
+        renderYardScene();
+        if (result.ok) spawnFloatParticle(`farmPlot_${plotId}`, "✨");
+      } },
+      { label: "返回", variant: "ghost", onClick: renderYardScene }
+    ]);
+    return;
+  }
+  // V2星露谷式：澆水是「加速」不是「門檻」，不澆水一樣會慢慢長大（離線也會生長，見規格文件）
+  const wateredToday = plot.crop.lastWateredDay === state.day;
+  renderText(`<div class="subtitle">${stage.crop.name}</div><div class="hint">成長進度 ${stage.stageIdx + 1}/${stage.crop.stages}${wateredToday ? "\n今天已經澆過水了" : "\n離線也會慢慢長大，澆水可以加速"}</div>`);
+  renderOptions([
+    { label: wateredToday ? "💧 澆水（今天已澆過）" : "💧 澆水（加速生長）",
+      disabled: wateredToday,
+      onClick: () => {
+        const result = waterPlot(state, plotId);
+        if (result.ok) saveGame();
+        renderStatusBar();
+        renderYardScene();
+        if (result.ok) spawnFloatParticle(`farmPlot_${plotId}`, "💧");
+      } },
+    { label: "返回", variant: "ghost", onClick: renderYardScene }
+  ]);
+}
+
+// ---------- 養殖區/獸欄場景 ----------
+const PEN_ANIMAL_ICONS = { species_chicken: "🐔", species_sheep: "🐑", species_mutant_hen: "🐔" };
+let penWanderTimers = {};
+// 動物是持久存在的資產，讓牠在欄位周圍隨機微幅移動（每次間隔跟位移量都隨機，不是固定循環的動畫），
+// 回應「動物要能隨意動、不要寫死」的反饋。移動只改.icon的transform，不動外層.roomCell的left/top，
+// 所以不會影響bindOutdoorWalk依據固定gx/gy判斷的互動點擊範圍
+function startPenWander(penId) {
+  if (penWanderTimers[penId]) clearInterval(penWanderTimers[penId]);
+  penWanderTimers[penId] = setInterval(() => {
+    const pen = state.pens.plots[penId];
+    const cell = document.getElementById(`pen_${penId}`);
+    if (!pen || !pen.animal || !cell || !document.body.contains(cell)) {
+      clearInterval(penWanderTimers[penId]);
+      delete penWanderTimers[penId];
+      return;
+    }
+    const icon = cell.querySelector(".icon");
+    if (!icon) return;
+    const dx = (Math.random() * 24 - 12).toFixed(1);
+    const dy = (Math.random() * 14 - 7).toFixed(1);
+    icon.style.transform = `translate(${dx}px, ${dy}px)`;
+  }, 1800 + Math.random() * 1600);
+}
+function penCellHtml(state, penDef) {
+  const pen = state.pens.plots[penDef.id];
+  const pos = gridPos(penDef.gx, penDef.gy);
+  const z = cellZ(penDef.gx + penDef.gy);
+  if (!pen.unlocked) {
+    const cost = penUnlockCost(state);
+    return `<div class="roomCell penCell locked alwaysLabel" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="解鎖欄位：${cost}📦"><div class="icon">🔒</div><div class="homeLabel">解鎖 ${cost}📦</div></div>`;
+  }
+  if (!pen.animal) {
+    return `<div class="roomCell penCell empty alwaysLabel" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊放入動物"><div class="icon">🐾</div><div class="homeLabel">空欄（點放入動物）</div></div>`;
+  }
+  const prod = getPenProductionState(state, pen);
+  const icon = PEN_ANIMAL_ICONS[pen.animal.speciesId] || "🐾";
+  const label = `${prod.species.name} 好感${pen.animal.happiness}${prod.ready ? "（可收成）" : ""}`;
+  const stateCls = prod.ready ? " ready" : "";
+  const fedToday = pen.animal.lastFedDay === state.day;
+  // 食槽視覺：今天餵過=滿，還沒餵=空——不再是會衰減的飽食度，純粹當天有沒有餵的提示
+  const troughCls = "penTrough" + (fedToday ? " fed" : "");
+  return `<div class="roomCell penCell occupied alwaysLabel${stateCls}" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}"><div class="${troughCls}"></div><div class="icon">${icon}</div><div class="homeLabel">${label}</div></div>`;
+}
+function penSceneHtml(state) {
+  if (outdoorScene !== "pen") { outdoorScene = "pen"; outdoorPlayerPos = null; }
+  const items = PEN_LAYOUT.map(p => penCellHtml(state, p));
+  items.push(outdoorPlayerCellHtml("pen"));
+  // 獸欄是室外圍欄，不沿用state.roomFloor，改用專屬的ground-pen紋理
+  return `<div class="homeScene"><div class="homePillRow homeTabPills"><button class="homePill" id="penBackBtn">← 返回小屋</button></div><div class="roomCanvas ground-pen" id="penCanvas">${items.join("")}</div></div>`;
+}
+function renderPenScene() {
+  renderStatusBar();
+  renderText(penSceneHtml(state));
+  const backBtn = document.getElementById("penBackBtn");
+  if (backBtn) backBtn.onclick = renderMain;
+  const canvas = document.getElementById("penCanvas");
+  if (canvas) bindOutdoorWalk(canvas, "pen", PEN_LAYOUT, showPenPlotPanel);
+  PEN_LAYOUT.forEach(p => {
+    const pen = state.pens.plots[p.id];
+    if (pen.unlocked && pen.animal) startPenWander(p.id);
+  });
+}
+function showPlaceAnimalPanel(penId) {
+  renderStatusBar();
+  const animalEntries = (state.inventory || []).filter(i => { const item = ITEMS[i.itemId]; return item && item.type === "animal" && i.qty > 0; });
+  renderText(`<div class="subtitle">選擇要放入的動物</div>${animalEntries.length ? "" : `<div class="hint">背包裡沒有動物，先去商城購買或探索取得。</div>`}`);
+  const opts = animalEntries.map(i => {
+    const item = ITEMS[i.itemId];
+    return {
+      label: `${item.icon} ${item.name}`,
+      hint: `x${i.qty}`,
+      onClick: () => {
+        const result = placeAnimal(state, penId, i.itemId);
+        if (result.ok) saveGame();
+        renderPenScene();
+      }
+    };
+  });
+  opts.push({ label: "返回", variant: "ghost", onClick: renderPenScene });
+  renderOptions(opts);
+}
+// 玩家走到欄位旁後才會呼叫這個面板；依欄位狀態分派到對應互動（解鎖/放入動物/餵食·互動·收成）
+function showPenPlotPanel(penId) {
+  const pen = state.pens.plots[penId];
+  if (!pen.unlocked) {
+    renderStatusBar();
+    const cost = penUnlockCost(state);
+    renderText(`<div class="subtitle">解鎖欄位</div><div class="hint">花費 ${cost}📦 建造這個欄位。</div>`);
+    renderOptions([
+      { label: `解鎖（${cost}📦）`, disabled: (state.resources.scrap || 0) < cost, onClick: () => {
+        const result = unlockPen(state, penId);
+        if (result.ok) { runQuestCheck(); saveGame(); renderStatusBar(); }
+        renderPenScene();
+      } },
+      { label: "返回", variant: "ghost", onClick: renderPenScene }
+    ]);
+    return;
+  }
+  if (!pen.animal) { showPlaceAnimalPanel(penId); return; }
+  showPenActionsPanel(penId);
+}
+// 養殖欄位同時有餵食/互動/收成三種操作，跟農場地塊「一格一狀態直接點」不同，改成點格子跳這個小面板選操作
+function showPenActionsPanel(penId) {
+  renderStatusBar();
+  const pen = state.pens.plots[penId];
+  if (!pen.animal) { renderPenScene(); return; }
+  const prod = getPenProductionState(state, pen);
+  const fedTodayDone = pen.animal.lastFedDay === state.day;
+  const petTodayDone = pen.animal.lastPetDay === state.day;
+  renderText(`<div class="subtitle">${prod.species.name}</div><div class="hint">好感度 ${pen.animal.happiness}/100（≥60時收成有機率雙倍產出）${prod.ready ? "\n可以收成了！" : `\n還差${prod.species.producePhases - (currentPhaseIndex(state) - pen.animal.lastCollectedAtPhaseIndex)}個階段`}</div>`);
+  const opts = [];
+  opts.push({
+    label: fedTodayDone ? `🍖 餵食（今天已餵過）` : `🍖 餵食（消耗${FEED_COST}📦）`,
+    disabled: fedTodayDone || (state.resources.food || 0) < FEED_COST,
+    onClick: () => {
+      const result = feedAnimal(state, penId);
+      if (result.ok) saveGame();
+      renderStatusBar();
+      renderPenScene();
+      if (result.ok) spawnFloatParticle(`pen_${penId}`, "🍖");
+    }
+  });
+  opts.push({
+    label: petTodayDone ? "🤍 互動（今天已互動過）" : "❤️ 互動",
+    disabled: petTodayDone,
+    onClick: () => {
+      const result = petAnimal(state, penId);
+      if (result.ok) saveGame();
+      renderPenScene();
+      if (result.ok) spawnFloatParticle(`pen_${penId}`, "💖");
+    }
+  });
+  if (prod.ready) {
+    opts.push({
+      label: "✅ 收成",
+      onClick: () => {
+        const result = collectPen(state, penId);
+        if (result.ok) runQuestCheck();
+        saveGame();
+        renderStatusBar();
+        renderPenScene();
+        if (result.ok) spawnFloatParticle(`pen_${penId}`, result.crit ? "🌟" : "✨");
+      }
+    });
+  }
+  opts.push({ label: "返回", variant: "ghost", onClick: renderPenScene });
+  renderOptions(opts);
 }
 
 // v129：拖曳家具放開後磁吸對齊+鎖定按鈕，避免誤觸
@@ -930,7 +1251,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 189; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 196; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];

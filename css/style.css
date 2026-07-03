@@ -457,6 +457,78 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 .roomCell.doorCell.doorGather .doorSeam::after { background: #f0b429; box-shadow: 0 0 4px 1px rgba(240,180,41,0.7); }
 .roomCell.doorCell.armed { outline: 2px solid rgba(111,200,111,0.8); border-radius: 6px; }
 .roomCell.doorCell.armed .homeLabel::after { content: " 再點一次"; color: #7fd47f; font-size: 10px; }
+/* 農場區(見規格文件/農場區_設計規格.md)：地塊是庭院地板上的固定結構，比照門/窗教訓用純CSS畫
+   （不套等角PNG），emoji作物圖示先佔位——之後要補美術，只需把.icon裡的emoji換成isoIconHtml，容器不用動 */
+.roomCell.farmPlot .icon {
+  border-radius: 4px;
+  border: 2px solid rgba(0,0,0,0.35);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+  font-size: 20px;
+}
+.roomCell.farmPlot.locked .icon { background: #2b2f36; opacity: 0.6; }
+.roomCell.farmPlot.empty .icon { background: linear-gradient(to bottom, #5a4632, #3f3122); }
+.roomCell.farmPlot.growing .icon { background: linear-gradient(to bottom, #3d4a30, #2a3320); }
+.roomCell.farmPlot.mature .icon { background: linear-gradient(to bottom, #3d4a30, #2a3320); filter: drop-shadow(0 0 5px rgba(150,220,120,0.75)); }
+/* 養殖區(見規格文件/養殖區_設計規格.md)：欄位同樣是庭院/獸欄地板上的固定結構，比照farmPlot的純CSS手法 */
+.roomCell.penCell .icon {
+  border-radius: 4px;
+  border: 2px solid rgba(0,0,0,0.35);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+  font-size: 20px;
+  transition: transform 1.2s ease-in-out; /* 配合game.js的startPenWander()，讓JS隨機設定的transform位移平滑過渡 */
+}
+.roomCell.penCell.empty .icon { background: linear-gradient(to bottom, #4a4034, #332c24); }
+.roomCell.penCell.locked .icon { background: #2b2f36; opacity: 0.6; }
+.roomCell.penCell.occupied .icon { background: linear-gradient(to bottom, #3d4438, #2a3026); }
+.roomCell.penCell.occupied.ready .icon { filter: drop-shadow(0 0 5px rgba(150,220,120,0.75)); }
+/* V2星露谷式(2026-07-03)：地塊/欄位的狀態(解鎖成本/生長進度/好感度)是玩家需要一眼看到的資訊，
+   不比照家具名稱標籤走hover-only(.roomCell .homeLabel預設opacity:0)，一律常駐顯示 */
+.roomCell.alwaysLabel .homeLabel { opacity: 1; }
+/* 走路/撫摸/澆水等動作成功時向上漂浮淡出的粒子回饋，比純文字結算更有感（跟.sleepZzz同一種手法） */
+.floatParticle {
+  position: absolute; left: 50%; top: 0; transform: translateX(-50%);
+  font-size: 16px; pointer-events: none; z-index: 20;
+  animation: floatParticleUp 0.9s ease-out forwards;
+}
+@keyframes floatParticleUp {
+  0% { opacity: 0; transform: translate(-50%, 0) scale(0.7); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -28px) scale(1.15); }
+}
+/* 庭院/獸欄是室外場景，不套用小屋室內的地板樣式(state.roomFloor是玩家自己裝潢小屋的選擇)，
+   改用固定的專屬地面紋理，一眼就能分辨「這裡不是室內」——回應使用者反饋「農場擺放很奇怪」 */
+.roomCanvas.ground-farmland {
+  background-color: #4a3826;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.14) 0 2px, transparent 2px 22px),
+    linear-gradient(to bottom, #5c4630, #3d2e1e);
+}
+.roomCanvas.ground-pen {
+  background-color: #4a5432;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.12) 0 2px, transparent 2px 22px),
+    linear-gradient(to bottom, #566237, #3a4326);
+}
+/* 飼料槽：V2星露谷式已取消會衰減的飽食度，改成「今天有沒有餵過」的當日提示，滿=今天餵過，空=還沒 */
+.penTrough {
+  position: absolute; left: 50%; bottom: 1px; transform: translateX(-50%);
+  width: 26px; height: 7px; border-radius: 2px;
+  background: #2c231a; border: 1px solid rgba(0,0,0,0.45); z-index: 1;
+}
+.penTrough.fed::after {
+  content: ""; position: absolute; left: 2px; right: 2px; top: 2px; bottom: 1px;
+  border-radius: 1px; background: #d4a94a;
+}
+/* 動物是持久存在的資產，疊一個原地輕微搖擺的動畫，回應「動物不會動」的反饋——欄位空間小，
+   原地小動作比讓動物在格子間漫遊(那是給同伴/角色用的重量級系統)更符合「關在欄裡」的情境 */
+@keyframes idleSway {
+  0%, 100% { transform: rotate(-6deg); }
+  50% { transform: rotate(6deg); }
+}
+.roomCell.penCell .icon.idleSway {
+  animation: idleSway 2.2s ease-in-out infinite;
+  transform-origin: 50% 85%;
+}
 /* v122：點同伴彈出氣泡選單(7.6-C)——取代全螢幕互動流程 */
 .companionBubble {
   position: absolute; transform: translate(-50%, -100%);
