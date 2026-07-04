@@ -48,7 +48,7 @@ function sysLogHtml() {
 function saveGame() {
   localStorage.setItem(SAVE_KEY, JSON.stringify(state));
 }
-const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress", "farm", "pens"];
+const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "attributes", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress", "farm", "pens"];
 // v167相容：v166以前的存檔把table/floor/rug類家具放在baseSlots的這些鍵裡，free-form改版後這些鍵已不再被
 // 任何程式碼讀取——若不搬移，舊存檔讀進來的家具會「卡在baseSlots裡但形同消失」（不在room顯示、不算舒適度、
 // 也回不去背包）。讀檔時偵測到就搬進placedFurniture，搬完即從baseSlots刪除，只需做這一次
@@ -235,6 +235,8 @@ function overdrawFlavor(streak) {
 
 // ---------- 通用：效果格式化文字（食物/飲水/廢料等資源變化顯示）----------
 const RESOURCE_ICONS = { food: "🍎", water: "💧", scrap: "📦", medicine: "💊" };
+// TRPG擲骰系統：三維屬性顯示標籤
+const ATTRIBUTE_LABELS = { strength: "力量", agility: "敏捷", perception: "感知" };
 function formatEffect(effect) {
   if (!effect) return "";
   const parts = [];
@@ -1151,7 +1153,7 @@ function showFloorPicker() {
     return `
     <div class="charCard floorCard${id === (state.roomFloor || "wood") ? " selected" : ""}${locked ? " locked" : ""}" data-id="${id}" ${locked ? 'data-locked="1"' : ""}>
       <div class="floorSwatch ${f.cls}"></div>
-      <div class="homeLabel">${locked ? "??" : ""}${f.name}</div>
+      <div class="homeLabel">${locked ? "🔒" : ""}${f.name}</div>
     </div>`;
   }).join("");
   renderText(`<div class="subtitle">選擇地板樣式（未解鎖的樣式需達成條件）</div><div class="charGrid">${cardsHtml}</div>`);
@@ -1304,7 +1306,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 213; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 214; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -1935,7 +1937,9 @@ function showEvent(evt, onDone, staminaResult) {
       for (const k in opt.requiresResource) {
         if ((state.resources[k] || 0) < opt.requiresResource[k]) lacking = true;
       }
-      hint = lacking ? `??蝻箔?${RESOURCE_ICONS[Object.keys(opt.requiresResource)[0]] || ""}?抵?` : formatEffectInline(opt.effect);
+      hint = lacking ? `❌ 缺少${RESOURCE_ICONS[Object.keys(opt.requiresResource)[0]] || ""}` : formatEffectInline(opt.effect);
+    } else if (opt.skillCheck) {
+      hint = `🎲 ${ATTRIBUTE_LABELS[opt.skillCheck.attribute] || opt.skillCheck.attribute}檢定 DC${opt.skillCheck.dc}`;
     } else if (!opt.battle && !opt.roll) {
       hint = formatEffectInline(opt.effect);
     }
@@ -1967,6 +1971,23 @@ function showEvent(evt, onDone, staminaResult) {
         renderOptions([{ label: "繼續", variant: "ghost", onClick: onDone }]);
         return;
       }
+      if (opt.skillCheck) {
+        const sc = opt.skillCheck;
+        const r = skillRoll(state, sc.attribute, sc.dc, Math.random);
+        const TIER_LABELS = { critical_success: "大成功！", success: "成功", fail: "失敗", critical_fail: "大失敗！" };
+        const rollLine = `🎲 ${ATTRIBUTE_LABELS[sc.attribute] || sc.attribute}檢定：擲骰${r.roll}+修正${r.mod}＝${r.total}（DC${r.dc}）→ ${TIER_LABELS[r.tier]}\n\n`;
+        const outcome = sc[r.tier] || sc.fail;
+        if (outcome.battle) {
+          applyEffect(outcome.effect);
+          renderText(rollLine + (outcome.resultText || "..."), { kind: "event" });
+          renderOptions([{ label: "繼續", variant: "ghost", onClick: () => startBattle(outcome.battle, onDone) }]);
+          return;
+        }
+        const eff = applyEventEffect(outcome.effect);
+        renderText(rollLine + (outcome.resultText || "...") + formatEffect(eff), { kind: "event" });
+        renderOptions([{ label: "繼續", variant: "ghost", onClick: onDone }]);
+        return;
+      }
       if (opt.battle) {
         startBattle(opt.battle, onDone, false, { battleBonus: opt.battleBonus });
         return;
@@ -1979,7 +2000,7 @@ function showEvent(evt, onDone, staminaResult) {
   renderOptions(opts);
 }
 
-const RISK_LABELS = { 1: "雿?", 2: "銝?", 3: "擃?", 4: "璆菟?" };
+const RISK_LABELS = { 1: "低", 2: "中", 3: "高", 4: "極高" };
 const RISK_CLASS = { 1: "low", 2: "mid", 3: "high", 4: "extreme" };
 
 const SEARCH_BEATS = {
@@ -2912,8 +2933,8 @@ function showInventory() {
     }
     if (item.type === "furniture" && !hasFurniturePlaced(state, i.itemId)) {
       opts.push({
-        label: `?喳? ${itemIconHtml(item.id, item.type)}${item.name}`,
-        hint: `(${item.slot}?? ${item.desc || ""}`,
+        label: `🪑 ${itemIconHtml(item.id, item.type)}${item.name}`,
+        hint: `(${FURNITURE_SLOT_LABEL[item.slot] || item.slot}) ${item.desc || ""}`,
         variant: "primary",
         onClick: () => {
           const result = placeFurniture(state, i.itemId);

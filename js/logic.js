@@ -220,6 +220,7 @@
       inventory: [],
       weaponInstances: [], // 16.3b/27.1：rare以上裝備實體
       stats: { atk: 3, def: 0 },
+      attributes: { strength: 3, agility: 3, perception: 3 }, // TRPG擲骰系統：撬鎖/潛行/搜刮等互動的d20檢定基礎值
       level: 1,
       exp: 0,
       expToNext: 100, // 32.8
@@ -838,6 +839,31 @@
     const acc = getEquipRef(state, state.equipment && state.equipment.accessory);
     if (acc && acc.effects && typeof acc.effects[key] === "number") return acc.effects[key];
     return 0;
+  }
+
+  // TRPG擲骰系統：三維屬性(1~10)，用於撬鎖/潛行/搜刮等高難度互動的d20檢定
+  const ATTRIBUTE_KEYS = ["strength", "agility", "perception"];
+
+  // 屬性基礎值(state.attributes) + 等級成長(每4級+1) + 飾品加成(effects.strengthBonus等)，上限10
+  function getEffectiveAttribute(state, key) {
+    const base = (state.attributes && state.attributes[key]) || 0;
+    const levelBonus = Math.floor((state.level || 1) / 4);
+    const accBonus = getAccessoryEffect(state, key + "Bonus");
+    return Math.min(10, base + levelBonus + accBonus);
+  }
+
+  // d20+屬性修正 vs DC，回傳{roll,mod,total,dc,tier}，tier分critical_success/success/fail/critical_fail四級
+  // 骰出1永遠是critical_fail、骰出20永遠是critical_success（經典TRPG規則），其餘依total vs dc判定
+  function skillRoll(state, key, dc, rng) {
+    rng = rng || Math.random;
+    const roll = Math.floor(rng() * 20) + 1;
+    const mod = getEffectiveAttribute(state, key);
+    const total = roll + mod;
+    let tier;
+    if (roll === 20) tier = "critical_success";
+    else if (roll === 1) tier = "critical_fail";
+    else tier = total >= dc ? "success" : "fail";
+    return { roll, mod, total, dc, tier };
   }
 
   // 27.1：取得當前裝備加成後的sanMax上限（基礎sanMax + 飾品sanMaxBonus + 防具前綴"止水之"sanMaxBonus）
@@ -1874,6 +1900,7 @@
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,
     getAccessoryEffect, getEffectiveSanMax, getEffectiveHpMax, getResourceCap, PREFIX_POOL,
+    ATTRIBUTE_KEYS, getEffectiveAttribute, skillRoll,
     gainExp, LEVEL_UP_HP_BONUS, LEVEL_UP_ATK_BONUS, applyPrologueEnding,
     COMPANION_TASKS, COMPANION_NAMES, defaultCompanionsState, recruitCompanion, refreshCompanionUnlocks, dispatchCompanion, companionAssigned, getCompanionTaskEffect,
     FACILITY_KEYS, syncBaseDefense, reinforceFacility, restSanRegen,

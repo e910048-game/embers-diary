@@ -1243,6 +1243,37 @@ test("任務/成就的家具數量門檻條件：擺放table/floor/rug類家具�
   assert.strictEqual(furnishFull.condition(s2), false); // 僅2件，未達4件
 });
 
+test("getEffectiveAttribute: 基礎值+等級成長(每4級+1)+飾品加成，上限10", () => {
+  const s = L.defaultState();
+  assert.strictEqual(L.getEffectiveAttribute(s, "strength"), 3);
+  s.level = 8; // +2
+  assert.strictEqual(L.getEffectiveAttribute(s, "strength"), 5);
+  s.attributes.strength = 9;
+  s.level = 20; // +5，但總和需封頂10
+  assert.strictEqual(L.getEffectiveAttribute(s, "strength"), 10);
+});
+
+test("skillRoll: 骰出1必為critical_fail、骰出20必為critical_success，其餘依total vs dc判定", () => {
+  const s = L.defaultState();
+  // rng回傳0 -> Math.floor(0*20)+1 = 1 (natural 1)
+  let r = L.skillRoll(s, "strength", 12, () => 0);
+  assert.strictEqual(r.roll, 1);
+  assert.strictEqual(r.tier, "critical_fail");
+  // rng回傳接近1(但<1) -> Math.floor(0.999999*20)+1 = 20 (natural 20)
+  r = L.skillRoll(s, "strength", 999, () => 0.999999);
+  assert.strictEqual(r.roll, 20);
+  assert.strictEqual(r.tier, "critical_success");
+  // roll=10(rng=0.45)，mod=3(基礎值)，total=13 >= dc12 -> success
+  r = L.skillRoll(s, "strength", 12, () => 0.45);
+  assert.strictEqual(r.roll, 10);
+  assert.strictEqual(r.mod, 3);
+  assert.strictEqual(r.total, 13);
+  assert.strictEqual(r.tier, "success");
+  // 同樣roll=10，但dc拉高到20 -> total 13 < 20 -> fail
+  r = L.skillRoll(s, "strength", 20, () => 0.45);
+  assert.strictEqual(r.tier, "fail");
+});
+
 // #21-1：CI剛性斷言 - 所有ITEMS effects與PREFIX_POOL effect中的比例型數值須介於0~1
 test("CI斷言：ITEMS/PREFIX_POOL中的比例型加成(dodgeBonus/lifestealBonus/skillBonusRatio等)須介於0~1", () => {
   const ratioKeys = ["dodgeBonus", "lifestealBonus", "lifestealRatio", "critBonus", "skillBonusRatio", "ignoreDefRatio"];

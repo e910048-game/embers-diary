@@ -2089,6 +2089,59 @@ const EVENTS = [
         .filter((f) => state.flags && state.flags[f]).length;
       return [pick(RESOURCE_LINES[resourceLevel]), pick(COMPANION_LINES[companionLevel]), pick(LIBERATION_LINES[liberatedCount])].join("\n\n");
     }
+  },
+  // TRPG擲骰系統：以下3個事件示範skillCheck機制(力量/敏捷/感知各一)，d20+屬性修正 vs DC，
+  // 分critical_success/success/fail/critical_fail四級，用於撬鎖/潛行/搜刮等高難度互動
+  {
+    id: "evt_locked_safe", title: "生鏽的保險箱",
+    minDay: 1, maxDay: null, phase: ["day", "night"], weight: 7,
+    text: "廢墟角落有一個鏽跡斑斑的保險箱，門閂卡得很死。你試著搬動，感覺硬拚說不定能行。",
+    options: [
+      {
+        label: "用力撬開", skillCheck: {
+          attribute: "strength", dc: 12,
+          critical_success: { effect: { resources: { scrap: 8 }, embers: 5 }, resultText: "你一鼓作氣，鎖頭應聲斷裂，箱子裡的東西比想像中還豐盛！" },
+          success: { effect: { resources: { scrap: 4 } }, resultText: "幾番使力後，鎖頭終於鬆脫，箱子裡還留著一些堪用的零件。" },
+          fail: { effect: { stamina: -1 }, resultText: "你費了好大力氣，鎖頭卻紋風不動，只換來一身痠痛。" },
+          critical_fail: { effect: { hp: -6 }, resultText: "手一滑，生鏽的鐵皮狠狠劃過你的手臂，痛得你倒抽一口氣。" }
+        }
+      },
+      { label: "放棄，直接離開", effect: {}, resultText: "你決定不浪費力氣，轉身離開。" }
+    ]
+  },
+  {
+    id: "evt_stealth_bypass", title: "潛行繞過感染者群",
+    minDay: 1, maxDay: null, phase: ["day", "night"], weight: 7,
+    text: "前方巷子裡聚集著一小群徘徊的感染者，你若想通過，得想辦法不驚動牠們。",
+    options: [
+      {
+        label: "屏息潛行通過", skillCheck: {
+          attribute: "agility", dc: 12,
+          critical_success: { effect: { embers: 5 }, resultText: "你的腳步輕得像影子，感染者群渾然未覺，你毫髮無傷地穿了過去。" },
+          success: { effect: {}, resultText: "你貼著牆邊小心移動，總算有驚無險地繞了過去。" },
+          fail: { effect: { stamina: -1 }, resultText: "你踩到一塊碎玻璃，發出輕微聲響，只好緊張地繞遠路避開。" },
+          critical_fail: { effect: {}, battle: "enemy_walker_weak", resultText: "你不小心踢翻了一個鐵罐，刺耳的聲響瞬間引來感染者的注意！" }
+        }
+      },
+      { label: "正面清場", battle: "enemy_walker_weak" }
+    ]
+  },
+  {
+    id: "evt_hidden_stash", title: "若有似無的痕跡",
+    minDay: 1, maxDay: null, phase: ["day", "night"], weight: 7,
+    text: "牆角一處不太自然的凹陷引起你的注意，像是刻意被掩藏過的痕跡。",
+    options: [
+      {
+        label: "仔細搜索", skillCheck: {
+          attribute: "perception", dc: 12,
+          critical_success: { effect: { resources: { food: 4, water: 4, medicine: 1 } }, resultText: "你的直覺沒有錯，牆縫深處藏著一個完整的補給包，收穫豐碩！" },
+          success: { effect: { resources: { food: 2, water: 2 } }, resultText: "你翻找片刻，找到幾件被藏起來的物資。" },
+          fail: { effect: {}, resultText: "你找了半天，那處凹陷似乎只是自然形成的，什麼也沒有。" },
+          critical_fail: { effect: { stamina: -1 }, resultText: "你伸手探進縫隙，被裡頭的碎玻璃劃破了手指。" }
+        }
+      },
+      { label: "不予理會", effect: {}, resultText: "你決定不浪費時間，逕自離開。" }
+    ]
   }
 ];
 
