@@ -539,7 +539,10 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
   position: absolute; transform: translate(-50%, -100%);
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   background: rgba(20,24,28,0.85); border-radius: 12px; padding: 6px 8px;
-  z-index: 50; box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  /* 2026-07-04修正：原本z-index:50是固定值，但家具/地塊用cellZ()依格子深度動態算(depth*10+1)，
+     深處的家具很容易超過50，導致對話氣泡被家具擋住（使用者截圖回報）。氣泡是互動用的浮層UI，
+     理應永遠蓋在場景所有物件之上，改用遠高於cellZ()可能算出的任何數值的固定值 */
+  z-index: 500; box-shadow: 0 2px 8px rgba(0,0,0,0.35);
   max-width: 240px; box-sizing: border-box; white-space: nowrap;
 }
 .companionBubble.edge-left { transform: translate(0, -100%); }
