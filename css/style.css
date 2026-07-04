@@ -479,8 +479,12 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 }
 .roomCell.penCell.empty .icon { background: linear-gradient(to bottom, #4a4034, #332c24); }
 .roomCell.penCell.locked .icon { background: #2b2f36; opacity: 0.6; }
-.roomCell.penCell.occupied .icon { background: linear-gradient(to bottom, #3d4438, #2a3026); }
+/* 2026-07-03修正：已放養動物後不該還留著方形底色框(使用者反饋「雞還有框框」)——動物本身會走動，
+   應該像自由活動的個體而不是關在一個色塊裡；底色/邊框只在「空欄位/上鎖」這種需要標示地面結構的狀態才留著 */
+.roomCell.penCell.occupied .icon { background: none; border: none; box-shadow: none; }
 .roomCell.penCell.occupied.ready .icon { filter: drop-shadow(0 0 5px rgba(150,220,120,0.75)); }
+/* 2026-07-03新增：庭院純裝飾擺設(使用者反饋「庭院應該更多些裝飾」)，無互動、無底色框，只在hover顯示名稱 */
+.roomCell.yardDecor .icon { font-size: 22px; }
 /* V2星露谷式(2026-07-03)：地塊/欄位的狀態(解鎖成本/生長進度/好感度)是玩家需要一眼看到的資訊，
    不比照家具名稱標籤走hover-only(.roomCell .homeLabel預設opacity:0)，一律常駐顯示 */
 .roomCell.alwaysLabel .homeLabel { opacity: 1; }

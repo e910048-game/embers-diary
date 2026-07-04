@@ -784,9 +784,22 @@ function yardPlotCellHtml(state, plotDef) {
   const stateCls = stage.mature ? " mature" : " growing";
   return `<div class="roomCell farmPlot${stateCls} alwaysLabel" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}"><div class="icon">${icon}</div><div class="homeLabel">${label}</div></div>`;
 }
+// 2026-07-03（使用者反饋「庭院應該更多些裝飾」）：純視覺、無互動的擺設，位置刻意避開FARM_PLOT_LAYOUT
+// 的地塊座標，不佔用/不影響任何遊戲邏輯，只是讓庭院看起來不再只有光禿禿的地塊
+const YARD_DECOR = [
+  { gx: 0, gy: 0, icon: "🌻", label: "向日葵" },
+  { gx: 6, gy: 0, icon: "🍂", label: "落葉堆" },
+  { gx: 1, gy: 6, icon: "🌿", label: "野草" },
+  { gx: 10, gy: 6, icon: "🦋", label: "蝴蝶" },
+];
+function yardDecorCellHtml(d) {
+  const pos = gridPos(d.gx, d.gy);
+  const z = cellZ(d.gx + d.gy);
+  return `<div class="roomCell yardDecor" style="left:${pos.left};top:${pos.top};z-index:${z}"><div class="icon">${d.icon}</div><div class="homeLabel">${d.label}</div></div>`;
+}
 function yardSceneHtml(state) {
   if (outdoorScene !== "yard") { outdoorScene = "yard"; outdoorPlayerPos = null; }
-  const items = FARM_PLOT_LAYOUT.map(p => yardPlotCellHtml(state, p));
+  const items = YARD_DECOR.map(yardDecorCellHtml).concat(FARM_PLOT_LAYOUT.map(p => yardPlotCellHtml(state, p)));
   items.push(outdoorPlayerCellHtml("yard"));
   // 庭院是室外土地，不沿用state.roomFloor(小屋室內地板樣式)，改用專屬的ground-farmland紋理
   return `<div class="homeScene"><div class="homePillRow homeTabPills"><button class="homePill" id="yardBackBtn">← 返回小屋</button></div><div class="roomCanvas ground-farmland" id="yardCanvas">${items.join("")}</div></div>`;
@@ -1251,7 +1264,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 200; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 203; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -1276,7 +1289,7 @@ const DIRECTIONAL_ASSETS = {
   "character:char_1": { back: 1, side: 1 },
   "character:char_2": { back: 1, side: 1 },
   "character:char_3": { back: 1, side: 1 },
-  "character:char_4": { back: 1, side: 1 },
+  "character:char_4": { back: 1 }, // side暫時停用：char_4_side.png是誤裁切的頭部特寫(缺身體)，非真正側面行走圖，待補正式美術前先退回正面圖
   "companion:default": { back: 1, side: 1 },
 };
 Object.keys(DIRECTIONAL_ASSETS).forEach(key => {
