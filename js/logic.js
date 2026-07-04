@@ -1681,6 +1681,18 @@
     return true;
   }
 
+  // 2026-07-04修正：確認缺口——技能樹T4封頂後spendSkillPoint()永遠回傳false，
+  // 之後每次升級拿到的技能點完全沒有地方花，只會不斷累積但毫無用途。選擇「兌換成晶燼」
+  // 這個較小工程量的方案(相對於延伸出T5+更高階效果)，讓封頂後的技能點依然有出路，
+  // 兌換率比照成就的小額獎勵量級，不追求平衡精算，只求不讓數值變成廢資源
+  const SKILL_POINT_EMBERS_VALUE = 8;
+  function convertSkillPointToEmbers(state) {
+    if ((state.skillPoints || 0) <= 0) return false;
+    state.skillPoints -= 1;
+    applyEffect(state, { embers: SKILL_POINT_EMBERS_VALUE });
+    return true;
+  }
+
   // ---------- 敵人分級（26.1：由等級驅動，4個tier組0-3，第3組為終域） ----------
   function enemyTier(state) {
     return Math.min(3, Math.floor((state.level - 1) / 3));
@@ -1818,7 +1830,7 @@
     hasFurniturePlaced, allPlacedFurnitureIds, findEmptyGridCell,
     getComfortLevel, getComfortLabel, radioInteract, eggNestInteract, furnitureEasterEggInteract,
     getMilestoneEvent, MILESTONE_EVENTS,
-    triggerAwakening, spendSkillPoint, enemyTier, getScaledEnemy, TIER_PREFIXES, getLocationOverpower,
+    triggerAwakening, spendSkillPoint, convertSkillPointToEmbers, SKILL_POINT_EMBERS_VALUE, enemyTier, getScaledEnemy, TIER_PREFIXES, getLocationOverpower,
     checkUpcomingThreat, isThreatDue, clearUpcomingThreat, THREAT_LEAD_DAYS, BLOOD_MOON_CYCLE_MIN, BLOOD_MOON_CYCLE_MAX,
     resolveBloodMoonDefense, bloodMoonRewards, bloodMoonRewardMultiplier, TIER_ZONES, getTierZoneForBloodMoonWin,
     ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS,

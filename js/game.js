@@ -1315,7 +1315,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 211; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 212; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -3105,6 +3105,19 @@ function showSkillPanel() {
         onClick: () => {
           spendSkillPoint(state);
           saveGame();
+          showSkillPanel();
+        }
+      });
+    } else {
+      // 2026-07-04新增：T4封頂後技能點不再無處可去，改成可兌換晶燼，避免純粹變成廢數字
+      opts.push({
+        label: `🔥 兌換晶燼`,
+        hint: `技能樹已封頂，1技能點 = ${SKILL_POINT_EMBERS_VALUE}🔥`,
+        disabled: state.skillPoints <= 0,
+        onClick: () => {
+          convertSkillPointToEmbers(state);
+          saveGame();
+          renderStatusBar();
           showSkillPanel();
         }
       });
