@@ -1274,9 +1274,61 @@ test("skillRoll: 骰出1必為critical_fail、骰出20必為critical_success，�
   assert.strictEqual(r.tier, "fail");
 });
 
+test("addNoise: 累加後上限100下限0，隔音家具(noiseDampRatio)按比例折抵", () => {
+  const s = L.defaultState();
+  assert.strictEqual(s.noiseLevel, 0);
+  L.addNoise(s, 30);
+  assert.strictEqual(s.noiseLevel, 30);
+  L.addNoise(s, 90);
+  assert.strictEqual(s.noiseLevel, 100); // 上限封頂
+  s.noiseLevel = 0;
+  s.placedFurniture.push({ itemId: "rug_woven", gx: 0, gy: 0 }); // noiseDampRatio 0.1
+  L.addNoise(s, 20);
+  assert.strictEqual(s.noiseLevel, 18); // 20*(1-0.1)
+});
+
+test("applyPhaseDecay: 噪音每階段自然衰減(NOISE_DECAY_PER_PHASE)，下限為0", () => {
+  const s = L.defaultState();
+  s.noiseLevel = 25;
+  L.applyPhaseDecay(s);
+  assert.strictEqual(s.noiseLevel, 25 - L.NOISE_DECAY_PER_PHASE);
+  s.noiseLevel = 3;
+  L.applyPhaseDecay(s);
+  assert.strictEqual(s.noiseLevel, 0); // 不會變負數
+});
+
+test("噪音生成：gatherYield/resolveLocation(loot分支)/reforgePrefix/repairEquipment/reinforceFacility成功時皆會累加噪音", () => {
+  let s = L.defaultState();
+  L.gatherYield(() => 0.5, s);
+  assert.strictEqual(s.noiseLevel, L.NOISE_AMOUNTS.gather);
+
+  s = L.defaultState();
+  const loc = L.LOCATIONS.find(l => l.encounterChance < 1); // 確保能抽到loot分支
+  L.resolveLocation(loc, () => 0.999, s); // rng接近1，必定 >= encounterChance故走loot分支
+  assert.strictEqual(s.noiseLevel, L.NOISE_AMOUNTS.explore);
+
+  s = L.defaultState();
+  s.currency.embers = 999;
+  const instId = "inst_test_reforge";
+  s.weaponInstances.push({ id: instId, baseItemId: "machete_01", rarity: "rare", stats: { atk: 5 } });
+  L.reforgePrefix(s, instId, () => 0.1);
+  assert.strictEqual(s.noiseLevel, L.NOISE_AMOUNTS.craft);
+
+  s = L.defaultState();
+  s.currency.embers = 999;
+  s.durability["scrap_chainsaw"] = 10;
+  L.repairEquipment(s, "scrap_chainsaw");
+  assert.strictEqual(s.noiseLevel, L.NOISE_AMOUNTS.craft);
+
+  s = L.defaultState();
+  s.resources.scrap = 999;
+  L.reinforceFacility(s, "workshop");
+  assert.strictEqual(s.noiseLevel, L.NOISE_AMOUNTS.craft);
+});
+
 // #21-1：CI剛性斷言 - 所有ITEMS effects與PREFIX_POOL effect中的比例型數值須介於0~1
 test("CI斷言：ITEMS/PREFIX_POOL中的比例型加成(dodgeBonus/lifestealBonus/skillBonusRatio等)須介於0~1", () => {
-  const ratioKeys = ["dodgeBonus", "lifestealBonus", "lifestealRatio", "critBonus", "skillBonusRatio", "ignoreDefRatio"];
+  const ratioKeys = ["dodgeBonus", "lifestealBonus", "lifestealRatio", "critBonus", "skillBonusRatio", "ignoreDefRatio", "noiseDampRatio"];
   Object.values(L.ITEMS).forEach(item => {
     if (!item.effects) return;
     ratioKeys.forEach(key => {

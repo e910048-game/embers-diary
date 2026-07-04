@@ -227,6 +227,7 @@
       equipment: { weapon: "scrap_chainsaw", armor: "ceramic_vest", accessory: null }, // 32.8：開局即裝備初始武器/護甲
       baseDefense: 0,
       baseRaidChance: 0.12,
+      noiseLevel: 0, // 噪音系統：0~100，製造/搜刮/戰鬥累加，每階段自然衰減，血月狂潮時每滿20點多一波敵人
       facilities: { command: 0, greenhouse: 0, workshop: 0, radar: 0 }, // 22.2
       farm: { plots: FARM_PLOT_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, crop: null }; return acc; }, {}) }, // 農場區(2026-07-02)：僅第一塊地預設解鎖
       pens: { plots: PEN_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, animal: null }; return acc; }, {}) }, // 養殖區(2026-07-02)：僅第一個欄位預設解鎖
@@ -532,8 +533,10 @@
 
   // 階段結束的被動消耗，回傳是否死亡
   // 27.2：有同伴時food/water消耗各+1
+  const NOISE_DECAY_PER_PHASE = 10;
   function applyPhaseDecay(state, rng = Math.random) {
     tickStatusEffects(state); // 27.4
+    state.noiseLevel = clamp((state.noiseLevel || 0) - NOISE_DECAY_PER_PHASE, 0, 100); // 噪音系統：隨時間自然消散
     // 2026-07-04：只要有任一同伴已招募(非locked)就多消耗1份食物/飲水，不隨同伴人數疊加
     // (維持原本「有同伴在，開銷變大」的份量感，不因為多同伴後勤系統上線就變得更嚴苛)
     const hasAnyCompanion = !!state.companion || !!(state.companions && Object.values(state.companions).some((v) => v && v !== "locked"));
@@ -961,6 +964,7 @@
     if (bonusRatio) {
       Object.keys(base).forEach((k) => { base[k] = Math.round(base[k] * (1 + bonusRatio)); });
     }
+    if (state) addNoise(state, NOISE_AMOUNTS.gather);
     return base;
   }
 
@@ -1002,6 +1006,7 @@
       return { type: "battle", enemyId };
     }
     const drop = pickWeighted(location.lootTable, rng);
+    if (state) addNoise(state, NOISE_AMOUNTS.explore); // 戰鬥的噪音由game.js的startBattle統一計算，這裡只算搜刮本身
     return { type: "loot", itemId: drop.itemId, qty: drop.qty };
   }
 
@@ -1139,6 +1144,15 @@
     return total;
   }
 
+  // 噪音系統：製造/搜刮/戰鬥各動作累加噪音，隔音家具(ITEMS[id].effects.noiseDampRatio，如地毯)按比例折抵
+  // 累加量，血月狂潮時noiseLevel每滿20點多一波敵人(見game.js startBloodMoonNight)
+  const NOISE_AMOUNTS = { gather: 4, explore: 6, craft: 5, battle: 8 };
+  function addNoise(state, amount) {
+    if (!state || !amount) return;
+    const dampRatio = Math.min(0.6, sumFurnitureEffect(state, "noiseDampRatio"));
+    state.noiseLevel = clamp((state.noiseLevel || 0) + amount * (1 - dampRatio), 0, 100);
+  }
+
   // v110：舒適度系統——已陳列家具依稀有度加總，回饋探索/採集/休息
   const RARITY_COMFORT = { common: 1, rare: 2, epic: 3, legendary: 3 };
   function getComfortLevel(state) {
@@ -1186,6 +1200,7 @@
       }
     }
     refreshCompanionUnlocks(state);
+    addNoise(state, NOISE_AMOUNTS.craft);
     return { ok: true, key, newLevel: state.facilities[key] };
   }
 
@@ -1674,6 +1689,7 @@
       if (!state.durability) state.durability = {};
       state.durability[ref] = DURABILITY_MAX;
     }
+    addNoise(state, NOISE_AMOUNTS.craft);
     return { ok: true, cost };
   }
 
@@ -1711,6 +1727,7 @@
     inst.baseStats = baseStats;
     inst.prefix = prefix || null;
     inst.name = prefix ? `【${prefix.name}】${item.name}` : item.name;
+    addNoise(state, NOISE_AMOUNTS.craft);
     return { ok: true, cost, prefix };
   }
 
@@ -1901,6 +1918,7 @@
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,
     getAccessoryEffect, getEffectiveSanMax, getEffectiveHpMax, getResourceCap, PREFIX_POOL,
     ATTRIBUTE_KEYS, getEffectiveAttribute, skillRoll,
+    NOISE_AMOUNTS, NOISE_DECAY_PER_PHASE, addNoise,
     gainExp, LEVEL_UP_HP_BONUS, LEVEL_UP_ATK_BONUS, applyPrologueEnding,
     COMPANION_TASKS, COMPANION_NAMES, defaultCompanionsState, recruitCompanion, refreshCompanionUnlocks, dispatchCompanion, companionAssigned, getCompanionTaskEffect,
     FACILITY_KEYS, syncBaseDefense, reinforceFacility, restSanRegen,

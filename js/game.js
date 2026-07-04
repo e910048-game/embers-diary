@@ -146,6 +146,7 @@ const STATUS_HELP_TEXTS = [
   "⚡ 體力：行動會消耗，耗盡會觸發過勞（HP下降、易遇敵）",
   "⭐ 等級：影響HP/體力等基礎數值上限",
   "🍎 食物：和飲水一樣，缺乏時會持續扣HP",
+  "📢 噪音：製造/搜刮/戰鬥會累積，隨時間自然消散，血月狂潮時越高會多招來越多敵人",
   "🔥 晶燼：用於強化據點與物資轉換",
   "📦 廢料：用於強化據點與製作",
   "🛡️ 防禦力：影響夜襲時的受損程度",
@@ -168,6 +169,7 @@ function renderStatusExtra() {
     <span class="dayBadge level" title="等級：影響HP/體力等基礎數值上限">⭐ Lv.${state.level}</span>
     ${bar("food", "🍎", r.food, foodCap, "食物：缺乏時持續扣HP", r.food <= 1)}
     ${bar("water", "💧", r.water, waterCap, "飲水：缺乏時持續扣HP", r.water <= 1)}
+    ${bar("noise", "📢", Math.round(state.noiseLevel || 0), 100, "噪音：製造/搜刮/戰鬥會累積，隨時間自然消散；血月狂潮時每滿20點多一波敵人", (state.noiseLevel || 0) >= 80)}
     <span class="dayBadge embers" title="晶燼：用於強化據點/物資轉換">🔥${state.currency.embers}</span>
     <button id="statusPeepsBtn" class="dayBadge" title="另一半QR同步：心情簽到/留言板/共用冰箱（只能連結一人）">💌 另一半</button>
     <button id="statusAchievementBtn" class="dayBadge" title="成就：${state.unlockedAchievements.length}個已解鎖">🏆 成就</button>
@@ -1326,6 +1328,10 @@ const ICON_ASSETS = {
   seed_potato: 1, seed_greens: 1, seed_mutant_berry: 1,
   mutant_egg_essence: 1, mutant_berry_extract: 1,
   chick_token: 1, lamb_token: 1, mutant_hen_token: 1, egg: 1, wool: 1,
+  // 無流派武裝/流派武器/飾品+材料(2026-07-04美術到位，ART_批次15~17)
+  crowbar_01: 1, nail_bat_01: 1, leather_coat_01: 1, riot_shield_vest: 1,
+  gaia_spore_dart: 1, ocean_harpoon: 1, cyber_drone_arm: 1, mind_lens: 1,
+  gaia_seed_pouch: 1, aero_barometer: 1, scrap: 1,
 };
 function itemIconHtml(itemId, type) {
   const src = resolveAsset("icon", itemId);
@@ -1337,7 +1343,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 217; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 219; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -2457,12 +2463,16 @@ function startBloodMoonNight() {
       : `🛡️ 防禦力不足，僅能抵擋${pct}%的攻勢，準備迎戰吧！`;
     renderStatusBar();
     const introText = BLOOD_MOON_INTRO_TEXTS[Math.floor(Math.random() * BLOOD_MOON_INTRO_TEXTS.length)];
+    // 噪音系統：噪音每滿20點血月狂潮多一波敵人(上限100噪音=+5波)，呼應累積的噪音招來更多動靜
+    const noiseWaveCount = Math.floor((state.noiseLevel || 0) / 20);
+    const noiseText = noiseWaveCount > 0 ? `\n📢 你累積的噪音招來了額外${noiseWaveCount}波敵人！` : "";
     renderText(`🌙 ${introText}
-${blockText}`, { kind: "battle" });
+${blockText}${noiseText}`, { kind: "battle" });
 
     const waves = [];
     if (defense.wavesBlocked === 0) waves.push({ enemyId: "enemy_walker_brute", extraTier: 1 });
     waves.push({ enemyId: "enemy_cyborg_nemesis", extraTier: 1 });
+    for (let i = 0; i < noiseWaveCount; i++) waves.push({ enemyId: "enemy_walker_weak", extraTier: 0 });
 
         renderOptions([{ label: "⚔️ 迎戰", variant: "danger", onClick: () => runBloodMoonWave(waves, 0) }]);
   });
@@ -2473,6 +2483,7 @@ function runBloodMoonWave(waves, idx) {
     // 任務系統：main_05/ach_blood_moon_streak3計數（戰敗=死亡=新局重開，questFlags隨defaultState()重置，不需要額外的「戰敗歸零」邏輯）
     state.questFlags.bloodMoonSurvivedCount = (state.questFlags.bloodMoonSurvivedCount || 0) + 1;
     state.questFlags.bloodMoonWinStreak = (state.questFlags.bloodMoonWinStreak || 0) + 1;
+    state.noiseLevel = 0; // 噪音系統：血月狂潮過後動靜歸零，重新開始累積
     const reward = bloodMoonRewards(state);
     document.body.classList.remove("blood-moon");
     renderStatusBar();
@@ -2707,6 +2718,7 @@ function renderGameOver(isPrologue) {
 // ---------- 戰鬥 ----------
 function startBattle(enemyId, onEnd, isPrologue, opts = {}) {
   battleSysLog = []; // v181：新戰鬥開始時清空上一場的副數據流紀錄
+  if (!isPrologue) addNoise(state, NOISE_AMOUNTS.battle); // 噪音系統：戰鬥動靜大，序章教學戰不計入
   const due = !isPrologue && isThreatDue(state);
   const { battleBonus, loc, bloodMoon, ...scaleOpts } = opts;
   const overpower = isPrologue ? null : getLocationOverpower(state, loc);

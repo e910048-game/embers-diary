@@ -89,10 +89,11 @@ const ITEMS = {
   furn_potted_plant: { id: "furn_potted_plant", name: "倖存的小盆栽", type: "furniture", icon: "🪴", slot: "table", rarity: "common", factionTag: "none", shopPrice: { embers: 12 }, desc: "每次返回據點自動回SAN+5", effects: { returnSanBonus: 5 } },
   furn_toolbox: { id: "furn_toolbox", name: "上鎖的工具箱", type: "furniture", icon: "🧰", slot: "floor", rarity: "common", factionTag: "none", shopPrice: { embers: 15 }, desc: "防禦+3", effects: { defBonus: 3 } },
 
-  // v160：地毯類(獨立rug槽位，純裝飾鋪在地板下層，不佔用floor陳列格)
-  rug_plain: { id: "rug_plain", name: "簡約棉質地墊", type: "furniture", icon: "🟫", slot: "rug", rarity: "common", factionTag: "none", shopPrice: { embers: 8 }, desc: "純裝飾，鋪在地板上提升小屋氛圍" },
-  rug_woven: { id: "rug_woven", name: "編織暖色地毯", type: "furniture", icon: "🟧", slot: "rug", rarity: "rare", factionTag: "none", shopPrice: { embers: 14 }, desc: "純裝飾，鋪在地板上提升小屋氛圍" },
-  rug_round: { id: "rug_round", name: "圓形毛絨地毯", type: "furniture", icon: "🔵", slot: "rug", rarity: "epic", factionTag: "none", shopPrice: { embers: 22 }, desc: "純裝飾，鋪在地板上提升小屋氛圍" },
+  // v160：地毯類(獨立rug槽位，鋪在地板下層，不佔用floor陳列格)
+  // 噪音系統(2026-07-04)：原本純裝飾，現在額外接上noiseDampRatio(製造/搜刮/戰鬥累積的噪音按比例折抵)
+  rug_plain: { id: "rug_plain", name: "簡約棉質地墊", type: "furniture", icon: "🟫", slot: "rug", rarity: "common", factionTag: "none", shopPrice: { embers: 8 }, desc: "鋪在地板上提升小屋氛圍，隔音-5%噪音累積", effects: { noiseDampRatio: 0.05 } },
+  rug_woven: { id: "rug_woven", name: "編織暖色地毯", type: "furniture", icon: "🟧", slot: "rug", rarity: "rare", factionTag: "none", shopPrice: { embers: 14 }, desc: "鋪在地板上提升小屋氛圍，隔音-10%噪音累積", effects: { noiseDampRatio: 0.1 } },
+  rug_round: { id: "rug_round", name: "圓形毛絨地毯", type: "furniture", icon: "🔵", slot: "rug", rarity: "epic", factionTag: "none", shopPrice: { embers: 22 }, desc: "鋪在地板上提升小屋氛圍，隔音-15%噪音累積", effects: { noiseDampRatio: 0.15 } },
 
   // 27.1/32.3 裝備池：28項武器(10)/防具(8)/飾品(8)，rare以上掉落時實例化為weaponInstances並可疊加前綴詞(PREFIX_POOL)
   // 武器(10)
