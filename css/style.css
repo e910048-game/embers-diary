@@ -457,37 +457,36 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 .roomCell.doorCell.doorGather .doorSeam::after { background: #f0b429; box-shadow: 0 0 4px 1px rgba(240,180,41,0.7); }
 .roomCell.doorCell.armed { outline: 2px solid rgba(111,200,111,0.8); border-radius: 6px; }
 .roomCell.doorCell.armed .homeLabel::after { content: " 再點一次"; color: #7fd47f; font-size: 10px; }
-/* 農場區(見規格文件/農場區_設計規格.md)：地塊是庭院地板上的固定結構，比照門/窗教訓用純CSS畫
-   （不套等角PNG），emoji作物圖示先佔位——之後要補美術，只需把.icon裡的emoji換成isoIconHtml，容器不用動 */
-.roomCell.farmPlot .icon {
-  border-radius: 4px;
-  border: 2px solid rgba(0,0,0,0.35);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
-  font-size: 20px;
+/* 農場區/養殖區 V3（2026-07-04，依Gemini規格+使用者確認「維持等角、緊貼呈菱形交錯」）：
+   地塊/欄位本身改成邊長等於gridPos()每1單位跨距的菱形(寬=2*ISO_STEP_X%=14%，高=2*ISO_STEP_Y=34px)，
+   並用置中transform(而非只有原本.roomCell的translateX)，這樣FARM_PLOT_LAYOUT/PEN_LAYOUT用緊鄰1格
+   座標時，菱形地塊會像磁磚一樣緊貼交錯，不留空隙也不重疊——理由詳見logic.js對應常數旁的註解。
+   emoji佔位，等使用者提供美術素材後只需要把.icon背景/內容換成圖片，容器與間距邏輯都不用動 */
+.roomCell.farmPlot, .roomCell.penCell {
+  width: 14%; height: 34px;
+  transform: translate(-50%, -50%);
 }
-.roomCell.farmPlot.locked .icon { background: #2b2f36; opacity: 0.6; }
+.roomCell.farmPlot .icon, .roomCell.penCell .icon {
+  width: 100%; height: 100%;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  font-size: 18px;
+}
+.roomCell.farmPlot.locked .icon { background: #38412f; opacity: 0.75; }
 .roomCell.farmPlot.empty .icon { background: linear-gradient(to bottom, #5a4632, #3f3122); }
 .roomCell.farmPlot.growing .icon { background: linear-gradient(to bottom, #3d4a30, #2a3320); }
 .roomCell.farmPlot.mature .icon { background: linear-gradient(to bottom, #3d4a30, #2a3320); filter: drop-shadow(0 0 5px rgba(150,220,120,0.75)); }
-/* 養殖區(見規格文件/養殖區_設計規格.md)：欄位同樣是庭院/獸欄地板上的固定結構，比照farmPlot的純CSS手法 */
-.roomCell.penCell .icon {
-  border-radius: 4px;
-  border: 2px solid rgba(0,0,0,0.35);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
-  font-size: 20px;
-  transition: transform 1.2s ease-in-out; /* 配合game.js的startPenWander()，讓JS隨機設定的transform位移平滑過渡 */
-}
+.roomCell.penCell .icon { transition: transform 1.2s ease-in-out; } /* 配合game.js的startPenWander()，讓JS隨機設定的transform位移平滑過渡 */
 .roomCell.penCell.empty .icon { background: linear-gradient(to bottom, #4a4034, #332c24); }
 .roomCell.penCell.locked .icon { background: #2b2f36; opacity: 0.6; }
 /* 2026-07-03修正：已放養動物後不該還留著方形底色框(使用者反饋「雞還有框框」)——動物本身會走動，
-   應該像自由活動的個體而不是關在一個色塊裡；底色/邊框只在「空欄位/上鎖」這種需要標示地面結構的狀態才留著 */
-.roomCell.penCell.occupied .icon { background: none; border: none; box-shadow: none; }
+   應該像自由活動的個體而不是關在一個色塊裡；底色/邊框只在「空欄位/上鎖」這種需要標示地面結構的狀態才留著。
+   佔用clip-path的.icon在這個狀態直接不設background，等於沒有菱形底色，只剩下動物emoji本身 */
+.roomCell.penCell.occupied .icon { background: none; clip-path: none; }
 .roomCell.penCell.occupied.ready .icon { filter: drop-shadow(0 0 5px rgba(150,220,120,0.75)); }
 /* 2026-07-03新增：庭院純裝飾擺設(使用者反饋「庭院應該更多些裝飾」)，無互動、無底色框，只在hover顯示名稱 */
 .roomCell.yardDecor .icon { font-size: 22px; }
-/* V2星露谷式(2026-07-03)：地塊/欄位的狀態(解鎖成本/生長進度/好感度)是玩家需要一眼看到的資訊，
-   不比照家具名稱標籤走hover-only(.roomCell .homeLabel預設opacity:0)，一律常駐顯示 */
-.roomCell.alwaysLabel .homeLabel { opacity: 1; }
+/* V3（2026-07-04）：拿掉「地塊/欄位狀態文字常駐顯示」——Gemini規格明確要求移除白底黑邊的網頁標籤，
+   狀態改由地塊本身的視覺(顏色/圖示/發光)傳達，文字說明只在hover/點擊面板時才出現，跟家具同一套規則 */
 /* 走路/撫摸/澆水等動作成功時向上漂浮淡出的粒子回饋，比純文字結算更有感（跟.sleepZzz同一種手法） */
 .floatParticle {
   position: absolute; left: 50%; top: 0; transform: translateX(-50%);

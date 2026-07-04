@@ -771,18 +771,20 @@ function yardPlotCellHtml(state, plotDef) {
   const plot = state.farm.plots[plotDef.id];
   const pos = gridPos(plotDef.gx, plotDef.gy);
   const z = cellZ(plotDef.gx + plotDef.gy);
+  // V3(2026-07-04)：拿掉常駐文字牌(alwaysLabel)，狀態改由地塊本身視覺傳達，說明文字收進title/hover
+  // 鎖頭圖示也拿掉(Gemini規格明確要求)，改用🥀(荒廢/未整地的意象)佔位，等美術素材到位再替換
   if (!plot.unlocked) {
     const cost = farmPlotUnlockCost(state);
-    return `<div class="roomCell farmPlot locked alwaysLabel" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="解鎖地塊：${cost}📦"><div class="icon">🔒</div><div class="homeLabel">解鎖 ${cost}📦</div></div>`;
+    return `<div class="roomCell farmPlot locked" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="解鎖地塊：${cost}📦"><div class="icon">🥀</div><div class="homeLabel">解鎖 ${cost}📦</div></div>`;
   }
   if (!plot.crop) {
-    return `<div class="roomCell farmPlot empty alwaysLabel" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊種植"><div class="icon">🟫</div><div class="homeLabel">空地（點種植）</div></div>`;
+    return `<div class="roomCell farmPlot empty" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊種植"><div class="icon">🟫</div><div class="homeLabel">空地（點種植）</div></div>`;
   }
   const stage = getCropStage(state, plot);
   const icon = stage.mature ? "✅" : (FARM_STAGE_ICONS[stage.stageIdx] || "🌱");
   const label = stage.mature ? `${stage.crop.name}（可收成）` : `${stage.crop.name} ${stage.stageIdx + 1}/${stage.crop.stages}`;
   const stateCls = stage.mature ? " mature" : " growing";
-  return `<div class="roomCell farmPlot${stateCls} alwaysLabel" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}"><div class="icon">${icon}</div><div class="homeLabel">${label}</div></div>`;
+  return `<div class="roomCell farmPlot${stateCls}" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}"><div class="icon">${icon}</div><div class="homeLabel">${label}</div></div>`;
 }
 // 2026-07-03（使用者反饋「庭院應該更多些裝飾」）：純視覺、無互動的擺設，位置刻意避開FARM_PLOT_LAYOUT
 // 的地塊座標，不佔用/不影響任何遊戲邏輯，只是讓庭院看起來不再只有光禿禿的地塊
@@ -908,12 +910,13 @@ function penCellHtml(state, penDef) {
   const pen = state.pens.plots[penDef.id];
   const pos = gridPos(penDef.gx, penDef.gy);
   const z = cellZ(penDef.gx + penDef.gy);
+  // V3(2026-07-04)：拿掉常駐文字牌，鎖頭圖示改用🔗(鐵鍊意象，呼應規格「破舊木板與鐵鍊鎖住」)佔位
   if (!pen.unlocked) {
     const cost = penUnlockCost(state);
-    return `<div class="roomCell penCell locked alwaysLabel" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="解鎖欄位：${cost}📦"><div class="icon">🔒</div><div class="homeLabel">解鎖 ${cost}📦</div></div>`;
+    return `<div class="roomCell penCell locked" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="解鎖欄位：${cost}📦"><div class="icon">🔗</div><div class="homeLabel">解鎖 ${cost}📦</div></div>`;
   }
   if (!pen.animal) {
-    return `<div class="roomCell penCell empty alwaysLabel" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊放入動物"><div class="icon">🐾</div><div class="homeLabel">空欄（點放入動物）</div></div>`;
+    return `<div class="roomCell penCell empty" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊放入動物"><div class="icon">🐾</div><div class="homeLabel">空欄（點放入動物）</div></div>`;
   }
   const prod = getPenProductionState(state, pen);
   const icon = PEN_ANIMAL_ICONS[pen.animal.speciesId] || "🐾";
@@ -922,7 +925,7 @@ function penCellHtml(state, penDef) {
   const fedToday = pen.animal.lastFedDay === state.day;
   // 食槽視覺：今天餵過=滿，還沒餵=空——不再是會衰減的飽食度，純粹當天有沒有餵的提示
   const troughCls = "penTrough" + (fedToday ? " fed" : "");
-  return `<div class="roomCell penCell occupied alwaysLabel${stateCls}" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}"><div class="${troughCls}"></div><div class="icon">${icon}</div><div class="homeLabel">${label}</div></div>`;
+  return `<div class="roomCell penCell occupied${stateCls}" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}"><div class="${troughCls}"></div><div class="icon">${icon}</div><div class="homeLabel">${label}</div></div>`;
 }
 function penSceneHtml(state) {
   if (outdoorScene !== "pen") { outdoorScene = "pen"; outdoorPlayerPos = null; }
@@ -1264,7 +1267,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 203; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 204; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
