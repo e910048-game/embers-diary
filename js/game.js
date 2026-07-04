@@ -181,12 +181,29 @@ function toggleStatusExtra() {
   if (extra) extra.classList.toggle("hidden");
 }
 
+// 草稿5c(2026-07-04)：血月警示文案依day分3個階段升級語氣，呼應bloodMoonRewards同步提升的
+// 獎勵倍率(見logic.js的bloodMoonRewardMultiplier)，讓後期血月夜在「文字上」也感覺得到規模加劇，
+// 不是打完設備就變得無足輕重
+function bloodMoonThreatTier(state) {
+  if (state.day >= 100) return 2; // 地脈全面活化
+  if (state.day >= 50) return 1; // 靈能暴動
+  return 0;
+}
 // V2.0：血月狂潮倒數提示，詳見§6.3節
 function threatWarningText() {
-    if (isThreatDue(state)) return "\n📢 偵測到超大型靈能暴動！血月狂潮已籠罩此地，今夜必有一戰！";
+  const tier = bloodMoonThreatTier(state);
+  if (isThreatDue(state)) {
+    if (tier === 2) return "\n📢 地脈全面活化！血月狂潮的規模已遠超以往，今夜必有一戰！";
+    if (tier === 1) return "\n📢 偵測到超大型靈能暴動！血月狂潮已籠罩此地，今夜必有一戰！";
+    return "\n📢 血月狂潮已籠罩此地，今夜必有一戰！";
+  }
   if (state.upcomingThreat) {
     const left = state.upcomingThreat.day - state.day;
-    if (left > 0 && left <= THREAT_LEAD_DAYS) return `\n📢 偵測到超大型靈能暴動！血月狂潮將於${left}天後降臨！`;
+    if (left > 0 && left <= THREAT_LEAD_DAYS) {
+      if (tier === 2) return `\n📢 地脈全面活化！血月狂潮將於${left}天後以更駭人的規模降臨！`;
+      if (tier === 1) return `\n📢 偵測到超大型靈能暴動！血月狂潮將於${left}天後降臨！`;
+      return `\n📢 血月狂潮將於${left}天後降臨！`;
+    }
   }
   return "";
 }
@@ -1298,7 +1315,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 210; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 211; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];

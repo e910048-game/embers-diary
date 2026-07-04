@@ -591,10 +591,21 @@
     return { baseDefense, defenseRatio, wavesBlocked };
   }
 
+  // 草稿5c(2026-07-04)：day50/day100依序提高血月獎勵倍率，呼應game.js的threatWarningText()
+  // 同步升級的警示文案語氣——後期血月夜不只是文字上聽起來更嚴重，實際報酬也要跟著提高，
+  // 不是打完四大設備之後就變得可有可無。倍率選擇跟文案的兩個門檻(day50/day100)對齊，
+  // 「同步等比例提升」，day100+50%是原始草稿明訂的數字，day50+25%是合理的中間內插值
+  function bloodMoonRewardMultiplier(state) {
+    if (state.day >= 100) return 1.5;
+    if (state.day >= 50) return 1.25;
+    return 1;
+  }
+
   // ---------- 血月狂潮：戰後狂歡結算（V2.0 §2.3） ----------
   // 首次擊退血月狂潮時，插旗flags.bloodmoon_breach_1，解鎖淹沒的靈能地鐵站(loc_sunken_subway)等提前遠征點
   function bloodMoonRewards(state) {
-    const reward = { embers: 40, skillPoint: 1 };
+    const mult = bloodMoonRewardMultiplier(state);
+    const reward = { embers: Math.round(40 * mult), skillPoint: Math.max(1, Math.round(1 * mult)) };
     applyEffect(state, reward);
     state.bloodMoonWins = (state.bloodMoonWins || 0) + 1;
     let unlockedLocation = null;
@@ -1809,7 +1820,7 @@
     getMilestoneEvent, MILESTONE_EVENTS,
     triggerAwakening, spendSkillPoint, enemyTier, getScaledEnemy, TIER_PREFIXES, getLocationOverpower,
     checkUpcomingThreat, isThreatDue, clearUpcomingThreat, THREAT_LEAD_DAYS, BLOOD_MOON_CYCLE_MIN, BLOOD_MOON_CYCLE_MAX,
-    resolveBloodMoonDefense, bloodMoonRewards, TIER_ZONES, getTierZoneForBloodMoonWin,
+    resolveBloodMoonDefense, bloodMoonRewards, bloodMoonRewardMultiplier, TIER_ZONES, getTierZoneForBloodMoonWin,
     ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS,
     replacePlayerNameTag, dailyMoodCheckin, depositToFridge, withdrawFromFridge, generateSyncCode, applySyncCode,
     QUESTS, ACHIEVEMENTS, applyQuestReward, checkQuestsAndAchievements,
