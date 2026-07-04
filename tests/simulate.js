@@ -11,6 +11,12 @@ const L = require("../js/logic.js");
 const RUNS = 100;
 const MAX_STEPS = 600; // 安全上限，避免單局跑不出tier3時無限迴圈
 const TARGET_LEVEL = 10; // tier = floor((level-1)/3) >= 3
+// 2026-07-04修正：本模擬器不區分行動類型的體力成本(單純每phase跑固定次數迴圈)，原本借用
+// logic.js的ACTION_POINTS_PER_PHASE(=2)當次數上限——但那個欄位其實是死代碼，從未在真實遊戲邏輯
+// 裡被讀取，真正限制玩家一個phase能做幾次行動的是體力(explore_near每次2點，六點上限，一個phase
+// 最多3次)。刪除死代碼的同時，這裡改成獨立的本地常數，數值對齊體力系統的實際吞吐量，不再依賴
+// 已刪除的匯出
+const ACTIONS_PER_PHASE = 3;
 
 function gather(state) {
   L.applyEffect(state, { resources: L.gatherYield(Math.random, state) });
@@ -163,7 +169,7 @@ function simulateOneRun(strategy, faction, opts = {}) {
   const actionsAfterDay20 = { gather: 0, total: 0 };
 
   for (let step = 0; step < MAX_STEPS; step++) {
-    for (let ap = L.ACTION_POINTS_PER_PHASE; ap > 0; ap--) {
+    for (let ap = ACTIONS_PER_PHASE; ap > 0; ap--) {
       const action = chooseAction(state, strategy);
       if (state.day > 20) {
         actionsAfterDay20.total++;

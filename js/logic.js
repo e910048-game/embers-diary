@@ -7,8 +7,6 @@
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
-  const ACTION_POINTS_PER_PHASE = 2;
-
   // ---------- 體力系統（SA第23節，v0.7/v0.8） ----------
   const RESOURCE_DROP_KEYS = ["scrap", "medicine", "ammo", "food", "water"]; // SA 34 / TODO #18第0步④：LOCATIONS/dropTable掉落這些id時走state.resources而非inventory
 
@@ -175,7 +173,6 @@
       homePos: null, // #27：人物在安全屋畫布中的位置(可拖曳移動)，null=預設站位
       homeFacing: "front", // v179：角色4方向朝向，依移動方向更新("front"/"back"/"left"/"right")，無對應美術時自動退回原本單一張正面圖
       companionFacing: "front", // v179：同伴朝向，邏輯同上
-      actionPoints: ACTION_POINTS_PER_PHASE,
       stamina: staminaMaxForLevel(1),
       staminaMax: staminaMaxForLevel(1),
       hp: 100, hpMax: 100,
@@ -202,7 +199,6 @@
       companion: false,
       companionTask: "gather",
       companions: { "雷恩": "locked", "艾莉": "locked", "阿卡": "locked" }, // 28.1
-      prologueDone: false,
       milestonesShown: [],
       lastCityReviewDay: null, // 草稿2：城市現況回顧上次觸發的day，day90後每20天觸發一次
       flags: {},
@@ -515,8 +511,7 @@
     return state.hp <= 0;
   }
 
-  // 一個phase內每完成一次行動，若食物與飲水都還有餘裕，被動恢復少量HP
-  // （緩解戰鬥/趕路造成的HP耗損；ACTION_POINTS_PER_PHASE提高後，每次行動都檢查一次以維持原本的回復頻率）
+  // 一個phase內每完成一次行動，若食物與飲水都還有餘裕，被動恢復少量HP（緩解戰鬥/趕路造成的HP耗損）
   function applyActionRegen(state) {
     if (state.resources.food > 0 && state.resources.water > 0) {
       applyEffect(state, { hp: 1 });
@@ -538,7 +533,6 @@
         }
       }
     }
-    state.actionPoints = ACTION_POINTS_PER_PHASE;
     state.staminaMax = staminaMax(state);
     state.stamina = state.staminaMax;
     refreshCompanionUnlocks(state);
@@ -938,7 +932,6 @@
       state.hpMax = Math.max(50, state.hpMax - 10);
       state.hp = Math.min(state.hp, Math.floor(state.hpMax * 0.5));
     }
-    state.prologueDone = true;
     return state;
   }
 
@@ -1791,7 +1784,6 @@
   const api = {
     defaultState, clamp, applyEffect, useItem, pickWeighted, pickEvent, RESOURCE_DROP_KEYS,
     applyPhaseDecay, applyActionRegen, advancePhase, battleDamage, raidChance, reinforceCost, consumeReinforceDiscount, REINFORCE_COST, gatherYield, convertScrap, CONVERT_SCRAP_COST,
-    ACTION_POINTS_PER_PHASE,
     staminaMaxForLevel, staminaMax, staminaBonusFromSources, STAMINA_BONUS_CAP,
     actionStaminaCost, spendStamina, ACTION_STAMINA_COSTS, overdrawHpPenalty, restHealAmount,
     OVERDRAW_HP_PENALTY, OVERDRAW_RESOURCE_MULTIPLIER, OVERDRAW_ENCOUNTER_BONUS,

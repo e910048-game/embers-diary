@@ -118,14 +118,12 @@ test("序章結局：companion - 夥伴加成正確套用（防禦+1、取得繃
   assert.strictEqual(s.baseDefense, baseDef + 1);
   assert.strictEqual(s.inventory.length, invCountBefore + 1);
   assert.ok(s.inventory.some(i => i.itemId === "bandage"));
-  assert.strictEqual(s.prologueDone, true);
 });
 
-test("序章結局：alone - state不變（除prologueDone外）", () => {
+test("序章結局：alone - state不變（除flags.alone外）", () => {
   const s = L.defaultState();
   const before = JSON.parse(JSON.stringify(s));
   L.applyPrologueEnding(s, "alone");
-  before.prologueDone = true;
   before.flags.alone = true;
   assert.deepStrictEqual(s, before);
 });
@@ -136,7 +134,6 @@ test("序章結局：weak - hpMax降低、hp不超過新hpMax的一半", () => {
   L.applyPrologueEnding(s, "weak");
   assert.strictEqual(s.hpMax, hpMaxBefore - 10);
   assert.ok(s.hp <= Math.floor(s.hpMax * 0.5));
-  assert.strictEqual(s.prologueDone, true);
 });
 
 test("序章結局：weak - hpMax有下限50（避免極端負數）", () => {
@@ -181,7 +178,6 @@ test("存檔/讀檔roundtrip：序章完成後的狀態（含companion/baseDefen
   const loaded = { ...L.defaultState(), ...JSON.parse(JSON.stringify(s)) };
   assert.strictEqual(loaded.companion, true);
   assert.strictEqual(loaded.baseDefense, 1);
-  assert.strictEqual(loaded.prologueDone, true);
 });
 
 // ===== 規則式事件條件在完整遊玩流程中的影響 =====

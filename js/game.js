@@ -1285,7 +1285,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 207; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 208; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -2330,6 +2330,12 @@ function doRest() {
   const gain = { hp: 15 + restHealAmount(state), resources: { food: -1, water: -1 } };
   applyEffect(gain);
   state.san = clamp(state.san + restSanRegen(state), 0, getEffectiveSanMax(state));
+  // 2026-07-04修正：支線「彼此照顧」(side_companion_care)要求careCompletedCount>=5，但這個計數器
+  // 從未被累加過，任務永遠無法完成——同一組「照護」判定跟restHealAmount()一致(雷恩companionTask或
+  // 艾莉companions狀態任一為"care")，每次休息若有人在執行照護任務就累加一次
+  if ((state.companion && state.companionTask === "care") || (state.companions && state.companions["艾莉"] === "care")) {
+    state.questFlags.careCompletedCount = (state.questFlags.careCompletedCount || 0) + 1;
+  }
   renderStatusBar();
     renderText("你躺下好好休息了一陣子。" + formatEffect(gain), { kind: "event" });
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => endPhase() }]);
