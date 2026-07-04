@@ -350,6 +350,19 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
   75% { opacity: 1; }
   100% { opacity: 0; transform: translate(-50%, -90%) scale(1); }
 }
+/* 探索進度條：點擊探索後不直接跳結果，改成文字符號進度條重現遠征過程的張力 */
+.exploreProgressBar { font-size: 26px; letter-spacing: 4px; text-align: center; padding: 24px 0; line-height: 1.6; }
+.exploreCell { display: inline-block; opacity: 0.55; transition: opacity 0.15s; }
+.exploreCell.flash { opacity: 1; animation: exploreFlash 0.6s ease-in-out; }
+.exploreMarker { display: inline-block; animation: exploreBob 0.3s ease-in-out infinite alternate; }
+@keyframes exploreFlash {
+  0%, 100% { transform: scale(1); }
+  40% { transform: scale(1.5); }
+}
+@keyframes exploreBob {
+  from { transform: translateY(0); }
+  to { transform: translateY(-4px); }
+}
 /* 草稿5b：敵人名稱旁常駐顯示目前生效的狀態效果(眩暈/防禦削減)，不用逐字讀戰報也能掃描到戰況 */
 .enemyStatusBadges { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: middle; }
 .statusBadge {
@@ -508,10 +521,26 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 /* 2026-07-03修正：已放養動物後不該還留著方形底色框(使用者反饋「雞還有框框」)——動物本身會走動，
    應該像自由活動的個體而不是關在一個色塊裡；底色/邊框只在「空欄位/上鎖」這種需要標示地面結構的狀態才留著。
    佔用clip-path的.icon在這個狀態直接不設background，等於沒有菱形底色，只剩下動物emoji本身 */
-.roomCell.penCell.occupied .icon { background: none; clip-path: none; }
+.roomCell.penCell.occupied .icon { background: none; clip-path: none; overflow: visible; display: flex; align-items: flex-end; justify-content: center; }
 .roomCell.penCell.occupied.ready .icon { filter: drop-shadow(0 0 5px rgba(150,220,120,0.75)); }
 /* 2026-07-03新增：庭院純裝飾擺設(使用者反饋「庭院應該更多些裝飾」)，無互動、無底色框，只在hover顯示名稱 */
 .roomCell.yardDecor .icon { font-size: 22px; }
+/* 2026-07-04美術到位：farmTileHtml()產生的<img>共用樣式。地塊/欄位地面(farmTileGround)填滿已被clip-path
+   裁成菱形的.icon容器；獸欄動物(pinnedGround)是額外疊一層地面圖在.icon底下(2026-07-03舊版放養後地面
+   直接消失，改成動物疊在地面上，更像實際站在欄裡而非懸空)；動物本身(farmTileAnimal)故意不受菱形裁切、
+   允許超出小小的欄位範圍站得更自然；飼料槽(farmTileTrough)/庭院擺設(farmTileDecor)各自固定尺寸疊加 */
+.farmTileImg { image-rendering: pixelated; display: block; }
+.farmTileGround { width: 100%; height: 100%; object-fit: cover; }
+.pinnedGround {
+  position: absolute; inset: 0; z-index: 0;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+.farmTileAnimal { width: auto; height: 40px; object-fit: contain; position: relative; z-index: 2; }
+.farmTileTrough {
+  position: absolute; left: 50%; bottom: 1px; transform: translateX(-50%);
+  width: 24px; height: auto; z-index: 1;
+}
+.farmTileDecor { width: auto; height: 36px; object-fit: contain; }
 /* V3（2026-07-04）：拿掉「地塊/欄位狀態文字常駐顯示」——Gemini規格明確要求移除白底黑邊的網頁標籤，
    狀態改由地塊本身的視覺(顏色/圖示/發光)傳達，文字說明只在hover/點擊面板時才出現，跟家具同一套規則 */
 /* 走路/撫摸/澆水等動作成功時向上漂浮淡出的粒子回饋，比純文字結算更有感（跟.sleepZzz同一種手法） */

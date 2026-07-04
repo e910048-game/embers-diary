@@ -493,6 +493,19 @@ function isoIconHtml(itemId, fallbackCategory) {
   if (src) return `<img class="pixelImg isoImg" src="${src}" alt="${itemId}">`;
   return pixelIconSvg(itemId, fallbackCategory);
 }
+// 農場區/養殖區(2026-07-04美術到位)：地塊/欄位狀態圖與動物立繪、庭院擺設，不對應ITEMS的itemId，
+// 走獨立的"farmtile"類別，跟ISO_ASSETS/ICON_ASSETS的「登記才換圖，沒登記就退回emoji」同一套邏輯
+const FARMTILE_ASSETS = {
+  farm_plot_locked: 1, farm_plot_empty: 1, farm_stage_sprout: 1, farm_stage_growing: 1, farm_stage_mature: 1,
+  pen_locked: 1, pen_empty: 1, pen_trough_empty: 1, pen_trough_filled: 1,
+  animal_chick: 1, animal_lamb: 1, animal_mutant_hen: 1,
+  deco_fence_post: 1, deco_rock_cluster: 1, deco_bush: 1, deco_tree_small: 1,
+};
+function farmTileHtml(id, cls) {
+  const src = resolveAsset("farmtile", id);
+  if (!src) return null;
+  return `<img class="pixelImg farmTileImg${cls ? " " + cls : ""}" src="${src}" alt="${id}">`;
+}
 const ROOM_H_PX = 360, WALL_PX = 45, ICON_PX = 40;
 const GRID_FLOOR_ROW_MIN = 0, GRID_FLOOR_ROW_MAX = 5;
 const GRID_COL_MIN = 0, GRID_COL_MAX = 8;
@@ -836,37 +849,43 @@ function spawnDamagePopup(cellId, text, cls) {
 
 // ---------- 農場區/庭院場景 ----------
 const FARM_STAGE_ICONS = ["🌱", "🌿", "🌾"];
+const FARM_STAGE_TILES = ["farm_stage_sprout", "farm_stage_growing", "farm_stage_growing"]; // 美術只有兩張成長階段圖(sprout/growing)，第3階段沿用growing
 function yardPlotCellHtml(state, plotDef) {
   const plot = state.farm.plots[plotDef.id];
   const pos = gridPos(plotDef.gx, plotDef.gy);
   const z = cellZ(plotDef.gx + plotDef.gy);
-  // V3(2026-07-04)：拿掉常駐文字牌(alwaysLabel)，狀態改由地塊本身視覺傳達，說明文字收進title/hover
-  // 鎖頭圖示也拿掉(Gemini規格明確要求)，改用🥀(荒廢/未整地的意象)佔位，等美術素材到位再替換
+  // 2026-07-04美術到位：地塊一律先試著用farmTileHtml()換成真實美術，找不到才退回emoji佔位(FARMTILE_ASSETS沒登記的狀態)
   if (!plot.unlocked) {
     const cost = farmPlotUnlockCost(state);
-    return `<div class="roomCell farmPlot locked" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="解鎖地塊：${cost}📦"><div class="icon">🥀</div><div class="homeLabel">解鎖 ${cost}📦</div></div>`;
+    const art = farmTileHtml("farm_plot_locked", "farmTileGround");
+    return `<div class="roomCell farmPlot locked" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="解鎖地塊：${cost}📦"><div class="icon">${art || "🥀"}</div><div class="homeLabel">解鎖 ${cost}📦</div></div>`;
   }
   if (!plot.crop) {
-    return `<div class="roomCell farmPlot empty" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊種植"><div class="icon">🟫</div><div class="homeLabel">空地（點種植）</div></div>`;
+    const art = farmTileHtml("farm_plot_empty", "farmTileGround");
+    return `<div class="roomCell farmPlot empty" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊種植"><div class="icon">${art || "🟫"}</div><div class="homeLabel">空地（點種植）</div></div>`;
   }
   const stage = getCropStage(state, plot);
-  const icon = stage.mature ? "✅" : (FARM_STAGE_ICONS[stage.stageIdx] || "🌱");
+  const tileId = stage.mature ? "farm_stage_mature" : (FARM_STAGE_TILES[stage.stageIdx] || "farm_stage_sprout");
+  const art = farmTileHtml(tileId, "farmTileGround");
+  const icon = art || (stage.mature ? "✅" : (FARM_STAGE_ICONS[stage.stageIdx] || "🌱"));
   const label = stage.mature ? `${stage.crop.name}（可收成）` : `${stage.crop.name} ${stage.stageIdx + 1}/${stage.crop.stages}`;
   const stateCls = stage.mature ? " mature" : " growing";
   return `<div class="roomCell farmPlot${stateCls}" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}"><div class="icon">${icon}</div><div class="homeLabel">${label}</div></div>`;
 }
 // 2026-07-03（使用者反饋「庭院應該更多些裝飾」）：純視覺、無互動的擺設，位置刻意避開FARM_PLOT_LAYOUT
 // 的地塊座標，不佔用/不影響任何遊戲邏輯，只是讓庭院看起來不再只有光禿禿的地塊
+// 2026-07-04美術到位：對應真實素材(deco_fence_post/deco_rock_cluster/deco_bush/deco_tree_small)
 const YARD_DECOR = [
-  { gx: 0, gy: 0, icon: "🌻", label: "向日葵" },
-  { gx: 6, gy: 0, icon: "🍂", label: "落葉堆" },
-  { gx: 1, gy: 6, icon: "🌿", label: "野草" },
-  { gx: 10, gy: 6, icon: "🦋", label: "蝴蝶" },
+  { gx: 0, gy: 0, tile: "deco_fence_post", icon: "🌻", label: "圍籬" },
+  { gx: 6, gy: 0, tile: "deco_rock_cluster", icon: "🍂", label: "石堆" },
+  { gx: 1, gy: 6, tile: "deco_bush", icon: "🌿", label: "灌木叢" },
+  { gx: 10, gy: 6, tile: "deco_tree_small", icon: "🦋", label: "小樹" },
 ];
 function yardDecorCellHtml(d) {
   const pos = gridPos(d.gx, d.gy);
   const z = cellZ(d.gx + d.gy);
-  return `<div class="roomCell yardDecor" style="left:${pos.left};top:${pos.top};z-index:${z}"><div class="icon">${d.icon}</div><div class="homeLabel">${d.label}</div></div>`;
+  const art = farmTileHtml(d.tile, "farmTileDecor");
+  return `<div class="roomCell yardDecor" style="left:${pos.left};top:${pos.top};z-index:${z}"><div class="icon">${art || d.icon}</div><div class="homeLabel">${d.label}</div></div>`;
 }
 function yardSceneHtml(state) {
   if (outdoorScene !== "yard") { outdoorScene = "yard"; outdoorPlayerPos = null; }
@@ -954,6 +973,7 @@ function showFarmPlotPanel(plotId) {
 
 // ---------- 養殖區/獸欄場景 ----------
 const PEN_ANIMAL_ICONS = { species_chicken: "🐔", species_sheep: "🐑", species_mutant_hen: "🐔" };
+const PEN_ANIMAL_TILES = { species_chicken: "animal_chick", species_sheep: "animal_lamb", species_mutant_hen: "animal_mutant_hen" };
 let penWanderTimers = {};
 // 動物是持久存在的資產，讓牠在欄位周圍隨機微幅移動（每次間隔跟位移量都隨機，不是固定循環的動畫），
 // 回應「動物要能隨意動、不要寫死」的反饋。移動只改.icon的transform，不動外層.roomCell的left/top，
@@ -979,22 +999,29 @@ function penCellHtml(state, penDef) {
   const pen = state.pens.plots[penDef.id];
   const pos = gridPos(penDef.gx, penDef.gy);
   const z = cellZ(penDef.gx + penDef.gy);
-  // V3(2026-07-04)：拿掉常駐文字牌，鎖頭圖示改用🔗(鐵鍊意象，呼應規格「破舊木板與鐵鍊鎖住」)佔位
+  // 2026-07-04美術到位：鎖頭/空欄一律先試著用真實美術，找不到才退回🔗/🐾佔位
   if (!pen.unlocked) {
     const cost = penUnlockCost(state);
-    return `<div class="roomCell penCell locked" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="解鎖欄位：${cost}📦"><div class="icon">🔗</div><div class="homeLabel">解鎖 ${cost}📦</div></div>`;
+    const art = farmTileHtml("pen_locked", "farmTileGround");
+    return `<div class="roomCell penCell locked" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="解鎖欄位：${cost}📦"><div class="icon">${art || "🔗"}</div><div class="homeLabel">解鎖 ${cost}📦</div></div>`;
   }
   if (!pen.animal) {
-    return `<div class="roomCell penCell empty" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊放入動物"><div class="icon">🐾</div><div class="homeLabel">空欄（點放入動物）</div></div>`;
+    const art = farmTileHtml("pen_empty", "farmTileGround");
+    return `<div class="roomCell penCell empty" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊放入動物"><div class="icon">${art || "🐾"}</div><div class="homeLabel">空欄（點放入動物）</div></div>`;
   }
   const prod = getPenProductionState(state, pen);
-  const icon = PEN_ANIMAL_ICONS[pen.animal.speciesId] || "🐾";
+  const animalArt = farmTileHtml(PEN_ANIMAL_TILES[pen.animal.speciesId], "farmTileAnimal");
+  const icon = animalArt || (PEN_ANIMAL_ICONS[pen.animal.speciesId] || "🐾");
   const label = `${prod.species.name} 好感${pen.animal.happiness}${prod.ready ? "（可收成）" : ""}`;
   const stateCls = prod.ready ? " ready" : "";
   const fedToday = pen.animal.lastFedDay === state.day;
   // 食槽視覺：今天餵過=滿，還沒餵=空——不再是會衰減的飽食度，純粹當天有沒有餵的提示
-  const troughCls = "penTrough" + (fedToday ? " fed" : "");
-  return `<div class="roomCell penCell occupied${stateCls}" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}"><div class="${troughCls}"></div><div class="icon">${icon}</div><div class="homeLabel">${label}</div></div>`;
+  // 有真實美術時直接換成飼料槽圖片(pen_trough_filled/pen_trough_empty)，找不到才退回CSS畫的.penTrough
+  const troughArt = farmTileHtml(fedToday ? "pen_trough_filled" : "pen_trough_empty", "farmTileTrough");
+  const troughHtml = troughArt || `<div class="penTrough${fedToday ? " fed" : ""}"></div>`;
+  // 已放養動物時底下仍鋪一層pen_empty地面美術，動物疊在上面，不再是2026-07-03舊版的「動物一放進去地面就消失」
+  const groundArt = farmTileHtml("pen_empty", "farmTileGround pinnedGround");
+  return `<div class="roomCell penCell occupied${stateCls}" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}">${groundArt || ""}${troughHtml}<div class="icon">${icon}</div><div class="homeLabel">${label}</div></div>`;
 }
 function penSceneHtml(state) {
   if (outdoorScene !== "pen") { outdoorScene = "pen"; outdoorPlayerPos = null; }
@@ -1295,6 +1322,10 @@ const ICON_ASSETS = {
   pistol_01: 1, scrap_chainsaw: 1, military_shovel: 1, jacket_01: 1,
   awaken_crystal: 1, appearance_token: 1, floor_sample: 1,
   gaia_skin: 1,
+  // 農場區/養殖區(2026-07-04美術到位)
+  seed_potato: 1, seed_greens: 1, seed_mutant_berry: 1,
+  mutant_egg_essence: 1, mutant_berry_extract: 1,
+  chick_token: 1, lamb_token: 1, mutant_hen_token: 1, egg: 1, wool: 1,
 };
 function itemIconHtml(itemId, type) {
   const src = resolveAsset("icon", itemId);
@@ -1306,7 +1337,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 214; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 216; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -1321,6 +1352,7 @@ function resolveAsset(category, id) {
 Object.keys(ISO_ASSETS).forEach(id => registerAsset("furniture", id, `assets/iso/${id}.png`));
 Object.keys(ENEMY_ASSETS).forEach(id => registerAsset("enemy", id, `assets/enemies/${id}.png`));
 Object.keys(ICON_ASSETS).forEach(id => registerAsset("icon", id, `assets/icons/${id}.png`));
+Object.keys(FARMTILE_ASSETS).forEach(id => registerAsset("farmtile", id, `assets/iso/${id}.png`));
 // 第2階段：玩家角色造型(CHARACTER_OPTIONS)+同伴頭像(目前所有隊員共用同一張圖)收斂進同一套機制
 CHARACTER_OPTIONS.forEach(c => registerAsset("character", c.id, `assets/characters/${c.id}.png`));
 registerAsset("companion", "default", "assets/characters/companion_default.png");
@@ -2217,6 +2249,49 @@ function showLocationList() {
   renderOptions(opts);
 }
 
+// 探索進度條：8個格位，第3格暗示物資、第6格暗示威脅，抵達終點才揭曉真正結果，重現遠征過程的張力
+const EXPLORE_BAR_GOAL = 7;
+const EXPLORE_BAR_LOOT_IDX = 3;
+const EXPLORE_BAR_DANGER_IDX = 6;
+let _exploreTimer = null;
+
+function renderExploreProgress(isBattle, onComplete) {
+  if (_exploreTimer) { clearInterval(_exploreTimer); _exploreTimer = null; }
+  const box = document.createElement("div");
+  box.className = "storyCard exploreProgressBar";
+  screen.innerHTML = "";
+  screen.appendChild(box);
+  let step = 0;
+  const cellIcon = (i) => {
+    if (i === 0) return "🚶";
+    if (i === EXPLORE_BAR_GOAL) return "🏁";
+    if (i === EXPLORE_BAR_LOOT_IDX) return "📦";
+    if (i === EXPLORE_BAR_DANGER_IDX) return "💀";
+    return "・";
+  };
+  const draw = () => {
+    let html = "";
+    for (let i = 0; i <= EXPLORE_BAR_GOAL; i++) {
+      if (i === step) { html += `<span class="exploreMarker">🚶</span>`; continue; }
+      const flash = (i === EXPLORE_BAR_LOOT_IDX && !isBattle && step >= EXPLORE_BAR_LOOT_IDX)
+        || (i === EXPLORE_BAR_DANGER_IDX && isBattle && step >= EXPLORE_BAR_DANGER_IDX);
+      html += `<span class="exploreCell${flash ? " flash" : ""}">${cellIcon(i)}</span>`;
+    }
+    box.innerHTML = html;
+  };
+  const finish = () => {
+    if (_exploreTimer) { clearInterval(_exploreTimer); _exploreTimer = null; }
+    onComplete();
+  };
+  draw();
+  renderOptions([{ label: "⏩ 跳過", variant: "ghost", onClick: finish }]);
+  _exploreTimer = setInterval(() => {
+    step++;
+    draw();
+    if (step >= EXPLORE_BAR_GOAL) finish();
+  }, 220);
+}
+
 function visitLocation(loc) {
   const stResult = spendStamina(state, loc.distance === "far" ? "explore_far" : "explore_near", loc);
   if (state.hp <= 0) { renderGameOver(); return; }
@@ -2228,48 +2303,50 @@ function visitLocation(loc) {
   }
 
   const result = resolveLocation(loc, Math.random, state);
-  if (result.type === "battle") {
-    renderStatusBar();
-    const encounterPool = ENCOUNTER_TEXTS[loc.id];
-    const encounterLine = encounterPool ? encounterPool[Math.floor(Math.random() * encounterPool.length)] : "未知的威脅突然出現，你被迫戰鬥！";
-    renderText(`${encounterLine}${travelText}`, { kind: "battle" });
-        renderOptions([{ label: "⚔️ 應戰", variant: "danger", onClick: () => startBattle(result.enemyId, () => finishAction(), false, { loc }) }]);
-    return;
-  }
-
-let effectText = "";
-  let lootFlavorPool;
-  const qty = stResult.overdraw ? Math.max(1, Math.floor(result.qty * stResult.resourceMultiplier)) : result.qty;
-  if (RESOURCE_DROP_KEYS.includes(result.itemId)) {
-    applyEffect({ resources: { [result.itemId]: qty } });
-    effectText = formatEffect({ resources: { [result.itemId]: qty } });
-    lootFlavorPool = result.itemId === "scrap" ? LOOT_FLAVOR_BY_TYPE.material : (LOOT_FLAVOR_BY_TYPE["consumable_" + result.itemId] || LOOT_TEXTS);
-  } else {
-    addItemToInventory(result.itemId, qty);
-    const item = ITEMS[result.itemId];
-    effectText = `
-獲得 ${item.icon} ${item.name} x${qty}`;
-    if (item.type === "weapon") lootFlavorPool = LOOT_FLAVOR_BY_TYPE.weapon;
-    else if (item.type === "armor") lootFlavorPool = LOOT_FLAVOR_BY_TYPE.armor;
-    else if (item.useEffect && item.useEffect.resources) {
-      const key = Object.keys(item.useEffect.resources)[0];
-      lootFlavorPool = LOOT_FLAVOR_BY_TYPE["consumable_" + key] || LOOT_TEXTS;
-    } else {
-      lootFlavorPool = LOOT_TEXTS;
+  renderExploreProgress(result.type === "battle", () => {
+    if (result.type === "battle") {
+      renderStatusBar();
+      const encounterPool = ENCOUNTER_TEXTS[loc.id];
+      const encounterLine = encounterPool ? encounterPool[Math.floor(Math.random() * encounterPool.length)] : "未知的威脅突然出現，你被迫戰鬥！";
+      renderText(`${encounterLine}${travelText}`, { kind: "battle" });
+          renderOptions([{ label: "⚔️ 應戰", variant: "danger", onClick: () => startBattle(result.enemyId, () => finishAction(), false, { loc }) }]);
+      return;
     }
-  }
-  renderStatusBar();
-  const beats = SEARCH_BEATS[loc.riskLevel] || SEARCH_BEATS[1];
-  // 草稿4(2026-07-04)：day60後改用「後期版本」文字池，呈現世界逐漸復甦的跡象；day60前或沒有
-  // anomalyTextPoolLate的地點維持原本邏輯不受影響(||向下相容)
-  const useLatePool = loc.anomalyTextPoolLate && state.day >= 60;
-  const anomalyPool = (useLatePool ? loc.anomalyTextPoolLate : loc.anomalyTextPool) || (loc.anomalyText ? [loc.anomalyText] : null);
-  const beat = anomalyPool ? anomalyPool[Math.floor(Math.random() * anomalyPool.length)] : beats[Math.floor(Math.random() * beats.length)];
-  const flavor = lootFlavorPool[Math.floor(Math.random() * lootFlavorPool.length)];
-  renderText(`你在${loc.icon}${loc.name}：${beat}
+
+    let effectText = "";
+    let lootFlavorPool;
+    const qty = stResult.overdraw ? Math.max(1, Math.floor(result.qty * stResult.resourceMultiplier)) : result.qty;
+    if (RESOURCE_DROP_KEYS.includes(result.itemId)) {
+      applyEffect({ resources: { [result.itemId]: qty } });
+      effectText = formatEffect({ resources: { [result.itemId]: qty } });
+      lootFlavorPool = result.itemId === "scrap" ? LOOT_FLAVOR_BY_TYPE.material : (LOOT_FLAVOR_BY_TYPE["consumable_" + result.itemId] || LOOT_TEXTS);
+    } else {
+      addItemToInventory(result.itemId, qty);
+      const item = ITEMS[result.itemId];
+      effectText = `
+獲得 ${item.icon} ${item.name} x${qty}`;
+      if (item.type === "weapon") lootFlavorPool = LOOT_FLAVOR_BY_TYPE.weapon;
+      else if (item.type === "armor") lootFlavorPool = LOOT_FLAVOR_BY_TYPE.armor;
+      else if (item.useEffect && item.useEffect.resources) {
+        const key = Object.keys(item.useEffect.resources)[0];
+        lootFlavorPool = LOOT_FLAVOR_BY_TYPE["consumable_" + key] || LOOT_TEXTS;
+      } else {
+        lootFlavorPool = LOOT_TEXTS;
+      }
+    }
+    renderStatusBar();
+    const beats = SEARCH_BEATS[loc.riskLevel] || SEARCH_BEATS[1];
+    // 草稿4(2026-07-04)：day60後改用「後期版本」文字池，呈現世界逐漸復甦的跡象；day60前或沒有
+    // anomalyTextPoolLate的地點維持原本邏輯不受影響(||向下相容)
+    const useLatePool = loc.anomalyTextPoolLate && state.day >= 60;
+    const anomalyPool = (useLatePool ? loc.anomalyTextPoolLate : loc.anomalyTextPool) || (loc.anomalyText ? [loc.anomalyText] : null);
+    const beat = anomalyPool ? anomalyPool[Math.floor(Math.random() * anomalyPool.length)] : beats[Math.floor(Math.random() * beats.length)];
+    const flavor = lootFlavorPool[Math.floor(Math.random() * lootFlavorPool.length)];
+    renderText(`你在${loc.icon}${loc.name}：${beat}
 
 ${flavor}${effectText}${travelText}`, { kind: "event" });
-  renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
+    renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
+  });
 }
 
 function doConvert() {
