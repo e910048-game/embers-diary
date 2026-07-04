@@ -1424,6 +1424,26 @@ const EVENTS = [
     ]
   },
   {
+    // 2026-07-04新增：evt_failed_exp_01是day5~7的窄天數窗口(weight僅6，並非保證觸發)，加上「拯救」分支
+    // (saved_cyborg)完全不會走到betrayed_cyborg/cyborg_nemesis_done，導致ach_cyborg_nemesis跟
+    // ach_betrayal_path這兩個成就在「錯過窗口」或「選了拯救」的情況下永久拿不到——使用者明確表示不希望
+    // 成就需要開新檔重來才能補上，要求「這次有這問題，下次換一個類似的出現，但只剩下另一個選擇」。
+    // 這裡不重寫拯救分支已經定案的劇情(改造人已經留下來當朋友、送了工作台，不該走回頭路又要背叛同一個人)，
+    // 而是讓「這座城市不只做過一次這種實驗」——另一名處境相同的實驗體再次出現，但這次沒有拯救的餘裕，
+    // 只有唯一一條路可走。之後接續的cyborg_nemesis_done判定式是通用的(只認betrayed_cyborg旗標值，不管
+    // 是哪個事件設的)，所以這裡只需要設旗標，既有的evt_cyborg_nemesis會自動接手後續的機械巨怪決戰
+    id: "evt_second_augmented", title: "似曾相識的實驗體",
+    minDay: 1, maxDay: null, phase: ["day", "night"], weight: 0,
+    condition: (state) => !!(state.flags && !state.flags.betrayed_cyborg && !state.flags.cyborg_nemesis_done
+      && state.day >= 20 && (!state.flags.saved_cyborg || state.flags.cyborg_revenge_done)),
+    weightModifier: (state) => (state.flags && !state.flags.betrayed_cyborg && !state.flags.cyborg_nemesis_done
+      && state.day >= 20 && (!state.flags.saved_cyborg || state.flags.cyborg_revenge_done)) ? 40 : 0,
+    text: "又一次，你撞見一具插著實驗導管的身影——這座城市顯然不只做過一次這種實驗。他傷勢比記憶中那次更重，手裡死死攥著硬碟，追兵的咆哮已近在咫尺，這次你沒有猶豫的餘裕。",
+    options: [
+      { label: "拿走硬碟，趁亂逃離", effect: { setFlag: "betrayed_cyborg", embers: 50 }, resultText: "你抽走他手裡的硬碟，趁著混亂轉身離開，身後的咆哮聲很快將他吞沒。" }
+    ]
+  },
+  {
     id: "evt_cyborg_nemesis", title: "索命的機械巨怪",
     minDay: 1, maxDay: null, phase: ["night"], weight: 0,
     condition: (state) => state.flags && state.flags.betrayed_cyborg && (state.day - state.flags.betrayed_cyborg) >= 5 && !state.flags.cyborg_nemesis_done,
