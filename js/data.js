@@ -1534,6 +1534,40 @@ const EVENTS = [
       { label: "死守據點硬撐過去", effect: { hp: -30, setFlag: "cyborg_nemesis_done" }, resultText: "你死守在據點裡，巨怪的重拳一次次砸在防禦工事上。你渾身是傷，但終究撐到了天亮——牠似乎暫時退去了。" }
     ]
   },
+  // ---------- 2026-07-04 V3多同伴後勤系統：老周/小雨/阿海招募事件 ----------
+  // 三人皆走「一次性遭遇事件，選擇邀請即設定對應flags，供COMPANIONS_REGISTRY的unlockCondition讀取」
+  // 的簡單模式，跟雷恩(序章/evt_stranger_returns)、艾莉/阿卡(設施等級自動解鎖)是三種不同但各自合理的
+  // 招募管道，不強求統一成同一套機制
+  {
+    id: "evt_recruit_laozhou", title: "巷口的修理鋪",
+    minDay: 15, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !(state.flags && state.flags.laozhou_recruited),
+    text: "巷口傳來規律的敲打聲，一個滿手油污的老頭正蹲著修理一台報廢的收音機。「爛掉的東西，很多時候只是沒人願意花時間修。」你們攀談幾句，他似乎對你的據點頗感興趣。",
+    options: [
+      { label: "邀請他到據點常駐", effect: { setFlag: "laozhou_recruited", resources: { scrap: -5 } }, resultText: "他收拾起工具，跟著你回到據點。「工作台借我用用，我會讓你的裝備煥然一新的。」老周咧嘴一笑，露出缺了角的牙。" },
+      { label: "道謝後離開", effect: { scrap: 2 }, resultText: "你婉拒了他的好意，他倒也不介意，隨手塞給你幾件零件當作臨別禮。" }
+    ]
+  },
+  {
+    id: "evt_recruit_xiaoyu", title: "清點物資的少女",
+    minDay: 20, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !(state.flags && state.flags.xiaoyu_recruited),
+    text: "你在臨時避難所遇見一個正仔細清點物資的年輕女孩，筆記本上密密麻麻寫滿消耗速度與存量預估。「囤積不難，難的是知道何時該省、何時該用。」她抬頭看了你一眼。",
+    options: [
+      { label: "邀請她加入據點", effect: { setFlag: "xiaoyu_recruited", resources: { food: -2, water: -2 } }, resultText: "小雨點點頭，收拾好她那本寫滿數字的筆記本跟著你走。「以後強化據點的開銷，交給我來想辦法。」" },
+      { label: "只是閒聊幾句便道別", effect: { exp: 5 }, resultText: "你們聊了聊末日後的生存心得，雖然沒有進一步發展，這段對話還是讓你學到了一些東西。" }
+    ]
+  },
+  {
+    id: "evt_recruit_ahai", title: "熟悉地圖的旅人",
+    minDay: 10, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !(state.flags && state.flags.ahai_recruited),
+    text: "一個背著超載背包的男人對著手繪地圖喃喃自語，標滿密密麻麻的符號。「這條路危險，那條有東西——每一寸我都用命換過經驗。」他注意到你也在探索，露出感興趣的表情。",
+    options: [
+      { label: "邀請他隨行遠征", effect: { setFlag: "ahai_recruited" }, resultText: "阿海將地圖捲起收好。「跟緊點，我知道哪裡值得挖，哪裡最好繞道。」從今以後，他會在你外出時提供額外的收穫。" },
+      { label: "只是交換一下情報", effect: { exp: 5 }, resultText: "你們交換了彼此知道的地點情報，雖然他沒有留下，這些消息想必之後會派上用場。" }
+    ]
+  },
   // ---------- 27.5 連鎖事件擴充：黑膠唱片 ----------
   {
     id: "evt_vinyl_found", title: "舊時代的黑膠唱片",
@@ -2168,9 +2202,11 @@ const QUESTS = {
   // ===== 支線·👥隊員 =====
   side_companion_full_squad: {
     id: "side_companion_full_squad", type: "side", category: "companion",
-    title: "全員到齊", desc: "招募完整的3人隊伍。",
-    condition: (state) => Object.values(state.companions).filter(v => v !== "locked").length >= 3,
-    reward: { embers: 30 },
+    // 2026-07-04：V3同伴名冊從3人擴充到6人(COMPANIONS_REGISTRY)，「全員到齊」門檻同步從3改成6，
+    // 否則招滿一半就會誤判「全員」，跟標題語意不符
+    title: "全員到齊", desc: "招募完整的6人隊伍。",
+    condition: (state) => Object.values(state.companions).filter(v => v !== "locked").length >= 6,
+    reward: { embers: 50 },
   },
   side_companion_care: {
     id: "side_companion_care", type: "side", category: "companion", repeatable: "manual", resetField: "careCompletedCount", counterField: "careCompletedCount", counterTarget: 5,

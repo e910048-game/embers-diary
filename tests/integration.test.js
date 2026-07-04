@@ -180,6 +180,21 @@ test("存檔/讀檔roundtrip：序章完成後的狀態（含companion/baseDefen
   assert.strictEqual(loaded.baseDefense, 1);
 });
 
+test("舊存檔相容：只含3位舊夥伴的companions存檔，讀檔後應自動補上新夥伴為locked且保留原值", () => {
+  // 模擬game.js的loadGame()：舊存檔只有雷恩/艾莉/阿卡3個key，新增老周/小雨/阿海後
+  // 靠NESTED_STATE_FIELDS的淺層合併（{...defaults[key], ...saved[key]}）自動補上新key
+  const oldSave = { 雷恩: "guard", 艾莉: "care", 阿卡: "standby" };
+  const defaults = L.defaultCompanionsState();
+  const merged = { ...defaults, ...oldSave };
+  assert.strictEqual(merged["雷恩"], "guard");
+  assert.strictEqual(merged["艾莉"], "care");
+  assert.strictEqual(merged["阿卡"], "standby");
+  assert.strictEqual(merged["老周"], "locked");
+  assert.strictEqual(merged["小雨"], "locked");
+  assert.strictEqual(merged["阿海"], "locked");
+  assert.strictEqual(Object.keys(merged).length, 6);
+});
+
 // ===== 規則式事件條件在完整遊玩流程中的影響 =====
 
 test("完整流程：companion=true且level>=3時，跑長時間夜晚事件迴圈不會出錯，且能抽到專屬事件", () => {

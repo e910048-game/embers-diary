@@ -19,10 +19,12 @@
 //   - 血月波數 = baseWaves + floor(noiseLevel / 20)
 //   - UI：狀態列顯示噪音條，血月前顯示警告
 //
-// [TODO-COMPANIONS] 🌾 多同伴後勤（RimWorld 式）
-//   - state.companions[] 陣列（現為單一 state.companion）
-//   - 超過 6 人後自動整合為 logisticsPool，貢獻每日被動產出
-//   - 任務指派 UI 擴充：守衛/搜刮/製作/基地
+// [DONE-COMPANIONS] 🌾 多同伴後勤系統（2026-07-04完成）—— 見js/data.js的COMPANIONS_REGISTRY
+//   （雷恩/艾莉/阿卡/老周/小雨/阿海共6人，各自任務+被動效果+固定站位+解鎖條件皆登記在那裡，
+//   本檔的recruitCompanion/dispatchCompanion/refreshCompanionUnlocks/getCompanionTaskEffect
+//   (logic.js)全部改成遍歷登記表，不再硬編碼名字）。這則TODO本身就是最初被使用者問到
+//   「還有什麼要做」時才發現的紀錄，比照小屋擴建那次教訓，完成後直接在原地標記完成而非刪除，
+//   避免之後又不小心把同一份筆記重寫一次
 // ========================================================
 
 
@@ -347,18 +349,44 @@ function renderOptions(options) {
 }
 
 // ---------- 同伴互動 ----------
-const COMPANION_TASK_LABELS = { gather: "採集", guard: "守衛", care: "照護" };
-const COMPANION_TASK_DESCS = {
-    gather: "每階段自動執行一次採集，不消耗玩家體力",
-    guard: "降低夜襲發生機率",
-  care: "照護：休息時HP額外回復+5"
+// 2026-07-04 V3：統一登記表，取代原本COMPANION_TASK_*(雷恩專用)+TASK_*/SQUAD_CHAT_LINES(艾莉/阿卡專用)
+// 兩套並存的重複定義——所有6位同伴(COMPANIONS_REGISTRY)共用同一組LABELS/DESCS/CHAT_LINES
+const TASK_LABELS = { standby: "待命", gather: "採集", care: "照護", guard: "守衛", blast: "爆破警戒", craft: "製作維修", base: "基地後勤", expedition: "隨行遠征" };
+const TASK_DESCS = {
+  gather: "每階段自動執行一次採集，不消耗玩家體力",
+  care: "休息時HP額外回復+5",
+  guard: "降低夜襲發生機率",
+  blast: "降低夜襲機率，血月狂潮時額外提供防禦加成",
+  craft: "重鍛裝備前綴的花費額外打折",
+  base: "強化據點的花費額外打折",
+  expedition: "採集收穫額外加成",
 };
-const COMPANION_TASK_LINES = {
-    gather: ["（剛從附近採集回來，整理著戰利品）", "「附近的資源都被我清乾淨了。」", "「明天我再去看看其他地方。」"],
-    guard: ["（警戒地注視著四周）", "「有什麼風聲都逃不過我的耳朵。」", "「夜襲？儘管來，我會守住這裡。」"],
-  care: ["（仔細地幫你檢查傷口）", "「你要好好休息，別太勉強自己。」", "「我會一直在你身邊的。」"],
+const COMPANION_NAME_LABELS = {
+  "雷恩": "🛡️ 雷恩（前哨守衛）",
+  "艾莉": "🌿 艾莉（採集醫護）",
+  "阿卡": "💥 阿卡（爆破手）",
+  "老周": "🔧 老周（製作維修）",
+  "小雨": "📦 小雨（基地後勤）",
+  "阿海": "🎒 阿海（隨行遠征）",
 };
-const COMPANION_TASK_ORDER = ["gather", "guard", "care"];
+const COMPANION_CHAT_LINES = {
+  "雷恩": ["（警戒地注視著四周）", "「有什麼風聲都逃不過我的耳朵。」", "「夜襲？儘管來，我會守住這裡。」"],
+  "艾莉": ["（一邊整理藥草一邊跟你打招呼）", "「外面還安全嗎？」", "「我把採集到的東西分類好了。」"],
+  "阿卡": ["（檢查著手邊的炸藥）", "「有什麼需要炸開的儘管說。」", "「守好據點是我的工作。」"],
+  "老周": ["（拿著螺絲起子擺弄裝備）", "「這把武器啊，還能再撐一陣子。」", "「工具借我用用，別客氣。」"],
+  "小雨": ["（在筆記本上記著什麼）", "「這個月的物資消耗，我都算好了。」", "「省著點用，日子才能過得久。」"],
+  "阿海": ["（對著地圖比劃著）", "「那個方向我去過，有點東西。」", "「跟緊點，我帶路。」"],
+};
+// 2026-07-04：艾莉/阿卡以外的解鎖提示，供showCompanionPanel()顯示——COMPANIONS_REGISTRY的
+// unlockCondition是純函式判斷式，這裡只是給玩家看的人類可讀提示文字，兩者需對應但各自維護
+const COMPANION_UNLOCK_HINTS = {
+  "雷恩": "（走過序章或劇情事件解鎖）",
+  "艾莉": "（溫室Lv3解鎖）",
+  "阿卡": "（指揮核心Lv3解鎖）",
+  "老周": "（探索中隨機相遇解鎖）",
+  "小雨": "（探索中隨機相遇解鎖）",
+  "阿海": "（探索中隨機相遇解鎖）",
+};
 
 // #22-1：基地陳列格標籤(27.2牆面/桌面/地板slot)，Peeps風格命名
 const BASE_SLOT_LABELS = { wall: "牆", table: "桌", floor: "地板" };
@@ -504,10 +532,14 @@ function tileKey(gx, gy) { return gx + "," + gy; }
 // 或字串"companion"(排除同伴自己目前位置)，沿用原本excludeKey的呼叫慣例
 function getOccupiedTileKeys(state, excludeIndex) {
   const occupied = new Set();
-  if (state.companion && excludeIndex !== "companion") {
-    const c = state.companionPos || gridPos(6, 2);
-    const g = posToGrid(c);
-    occupied.add(tileKey(g.gx, g.gy));
+  // 2026-07-04 V3：所有已招募同伴一律固定站位(COMPANIONS_REGISTRY.pos)，統一標記為佔用格
+  if (state.companions && excludeIndex !== "companion") {
+    Object.keys(COMPANIONS_REGISTRY).forEach(name => {
+      const status = state.companions[name];
+      if (!status || status === "locked") return;
+      const reg = COMPANIONS_REGISTRY[name];
+      occupied.add(tileKey(reg.pos.gx, reg.pos.gy));
+    });
   }
   (state.placedFurniture || []).forEach((f, idx) => {
     if (idx === excludeIndex) return;
@@ -604,49 +636,30 @@ function homeSceneHtml(state) {
   const pos = state.homePos || { left: defaultPos.left, top: defaultPos.top };
   const pg = posToGrid(pos), pRow = pg.gy;
   items.push(`<div class="roomCell player" id="homePlayerCell" style="left:${pos.left};top:${pos.top};z-index:${cellZ(pg.gx + pg.gy, 4)}" title="拖曳可移動位置"><div class="icon">${characterSpriteHtml("character", state.appearance || "char_1", state.homeFacing || "front", "玩家")}</div><div class="homeLabel${labelCls(pRow)}">${state.playerName || "旅人"}</div></div>`);
-  if (state.companion) {
-    const task = COMPANION_TASK_LABELS[state.companionTask] || state.companionTask || "";
-    // #22-2：同伴來源差異化文案，依劇情分支顯示不同描述
-        const origin = state.flags && state.flags.companion ? "（在末日中與你相遇，選擇留在你身邊）" : "";
-    const cPos = state.companionPos || gridPos(6, 2);
-    const cg = posToGrid(cPos), cRow = cg.gy;
-        items.push(`<div class="roomCell companion${state.companionTask ? ' task-active' : ''}" id="homeCompanionCell" style="left:${cPos.left};top:${cPos.top};z-index:${cellZ(cg.gx + cg.gy, 2)}" title="同伴：${state.companionName || "同伴"}（目前任務：${task}）${origin}"><div class="icon" style="position:relative">${state.companionTask ? '<span class="taskBadge">' + (COMPANION_TASK_LABELS[state.companionTask] || state.companionTask) + '</span>' : ''}${characterSpriteHtml("companion", "default", state.companionFacing || "front", "同伴")}</div><div class="homeLabel${labelCls(cRow)}">${state.companionName || "同伴"}${task ? `（${task}）` : ""}</div></div>`);
-    // v122：同伴互動氣泡選單(7.6-C)，取代全螢幕文字流程
-    if (companionBubbleOpen) {
-      const cLeftPct = parseFloat(cPos.left) || 50;
-      const cEdgeCls = cLeftPct <= 20 ? " edge-left" : cLeftPct >= 80 ? " edge-right" : "";
-      items.push(`<div class="companionBubble${cEdgeCls}" style="left:${cPos.left};top:${cPos.top}">
-        ${companionBubbleLine ? `<div class="bubbleLine">${companionBubbleLine}</div>` : ""}
-        <div class="bubbleRow">
-          <button class="bubbleBtn" id="companionBubbleChat" title="聊天">💬</button>
-          <button class="bubbleBtn" id="companionBubbleAssign" title="指派（目前：${task}，點擊切換）">📋${task}</button>
-          <button class="bubbleBtn" id="companionBubbleLove" title="互動（每日限一次）">❤️</button>
-        </div>
-            </div>`);
-    }
-  }
-  // 小隊同伴（艾莉/阿卡）小屋視覺化，2026-06-20新增——已招募(非locked)且非雷恩(雷恩走state.companion那條既有路徑)時顯示為roomCell
-  const SQUAD_POS = { "艾莉": gridPos(1, 2), "阿卡": gridPos(8, 2) };
-  const SQUAD_COLOR = { "艾莉": "#6fae73", "阿卡": "#c0392b" };
+  // 2026-07-04 V3：統一渲染所有COMPANIONS_REGISTRY登記的同伴(目前6人)，取代原本「雷恩走
+  // state.companion特例(可走動+3按鈕氣泡)、艾莉/阿卡走squadCompanion(固定站位+2按鈕氣泡)」
+  // 兩套並存的重複邏輯——全部同伴一律固定站位、共用同一組3按鈕氣泡(聊天/指派/互動)，
+  // 新增同伴只需要在COMPANIONS_REGISTRY加一筆設定+一個招募事件，這裡完全不用再改
   if (state.companions) {
-    Object.keys(SQUAD_POS).forEach(sName => {
-      const sStatus = state.companions[sName];
-      if (!sStatus || sStatus === "locked") return;
-      const sPos = SQUAD_POS[sName];
-      const sg = posToGrid(sPos), sRow = sg.gy;
-      const sTaskLabel = TASK_LABELS[sStatus] || sStatus;
-      const sColor = SQUAD_COLOR[sName] || "#8a9099";
-      items.push(`<div class="roomCell companion squadCompanion${sStatus !== "standby" ? " task-active" : ""}" id="squadCell_${sName}" style="left:${sPos.left};top:${sPos.top};z-index:${cellZ(sg.gx + sg.gy, 2)};--squadColor:${sColor}" title="${COMPANION_NAME_LABELS[sName] || sName}：${sTaskLabel}"><div class="icon" style="position:relative">${sStatus !== "standby" ? `<span class="taskBadge">${sTaskLabel}</span>` : ""}<img class="pixelImg" src="${resolveAsset("companion", "default")}" alt="${sName}"></div><div class="homeLabel${labelCls(sRow)}">${sName}（${sTaskLabel}）</div></div>`);
-      if (squadBubbleOpen === sName) {
-        const taskOptions = ["standby", ...(COMPANION_TASKS[sName] || [])];
-        const nextTask = taskOptions[(taskOptions.indexOf(sStatus) + 1) % taskOptions.length];
-        const sLeftPct = parseFloat(sPos.left) || 50;
-        const edgeCls = sLeftPct <= 20 ? " edge-left" : sLeftPct >= 80 ? " edge-right" : "";
-        items.push(`<div class="companionBubble${edgeCls}" style="left:${sPos.left};top:${sPos.top}">
-          ${squadBubbleLine ? `<div class="bubbleLine">${squadBubbleLine}</div>` : ""}
+    Object.keys(COMPANIONS_REGISTRY).forEach(name => {
+      const status = state.companions[name];
+      if (!status || status === "locked") return;
+      const reg = COMPANIONS_REGISTRY[name];
+      const cPos = gridPos(reg.pos.gx, reg.pos.gy);
+      const cg = posToGrid(cPos), cRow = cg.gy;
+      const taskLabel = TASK_LABELS[status] || status;
+      items.push(`<div class="roomCell companion squadCompanion${status !== "standby" ? " task-active" : ""}" id="companionCell_${name}" style="left:${cPos.left};top:${cPos.top};z-index:${cellZ(cg.gx + cg.gy, 2)};--squadColor:${reg.color}" title="${COMPANION_NAME_LABELS[name] || name}：${taskLabel}"><div class="icon" style="position:relative">${status !== "standby" ? `<span class="taskBadge">${taskLabel}</span>` : ""}<img class="pixelImg" src="${resolveAsset("companion", "default")}" alt="${name}"></div><div class="homeLabel${labelCls(cRow)}">${name}（${taskLabel}）</div></div>`);
+      if (companionBubbleOpen === name) {
+        const taskOptions = ["standby", ...(reg.tasks || [])];
+        const nextTask = taskOptions[(taskOptions.indexOf(status) + 1) % taskOptions.length];
+        const cLeftPct = parseFloat(cPos.left) || 50;
+        const edgeCls = cLeftPct <= 20 ? " edge-left" : cLeftPct >= 80 ? " edge-right" : "";
+        items.push(`<div class="companionBubble${edgeCls}" style="left:${cPos.left};top:${cPos.top}">
+          ${companionBubbleLine ? `<div class="bubbleLine">${companionBubbleLine}</div>` : ""}
           <div class="bubbleRow">
-            <button class="bubbleBtn" id="squadBubbleChat_${sName}" title="聊天">💬</button>
-            <button class="bubbleBtn" id="squadBubbleAssign_${sName}" title="指派：${TASK_LABELS[nextTask]}">📋${TASK_LABELS[nextTask]}</button>
+            <button class="bubbleBtn" id="companionBubbleChat_${name}" title="聊天">💬</button>
+            <button class="bubbleBtn" id="companionBubbleAssign_${name}" title="指派：${TASK_LABELS[nextTask]}">📋${TASK_LABELS[nextTask]}</button>
+            <button class="bubbleBtn" id="companionBubbleLove_${name}" title="互動（每日限一次）">❤️</button>
           </div>
         </div>`);
       }
@@ -718,12 +731,18 @@ const avatarRow = `<div class="homeAvatarRow">
       <div class="homeAvatarName">${state.playerName || "旅人"}</div>
       <div class="homeAvatarBar"><div class="homeAvatarBarFill" style="width:${Math.max(0, Math.min(100, state.stamina / state.staminaMax * 100))}%"></div></div>
     </div>
-    ${state.companion ? `<div class="homeAvatar">
+    ${(() => {
+      // 2026-07-04 V3：6位同伴不可能全部塞進這排小卡片，改成「已招募人數」摘要卡，
+      // 點擊開showCompanionPanel()看完整名冊——沿用原本homeTabPeepsInvite這個id，
+      // bindHomeTabPills()不分元素型態一律用getElementById綁onclick，兩種情況都適用
+      const recruitedCount = Object.values(state.companions || {}).filter(v => v && v !== "locked").length;
+      if (recruitedCount === 0) return `<button class="homeAvatarInvite" id="homeTabPeepsInvite" title="查看小隊夥伴招募狀態">+ 邀請隊友</button>`;
+      return `<div class="homeAvatar" id="homeTabPeepsInvite" style="cursor:pointer" title="查看小隊同伴">
       <div class="homeAvatarImg"><img class="pixelImg" src="${resolveAsset("companion", "default")}" alt="同伴"></div>
-      <div class="homeAvatarName">${state.companionName || "同伴"}</div>
-      <!-- v103：homeAvatarBar需要width:100%搭配相對定位的父層容器，才能正確顯示同伴體力條比例 -->
-      <div class="homeAvatarTask">${COMPANION_TASK_LABELS[state.companionTask] || ""}</div>
-    </div>` : `<button class="homeAvatarInvite" id="homeTabPeepsInvite" title="查看小隊夥伴招募狀態">+ 邀請隊友</button>`}
+      <div class="homeAvatarName">小隊同伴</div>
+      <div class="homeAvatarTask">${recruitedCount}人已加入</div>
+    </div>`;
+    })()}
   </div>`;
   const nightCls = state.phase !== "day" ? " night" : "";
   const lightsOffCls = state.homeLightOff ? " lightsOff" : "";
@@ -1193,39 +1212,9 @@ function bindConfirmAction(el, action) {
     timer = setTimeout(() => el.classList.remove("armed"), 2500);
   };
 }
-let companionWanderTimer = null;
-function startCompanionWander() {
-  if (companionWanderTimer) clearInterval(companionWanderTimer);
-  if (!state.companion) return;
-  companionWanderTimer = setInterval(() => {
-    if (!state.companion || state.homePlacementMode) return;
-    const el = document.getElementById("homeCompanionCell");
-    if (!el || !document.body.contains(el)) { clearInterval(companionWanderTimer); companionWanderTimer = null; return; }
-    const cur = posToGrid(state.companionPos || gridPos(6, 2));
-    const occupied = getOccupiedTileKeys(state, "companion");
-    const player = posToGrid(state.homePos || gridPos(5, 5));
-    occupied.add(tileKey(player.gx, player.gy));
-    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].sort(() => Math.random() - 0.5);
-    for (const [dx, dy] of dirs) {
-      const nx = cur.gx + dx, ny = cur.gy + dy;
-      if (nx < GRID_COL_MIN || nx > GRID_COL_MAX || ny < GRID_FLOOR_ROW_MIN || ny > GRID_FLOOR_ROW_MAX) continue;
-      if (occupied.has(tileKey(nx, ny))) continue;
-      const np = gridPos(nx, ny);
-      const facing = computeFacing(dx, dy);
-      if (facing) { state.companionFacing = facing; applyFacingToCell(el, "companion", "default", facing); }
-      state.companionPos = np;
-      el.classList.add("walking");
-      el.style.left = np.left;
-      el.style.top = np.top;
-      el.style.zIndex = cellZ(nx + ny, 2);
-      const label = el.querySelector(".homeLabel");
-      if (label) label.classList.toggle("lbl-above", ny === GRID_FLOOR_ROW_MAX);
-      setTimeout(() => el.classList.remove("walking"), 260);
-      saveGame();
-      break;
-    }
-  }, 6000 + Math.random() * 4000);
-}
+// 2026-07-04 V3移除：startCompanionWander()原本只服務雷恩的走動動畫(依附#homeCompanionCell)，
+// V3統一改成全部同伴固定站位(見COMPANIONS_REGISTRY.pos+homeSceneHtml)，跟艾莉/阿卡/新同伴一致，
+// 這個函式引用的DOM id已經不存在，整段移除避免留著死程式碼
 // v166：free-form佈置——furnitureIndex對應state.placedFurniture的陣列索引，拖曳放開後直接寫回該項的gx/gy，
 // 不再有「slot」字串/固定預設位置概念；點一下(非拖曳)睡袋仍保留切換地板樣式的彩蛋(原本綁在slot==="floor")
 function bindFurnitureDrag(el, canvas, furnitureIndex) {
@@ -1315,7 +1304,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 212; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 213; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -1426,11 +1415,10 @@ function runQuestCheck() {
   }
   return result;
 }
-let companionBubbleOpen = false;
+// 2026-07-04 V3：companionBubbleOpen改存「目前打開氣泡的同伴名字」(或null)，取代原本
+// 布林(僅雷恩用)+squadBubbleOpen(艾莉/阿卡專用名字)兩套並存的狀態變數
+let companionBubbleOpen = null;
 let companionBubbleLine = null;
-// 小隊同伴（艾莉/阿卡）小屋視覺化氣泡狀態，2026-06-20新增
-let squadBubbleOpen = null;
-let squadBubbleLine = null;
 // 不請自來的夥伴(流浪狗)小屋視覺化氣泡狀態，2026-07-04新增——比照squadCompanion手法，
 // 但狗沒有任務指派，氣泡選單只有「摸摸牠」一個按鈕
 let dogBubbleOpen = false;
@@ -1473,7 +1461,15 @@ function renderMain() {
   }
   // #23：徽章列表（廢料/防禦力/同伴任務等小圖示）
 const badges = [`<span class="miniBadge">📦 ${state.resources.scrap}</span>`, `<span class="miniBadge">🛡️${state.baseDefense}</span>`];
-  if (state.companion) badges.push(`<span class="miniBadge">👤 ${COMPANION_TASK_LABELS[state.companionTask] || state.companionTask}</span>`);
+  // 2026-07-04 V3：每位「目前正在執行任務(非待命/未招募)」的同伴各顯示一個小徽章，取代原本只認雷恩的判斷
+  if (state.companions) {
+    Object.keys(state.companions).forEach(name => {
+      const status = state.companions[name];
+      if (status && status !== "locked" && status !== "standby") {
+        badges.push(`<span class="miniBadge">👤 ${name} ${TASK_LABELS[status] || status}</span>`);
+      }
+    });
+  }
   // #28：設施等級徽章列表
   FACILITY_KEYS.forEach(key => {
     const lv = state.facilities[key] || 0;
@@ -1518,7 +1514,6 @@ const lowHp = state.hp <= state.hpMax * 0.25;
   renderText(`${homeSceneHtml(state)}${idleText}${facLine}${peepsLine}${extra}${threatWarningText()}${tipText}${lowHpWarning}`);
   const roomCanvas = document.getElementById("roomCanvas");
   if (roomCanvas) bindHomeCanvasMove(roomCanvas);
-  startCompanionWander();
   bindHomeTabPills();
   const placementBtn = document.getElementById("homeTabPlacement");
   if (placementBtn) placementBtn.onclick = () => { state.homePlacementMode = !state.homePlacementMode; renderMain(); };
@@ -1562,72 +1557,51 @@ const lowHp = state.hp <= state.hpMax * 0.25;
       }
     };
   });
-  const companionCell = document.getElementById("homeCompanionCell");
-  if (companionCell) companionCell.onclick = (e) => {
-    e.stopPropagation();
-    companionBubbleOpen = !companionBubbleOpen;
-    companionBubbleLine = null;
-    renderMain();
-  };
-  const bubbleChat = document.getElementById("companionBubbleChat");
-  if (bubbleChat) bubbleChat.onclick = (e) => {
-    e.stopPropagation();
-    const lines = COMPANION_TASK_LINES[state.companionTask] || ["（同伴靜靜地看著你，沒有說話）"];
-    companionBubbleLine = lines[Math.floor(Math.random() * lines.length)];
-    renderMain();
-  };
-  const bubbleAssign = document.getElementById("companionBubbleAssign");
-  if (bubbleAssign) bubbleAssign.onclick = (e) => {
-    e.stopPropagation();
-    const idx = COMPANION_TASK_ORDER.indexOf(state.companionTask);
-    state.companionTask = COMPANION_TASK_ORDER[(idx + 1) % COMPANION_TASK_ORDER.length];
-        companionBubbleLine = `已指派為${COMPANION_TASK_LABELS[state.companionTask]}（${COMPANION_TASK_DESCS[state.companionTask]}）`;
-    saveGame();
-    renderMain();
-  };
-  const bubbleLove = document.getElementById("companionBubbleLove");
-  if (bubbleLove) bubbleLove.onclick = (e) => {
-    e.stopPropagation();
-    if (state.flags.companionLoveDay === state.day) {
-      companionBubbleLine = "今天已經互動過了，明天再來吧。";
-    } else {
-      state.flags.companionLoveDay = state.day;
-      state.san = clamp(state.san + 2, 0, getEffectiveSanMax(state));
-            companionBubbleLine = "同伴靠近你，安靜地待在你身邊，SAN+2。";
-      saveGame();
-      renderStatusBar();
-    }
-    renderMain();
-  };
-  // 小隊同伴（艾莉/阿卡）小屋視覺化點擊綁定，2026-06-20新增
+  // 2026-07-04 V3：統一綁定所有COMPANIONS_REGISTRY同伴的點擊/氣泡按鈕，取代原本雷恩(3按鈕)+
+  // 艾莉/阿卡(2按鈕，缺互動)兩套並存的綁定邏輯——全部同伴現在都有聊天/指派/互動3個按鈕
   if (state.companions) {
-    Object.keys(state.companions).forEach(sName => {
-      if (sName === "雷恩") return;
-      const sStatus = state.companions[sName];
-      if (!sStatus || sStatus === "locked") return;
-      const sCell = document.getElementById("squadCell_" + sName);
-      if (sCell) sCell.onclick = (e) => {
+    Object.keys(COMPANIONS_REGISTRY).forEach(name => {
+      const status = state.companions[name];
+      if (!status || status === "locked") return;
+      const reg = COMPANIONS_REGISTRY[name];
+      const cell = document.getElementById("companionCell_" + name);
+      if (cell) cell.onclick = (e) => {
         e.stopPropagation();
-        squadBubbleOpen = squadBubbleOpen === sName ? null : sName;
-        squadBubbleLine = null;
+        companionBubbleOpen = companionBubbleOpen === name ? null : name;
+        companionBubbleLine = null;
         renderMain();
       };
-      const sChat = document.getElementById("squadBubbleChat_" + sName);
-      if (sChat) sChat.onclick = (e) => {
+      const chatBtn = document.getElementById("companionBubbleChat_" + name);
+      if (chatBtn) chatBtn.onclick = (e) => {
         e.stopPropagation();
-        const lines2 = SQUAD_CHAT_LINES[sName] || ["（沉默地看著你）"];
-        squadBubbleLine = lines2[Math.floor(Math.random() * lines2.length)];
+        const lines = COMPANION_CHAT_LINES[name] || ["（沉默地看著你）"];
+        companionBubbleLine = lines[Math.floor(Math.random() * lines.length)];
         renderMain();
       };
-      const sAssign = document.getElementById("squadBubbleAssign_" + sName);
-      if (sAssign) sAssign.onclick = (e) => {
+      const assignBtn = document.getElementById("companionBubbleAssign_" + name);
+      if (assignBtn) assignBtn.onclick = (e) => {
         e.stopPropagation();
-        const taskOptions = ["standby", ...(COMPANION_TASKS[sName] || [])];
-        const cur = state.companions[sName];
+        const taskOptions = ["standby", ...(reg.tasks || [])];
+        const cur = state.companions[name];
         const next = taskOptions[(taskOptions.indexOf(cur) + 1) % taskOptions.length];
-        dispatchCompanion(state, sName, next);
-        squadBubbleLine = `已指派為${TASK_LABELS[next]}${TASK_DESCS[next] ? "（" + TASK_DESCS[next] + "）" : ""}`;
+        dispatchCompanion(state, name, next);
+        companionBubbleLine = `已指派為${TASK_LABELS[next]}${TASK_DESCS[next] ? "（" + TASK_DESCS[next] + "）" : ""}`;
         saveGame();
+        renderMain();
+      };
+      const loveBtn = document.getElementById("companionBubbleLove_" + name);
+      if (loveBtn) loveBtn.onclick = (e) => {
+        e.stopPropagation();
+        const loveDayKey = "companionLoveDay_" + name;
+        if (state.flags[loveDayKey] === state.day) {
+          companionBubbleLine = "今天已經互動過了，明天再來吧。";
+        } else {
+          state.flags[loveDayKey] = state.day;
+          state.san = clamp(state.san + 2, 0, getEffectiveSanMax(state));
+          companionBubbleLine = "同伴靠近你，安靜地待在你身邊，SAN+2。";
+          saveGame();
+          renderStatusBar();
+        }
         renderMain();
       };
     });
@@ -2364,9 +2338,9 @@ function doRest() {
   applyEffect(gain);
   state.san = clamp(state.san + restSanRegen(state), 0, getEffectiveSanMax(state));
   // 2026-07-04修正：支線「彼此照顧」(side_companion_care)要求careCompletedCount>=5，但這個計數器
-  // 從未被累加過，任務永遠無法完成——同一組「照護」判定跟restHealAmount()一致(雷恩companionTask或
-  // 艾莉companions狀態任一為"care")，每次休息若有人在執行照護任務就累加一次
-  if ((state.companion && state.companionTask === "care") || (state.companions && state.companions["艾莉"] === "care")) {
+  // 從未被累加過，任務永遠無法完成——改用通用的getCompanionTaskEffect()判斷是否有任何同伴正在
+  // 執行照護任務(目前只有艾莉的registry有restHealBonus，但寫成通用判斷式避免以後新增同伴又要改這裡)
+  if (getCompanionTaskEffect(state, "restHealBonus") > 0) {
     state.questFlags.careCompletedCount = (state.questFlags.careCompletedCount || 0) + 1;
   }
   renderStatusBar();
@@ -3266,18 +3240,6 @@ function showShopRepair() {
   renderOptions(opts);
 }
 
-const COMPANION_NAME_LABELS = { "雷恩": "🛡️ 雷恩（前哨守衛）", "艾莉": "🌿 艾莉（採集醫護）", "阿卡": "💣 阿卡（爆破手）" };
-const SQUAD_CHAT_LINES = {
-  "艾莉": ["（一邊整理藥草一邊跟你打招呼）", "「外面還安全嗎？」", "「我把採集到的東西分類好了。」"],
-  "阿卡": ["（檢查著手邊的炸藥）", "「有什麼需要炸開的儘管說。」", "「守好據點是我的工作。」"]
-};
-const TASK_LABELS = { standby: "待命", gather: "採集", care: "照護", guard: "守衛", blast: "爆破警戒" };
-const TASK_DESCS = {
-    gather: "每階段自動執行一次採集，不消耗玩家體力",
-    care: "休息時HP額外回復+5",
-    guard: "降低夜襲發生機率",
-  blast: "降低夜襲機率，效果比雷恩守衛更強"
-};
 
 function showCompanionPanel() {
   renderStatusBar();
@@ -3285,7 +3247,7 @@ function showCompanionPanel() {
   Object.keys(COMPANION_NAME_LABELS).forEach(name => {
     const status = (state.companions && state.companions[name]) || "locked";
     if (status === "locked") {
-            const hint = name === "阿卡" ? "（指揮核心Lv3解鎖）" : "（尚未招募）";
+      const hint = COMPANION_UNLOCK_HINTS[name] || "（尚未招募）";
       html += `<div class="invRow"><span>🔒 ${COMPANION_NAME_LABELS[name]}</span><span class="qty">${hint}</span></div>`;
     } else {
       html += `<div class="invRow"><span>${COMPANION_NAME_LABELS[name]}</span><span class="qty">目前：${TASK_LABELS[status] || status}</span></div>`;
