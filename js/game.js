@@ -783,6 +783,19 @@ function spawnFloatParticle(cellId, emoji) {
   setTimeout(() => p.remove(), 900);
 }
 
+// 草稿5a：戰鬥傷害/護盾數字彈出動畫，跟spawnFloatParticle同一種手法，但字級更大、依類型上色。
+// 呼叫時機是renderBattle()之後(確保#battleEnemyCard的DOM已經重新畫出來)，同一個卡片可疊多個彈出
+// 數字(例如爆擊傷害+吸血同時發生)，各自獨立淡出，互不影響
+function spawnDamagePopup(cellId, text, cls) {
+  const cell = document.getElementById(cellId);
+  if (!cell) return;
+  const p = document.createElement("div");
+  p.className = "dmgPopup " + cls;
+  p.textContent = text;
+  cell.appendChild(p);
+  setTimeout(() => p.remove(), 700);
+}
+
 // ---------- 農場區/庭院場景 ----------
 const FARM_STAGE_ICONS = ["🌱", "🌿", "🌾"];
 function yardPlotCellHtml(state, plotDef) {
@@ -1285,7 +1298,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 209; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 210; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -2630,11 +2643,16 @@ function renderBattle(message) {
   const myStats = getEffectiveStats(state);
   const enemyDef = getShreddedDef(b.enemy);
   const enemySrc = resolveAsset("enemy", b.enemy.id);
+  // 草稿5b：狀態badge——眩暈/防禦削減目前生效時常駐顯示在敵人名稱旁，掃一眼就能知道戰況，不用逐字讀戰報
+  const statusBadges = [
+    b.enemy.stunned ? `<span class="statusBadge stunned">💫眩暈</span>` : "",
+    (b.enemy._defShred || 0) > 0 ? `<span class="statusBadge defShred">🛡️-${b.enemy._defShred}</span>` : ""
+  ].filter(Boolean).join("");
   renderText(`
-    <div class="enemyCard">
+    <div class="enemyCard" id="battleEnemyCard">
       <div class="icon" title="${b.enemy.icon}">${enemySrc ? `<img class="pixelImg enemyImg" src="${enemySrc}" alt="${b.enemy.name}">` : pixelIconSvg(b.enemy.id || b.enemy.name, "enemy")}</div>
       <div class="info">
-        <div class="name">${b.enemy.name}</div>
+        <div class="name">${b.enemy.name}${statusBadges ? `<span class="enemyStatusBadges">${statusBadges}</span>` : ""}</div>
         <div class="enemyHpTrack"><div class="enemyHpFill" style="width:${pct}%"></div></div>
         <div class="enemyHpText">HP ${Math.max(0, b.enemy.hpLeft)}/${b.enemy.hp}</div>
       </div>
@@ -2805,6 +2823,7 @@ let lootText = "";
     }
   }
   renderBattle(`${extraText}${critText}你攻擊了${b.enemy.name}，造成${dmgToEnemy}點傷害${lifestealText}${counterText}${reviveText}${gaiaArmorText}`);
+  spawnDamagePopup("battleEnemyCard", `-${dmgToEnemy}`, crit ? "crit" : "dmg");
 }
 
 function battleFlee() {
