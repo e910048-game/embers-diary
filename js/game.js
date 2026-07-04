@@ -636,6 +636,24 @@ function homeSceneHtml(state) {
     });
   }
 
+  // 不請自來的夥伴(流浪狗)小屋視覺化，2026-07-04新增——固定位置、原地搖擺動畫(不像人類同伴會走動指派任務)，
+  // 呼應使用者反饋「這種夥伴應該要可以在小屋內、跟人物一樣可以互動」
+  if (state.flags && state.flags.dog_companion) {
+    const dPos = gridPos(2, 6);
+    const dg = posToGrid(dPos), dRow = dg.gy;
+    items.push(`<div class="roomCell dogCompanion" id="homeDogCell" style="left:${dPos.left};top:${dPos.top};z-index:${cellZ(dg.gx + dg.gy, 1)}" title="小狗（點擊互動）"><div class="icon idleSway">🐕</div><div class="homeLabel${labelCls(dRow)}">小狗</div></div>`);
+    if (dogBubbleOpen) {
+      const dLeftPct = parseFloat(dPos.left) || 50;
+      const dEdgeCls = dLeftPct <= 20 ? " edge-left" : dLeftPct >= 80 ? " edge-right" : "";
+      items.push(`<div class="companionBubble${dEdgeCls}" style="left:${dPos.left};top:${dPos.top}">
+        ${dogBubbleLine ? `<div class="bubbleLine">${dogBubbleLine}</div>` : ""}
+        <div class="bubbleRow">
+          <button class="bubbleBtn" id="dogBubblePet" title="摸摸牠（每日限一次）">🐾</button>
+        </div>
+      </div>`);
+    }
+  }
+
   const wallItemId = state.baseSlots && state.baseSlots.wall;
   if (wallItemId) {
     const item = ITEMS[wallItemId];
@@ -1267,7 +1285,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 204; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 205; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -1383,6 +1401,10 @@ let companionBubbleLine = null;
 // 小隊同伴（艾莉/阿卡）小屋視覺化氣泡狀態，2026-06-20新增
 let squadBubbleOpen = null;
 let squadBubbleLine = null;
+// 不請自來的夥伴(流浪狗)小屋視覺化氣泡狀態，2026-07-04新增——比照squadCompanion手法，
+// 但狗沒有任務指派，氣泡選單只有「摸摸牠」一個按鈕
+let dogBubbleOpen = false;
+let dogBubbleLine = null;
 function togglePanel(key, showFn) {
   if (homeOpenPanel === key) {
     homeOpenPanel = null;
@@ -1580,6 +1602,29 @@ const lowHp = state.hp <= state.hpMax * 0.25;
       };
     });
   }
+
+  // 不請自來的夥伴(流浪狗)點擊綁定，2026-07-04新增
+  const dogCell = document.getElementById("homeDogCell");
+  if (dogCell) dogCell.onclick = (e) => {
+    e.stopPropagation();
+    dogBubbleOpen = !dogBubbleOpen;
+    dogBubbleLine = null;
+    renderMain();
+  };
+  const dogPetBtn = document.getElementById("dogBubblePet");
+  if (dogPetBtn) dogPetBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (state.flags.dogPetDay === state.day) {
+      dogBubbleLine = "今天已經摸過牠了，牠滿足地趴在原地。";
+    } else {
+      state.flags.dogPetDay = state.day;
+      state.san = clamp(state.san + 1, 0, getEffectiveSanMax(state));
+      dogBubbleLine = "牠開心地蹭了蹭你的手，尾巴搖得飛快。SAN+1。";
+      saveGame();
+      renderStatusBar();
+    }
+    renderMain();
+  };
 
   const coupleWallCell = document.getElementById("homeWallCell");
   if (coupleWallCell) coupleWallCell.onclick = (e) => {

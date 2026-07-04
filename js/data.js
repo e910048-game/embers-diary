@@ -1515,15 +1515,33 @@ const EVENTS = [
     ]
   },
   {
+    // 2026-07-04修正：這裡原本會直接setFlag dog_companion=true，跟敘事「牠已經好幾天沒出現」互相矛盾——
+    // 玩家會在狗明明沒有回來的分支拿到「不只是寵物：讓一隻流浪狗決定留下來陪你」的成就。
+    // 改成只標記「這次錯過了」(dog_second_chance_at)，真正的companion флаг交給evt_dog_second_chance負責，
+    // 呼應使用者要求「所有成就都要能完成，錯過後面還要有一次不用選、直接獲得的機會」
     id: "evt_dog_missed", title: "再也沒出現的腳步聲",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 0,
-    condition: (state) => !!(state.flags && state.flags.stray_dog_fed && !state.flags.dog_companion
+    condition: (state) => !!(state.flags && state.flags.stray_dog_fed && !state.flags.dog_companion && !state.flags.dog_second_chance_at
       && state.day - state.flags.stray_dog_fed > 4),
-    weightModifier: (state) => (state.flags && state.flags.stray_dog_fed && !state.flags.dog_companion
+    weightModifier: (state) => (state.flags && state.flags.stray_dog_fed && !state.flags.dog_companion && !state.flags.dog_second_chance_at
       && state.day - state.flags.stray_dog_fed > 4) ? 20 : 0,
     text: "你想起那隻曾經來討過食物的狗，已經好幾天沒再見到牠的蹤影了。或許牠找到了別的去處，或許只是換了條路線——廢墟裡的生命，總是來來去去。",
     options: [
-      { label: "繼續忙手邊的事", effect: { setFlag: "dog_companion" }, resultText: "你搖了搖頭，把這份小小的失落放下，重新投入眼前的工作。" }
+      { label: "繼續忙手邊的事", effect: { setFlag: "dog_second_chance_at" }, resultText: "你搖了搖頭，把這份小小的失落放下，重新投入眼前的工作。" }
+    ]
+  },
+  {
+    // 2026-07-04新增：guaranteed的第二次機會，時間到就自動觸發，只有一個「接受既定事實」的選項(不是真的抉擇)，
+    // 確保餵過牠一次的玩家最終一定能拿到dog_companion，不會因為錯過第一次1~4天窗口就永久卡住
+    id: "evt_dog_second_chance", title: "再次響起的腳步聲",
+    minDay: 1, maxDay: null, phase: ["day", "night"], weight: 0,
+    condition: (state) => !!(state.flags && state.flags.dog_second_chance_at && !state.flags.dog_companion
+      && state.day - state.flags.dog_second_chance_at >= 14),
+    weightModifier: (state) => (state.flags && state.flags.dog_second_chance_at && !state.flags.dog_companion
+      && state.day - state.flags.dog_second_chance_at >= 14) ? 40 : 0,
+    text: "一陣熟悉又陌生的腳步聲在門外響起——你幾乎要認不出牠了，那隻早已被你以為走失的狗，正叼著一隻不知道從哪抓來的獵物，搖著尾巴站在門口。這一次，牠沒有再猶豫，逕自走進據點，熟門熟路地在角落找了個位置趴下。",
+    options: [
+      { label: "牠回來了", effect: { baseDefense: 1, setFlag: "dog_companion" }, resultText: "你蹲下身，輕輕摸了摸牠的頭。這一次，牠似乎打定主意不會再離開了——據點裡，多了一位不請自來的守衛。" }
     ]
   },
   // #32：居家/同伴/家具主題的循環事件——日常生活感的小品，每輪都可能再次抽到

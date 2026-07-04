@@ -528,10 +528,12 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
   0%, 100% { transform: rotate(-6deg); }
   50% { transform: rotate(6deg); }
 }
-.roomCell.penCell .icon.idleSway {
+.roomCell.penCell .icon.idleSway,
+.roomCell.dogCompanion .icon.idleSway {
   animation: idleSway 2.2s ease-in-out infinite;
   transform-origin: 50% 85%;
 }
+.roomCell.dogCompanion .icon { font-size: 22px; }
 /* v122：點同伴彈出氣泡選單(7.6-C)——取代全螢幕互動流程 */
 .companionBubble {
   position: absolute; transform: translate(-50%, -100%);
