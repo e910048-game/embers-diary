@@ -285,6 +285,65 @@ const SKILLS_TREE = {
 };
 const FACTION_IDS = ["gaia", "cyber", "ocean", "aero", "mind"];
 
+// 2026-07-04 V3多同伴後勤系統：統一登記表，取代原本state.companion(布林，僅雷恩專用)+
+// COMPANION_TASKS(散落在logic.js的3人硬編碼)兩套並存的舊架構。recruitCompanion/dispatchCompanion/
+// refreshCompanionUnlocks/companionAssigned(logic.js)都改成遍歷這份清單，之後再新增同伴只需要
+// 在這裡加一筆設定，不用再去改散落各處的硬編碼判斷式。
+// tasks：可指派的任務清單(不含隱含的"standby"待命)
+// taskEffects：{任務名: {效果key: 數值}}，由getCompanionTaskEffect()(logic.js)通用讀取加總，
+//   單一同伴同時只能執行一項任務，效果彼此獨立、不互斥
+// unlockCondition：解鎖條件，達成後refreshCompanionUnlocks()會自動把該同伴從locked轉為standby
+//   （雷恩走劇情事件直接recruitCompanion()解鎖，這裡的unlockCondition固定回傳false，不受自動解鎖影響）
+// pos：小屋畫面固定站位(gx,gy)，同伴一律採用不會走動的固定立繪(呼應V3統一渲染，見game.js)
+const COMPANIONS_REGISTRY = {
+  "雷恩": {
+    name: "雷恩", role: "前哨守衛", icon: "🛡️",
+    tasks: ["guard"],
+    taskEffects: { guard: { raidChanceDelta: -0.3 } },
+    unlockCondition: (state) => false, // 走劇情事件(序章/evt_stranger_returns)直接recruitCompanion()解鎖
+    pos: { gx: 6, gy: 2 }, color: "#8a9099",
+  },
+  "艾莉": {
+    name: "艾莉", role: "留守生產", icon: "🌿",
+    tasks: ["gather", "care"],
+    taskEffects: { gather: { autoGather: 1 }, care: { restHealBonus: 5 } },
+    // 2026-07-04修正：艾莉原本完全沒有解鎖路徑(recruitCompanion從未被呼叫過，永久卡在locked)，
+    // 依V3設計改綁溫室Lv3自動解鎖，理由：她的招牌任務是「採集/照護」，跟溫室(食物生產)主題一致
+    unlockCondition: (state) => !!(state.facilities && state.facilities.greenhouse >= 3),
+    pos: { gx: 1, gy: 2 }, color: "#6fae73",
+  },
+  "阿卡": {
+    name: "阿卡", role: "血月防禦強化", icon: "💥",
+    tasks: ["blast"],
+    // 2026-07-04：原本「blast」只有降低夜襲機率，新增血月狂潮戰時防禦加成(呼應V3設計「戰時血月防禦強化」)，
+    // 兩個效果並存(平時嚇阻+戰時加固)，不是取代關係
+    taskEffects: { blast: { raidChanceDelta: -0.1, bloodMoonDefenseBonus: 0.1 } },
+    unlockCondition: (state) => !!(state.facilities && state.facilities.command >= 3),
+    pos: { gx: 8, gy: 2 }, color: "#c0392b",
+  },
+  "老周": {
+    name: "老周", role: "製作維修", icon: "🔧",
+    tasks: ["craft"],
+    taskEffects: { craft: { reforgeDiscountRatio: 0.2 } },
+    unlockCondition: (state) => !!(state.flags && state.flags.laozhou_recruited),
+    pos: { gx: 3, gy: 4 }, color: "#c9a24b",
+  },
+  "小雨": {
+    name: "小雨", role: "基地後勤", icon: "📦",
+    tasks: ["base"],
+    taskEffects: { base: { reinforceDiscountRatio: 0.15 } },
+    unlockCondition: (state) => !!(state.flags && state.flags.xiaoyu_recruited),
+    pos: { gx: 6, gy: 4 }, color: "#5a8ac9",
+  },
+  "阿海": {
+    name: "阿海", role: "隨行遠征加成", icon: "🎒",
+    tasks: ["expedition"],
+    taskEffects: { expedition: { gatherYieldBonusRatio: 0.2 } },
+    unlockCondition: (state) => !!(state.flags && state.flags.ahai_recruited),
+    pos: { gx: 1, gy: 4 }, color: "#4bb3a6",
+  },
+};
+
 // 地點清單（MVP2：地圖探索）。distance: "near"=當輪可直接往返；"far"=需額外消耗1食物+1飲水的「路程成本」
 const LOCATIONS = [
   {
@@ -2303,7 +2362,7 @@ const BLOOD_MOON_VICTORY_TEXTS = [
 ];
 
 if (typeof module !== "undefined") {
-  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS };
+  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
   window.ITEMS = ITEMS;
@@ -2320,4 +2379,5 @@ if (typeof module !== "undefined") {
   window.SPECIES = SPECIES;
   window.BLOOD_MOON_INTRO_TEXTS = BLOOD_MOON_INTRO_TEXTS;
   window.BLOOD_MOON_VICTORY_TEXTS = BLOOD_MOON_VICTORY_TEXTS;
+  window.COMPANIONS_REGISTRY = COMPANIONS_REGISTRY;
 }

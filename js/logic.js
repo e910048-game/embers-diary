@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES } = data;
+  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -108,37 +108,37 @@
     return { cost, overdraw: true, resourceMultiplier: OVERDRAW_RESOURCE_MULTIPLIER, encounterBonus: OVERDRAW_ENCOUNTER_BONUS, streak: state.overdrawStreak };
   }
 
-  // 休息時的額外HP回復（生存樹5階：staminaMax×2；覺醒"痊癒體質"+5；同伴指派"照護"+5）
-  function restHealAmount(state) {
-    let heal = 0;
-    if (factionTier(state, "ocean") >= 4) heal += Math.round(state.hpMax * 0.05); // 25.3 洋流寄生T4：完美水解
-    if (state.awakening && state.awakening.id === "recovery") heal += 5;
-    if (state.companion && state.companionTask === "care") heal += 5;
-    if (state.companions && state.companions["艾莉"] === "care") heal += 5;
-    if (getComfortLevel(state) >= 6) heal += 5; // v110：舒適度≥6「安樂窩」休息HP額外+5
-    return heal;
-  }
+  // 2026-07-04 V3多同伴後勤系統：COMPANIONS_REGISTRY(data.js)是唯一的同伴設定來源，
+  // 以下函式全部改成遍歷登記表，不再硬編碼雷恩/艾莉/阿卡3個名字——之後新增同伴只需要在
+  // COMPANIONS_REGISTRY加一筆設定，這裡完全不用再動
+  const COMPANION_NAMES = Object.keys(COMPANIONS_REGISTRY);
+  // 向下相容：COMPANION_TASKS沿用舊名稱匯出(部分UI程式碼可能還引用它)，但內容改成從登記表推導
+  const COMPANION_TASKS = COMPANION_NAMES.reduce((acc, name) => {
+    acc[name] = COMPANIONS_REGISTRY[name].tasks;
+    return acc;
+  }, {});
 
-  // 28.1：命名同伴系統（雷恩/艾莉/阿卡）
-  const COMPANION_TASKS = {
-    "雷恩": ["guard"],
-    "艾莉": ["gather", "care"],
-    "阿卡": ["blast"]
-  };
+  function defaultCompanionsState() {
+    return COMPANION_NAMES.reduce((acc, name) => { acc[name] = "locked"; return acc; }, {});
+  }
 
   // 招募同伴：locked -> standby（不影響已在執行任務中的同伴）
   function recruitCompanion(state, name) {
-    if (!state.companions) state.companions = { "雷恩": "locked", "艾莉": "locked", "阿卡": "locked" };
+    if (!state.companions) state.companions = defaultCompanionsState();
     if (state.companions[name] === "locked") state.companions[name] = "standby";
     return state;
   }
 
-  // 阿卡需指揮核心(command)達Lv3才解鎖，於每次階段推進時檢查
+  // 依COMPANIONS_REGISTRY各自的unlockCondition，於每次階段推進時檢查是否該自動解鎖
+  // （雷恩的unlockCondition固定為false，因為他走劇情事件直接recruitCompanion()解鎖，不受這裡影響）
   function refreshCompanionUnlocks(state) {
-    if (!state.companions) state.companions = { "雷恩": "locked", "艾莉": "locked", "阿卡": "locked" };
-    if (state.companions["阿卡"] === "locked" && state.facilities && state.facilities.command >= 3) {
-      state.companions["阿卡"] = "standby";
-    }
+    if (!state.companions) state.companions = defaultCompanionsState();
+    COMPANION_NAMES.forEach((name) => {
+      const reg = COMPANIONS_REGISTRY[name];
+      if (state.companions[name] === "locked" && reg.unlockCondition && reg.unlockCondition(state)) {
+        state.companions[name] = "standby";
+      }
+    });
     return state;
   }
 
@@ -154,10 +154,48 @@
     return { ok: true };
   }
 
-  // 是否有同伴被指派至某任務（合併舊版單一companion欄位以維持相容）
+  // 是否有同伴被指派至某任務（合併舊版單一companion欄位以維持相容——舊存檔可能只有
+  // state.companion/companionTask沒有走過統一登記表，保留雙路徑判斷避免舊存檔行為跑掉）
   function companionAssigned(state, task) {
     if (state.companion && state.companionTask === task) return true;
     return !!(state.companions && Object.values(state.companions).includes(task));
+  }
+
+  // 通用同伴任務效果加總器：掃描COMPANIONS_REGISTRY裡每個「非locked/非standby」的同伴，
+  // 把該同伴目前執行任務對應的taskEffects[effectKey]數值加總回傳。取代原本散落在
+  // restHealAmount/raidChance等函式裡的硬編碼「state.companions["艾莉"]==="care"」判斷式，
+  // 之後新增同伴的被動效果只需要在COMPANIONS_REGISTRY設定taskEffects，不用再改這些函式本體
+  function getCompanionTaskEffect(state, effectKey) {
+    let total = 0;
+    if (state.companions) {
+      COMPANION_NAMES.forEach((name) => {
+        const status = state.companions[name];
+        if (!status || status === "locked" || status === "standby") return;
+        const reg = COMPANIONS_REGISTRY[name];
+        const eff = reg && reg.taskEffects && reg.taskEffects[status];
+        if (eff && typeof eff[effectKey] === "number") total += eff[effectKey];
+      });
+    }
+    // 舊存檔相容：state.companion/companionTask這條legacy路徑目前只可能對應雷恩，
+    // 但雷恩已经统一透過state.companions["雷恩"]追蹤，這裡只在companions["雷恩"]還沒有實際指派狀態
+    // (locked或不存在)時才補算legacy路徑，避免正常情況下(companions["雷恩"]已經是"guard")重複加總兩次
+    const raenAlreadyTracked = !!(state.companions && state.companions["雷恩"] && state.companions["雷恩"] !== "locked");
+    if (state.companion && state.companionTask && !raenAlreadyTracked) {
+      const reg = COMPANIONS_REGISTRY["雷恩"];
+      const eff = reg && reg.taskEffects && reg.taskEffects[state.companionTask];
+      if (eff && typeof eff[effectKey] === "number") total += eff[effectKey];
+    }
+    return total;
+  }
+
+  // 休息時的額外HP回復（生存樹5階：staminaMax×2；覺醒"痊癒體質"+5；同伴指派"照護"+5）
+  function restHealAmount(state) {
+    let heal = 0;
+    if (factionTier(state, "ocean") >= 4) heal += Math.round(state.hpMax * 0.05); // 25.3 洋流寄生T4：完美水解
+    if (state.awakening && state.awakening.id === "recovery") heal += 5;
+    heal += getCompanionTaskEffect(state, "restHealBonus");
+    if (getComfortLevel(state) >= 6) heal += 5; // v110：舒適度≥6「安樂窩」休息HP額外+5
+    return heal;
   }
 
   function defaultState() {
@@ -198,7 +236,7 @@
       seenEvents: [], // #22-3：已記錄過的事件id清單，首次遭遇給予「日記新頁」小獎勵與收納感
       companion: false,
       companionTask: "gather",
-      companions: { "雷恩": "locked", "艾莉": "locked", "阿卡": "locked" }, // 28.1
+      companions: defaultCompanionsState(), // 28.1，2026-07-04起改由COMPANIONS_REGISTRY統一驅動(目前6人)
       milestonesShown: [],
       lastCityReviewDay: null, // 草稿2：城市現況回顧上次觸發的day，day90後每20天觸發一次
       flags: {},
@@ -495,7 +533,10 @@
   // 27.2：有同伴時food/water消耗各+1
   function applyPhaseDecay(state, rng = Math.random) {
     tickStatusEffects(state); // 27.4
-    const base = state.companion ? 2 : 1;
+    // 2026-07-04：只要有任一同伴已招募(非locked)就多消耗1份食物/飲水，不隨同伴人數疊加
+    // (維持原本「有同伴在，開銷變大」的份量感，不因為多同伴後勤系統上線就變得更嚴苛)
+    const hasAnyCompanion = !!state.companion || !!(state.companions && Object.values(state.companions).some((v) => v && v !== "locked"));
+    const base = hasAnyCompanion ? 2 : 1;
     const extraWater = getAccessoryEffect(state, "extraWaterDecay"); // 27.1：洋流寄生蛭，每階段水消耗額外+1
     // v117：巨型地脈藤蔓標本(furn_vines)——已陳列時，每階段50%機率水消耗-1（最低0）
     let waterDecay = base + extraWater;
@@ -586,7 +627,9 @@
   // defenseRatio>=0.5時視為「擋下整波雜兵」，決戰僅需面對精英Boss波次
   function resolveBloodMoonDefense(state) {
     const baseDefense = state.baseDefense || 0;
-    const defenseRatio = Math.min(0.7, baseDefense / 30);
+    // 2026-07-04：阿卡指派「blast」任務時，血月狂潮戰時額外提供防禦加成(見COMPANIONS_REGISTRY)，
+    // 呼應V3設計「阿卡=戰時血月防禦強化」，跟他平時降低夜襲機率的效果並存、不互斥
+    const defenseRatio = Math.min(0.7, baseDefense / 30 + getCompanionTaskEffect(state, "bloodMoonDefenseBonus"));
     const wavesBlocked = defenseRatio >= 0.5 ? 1 : 0;
     return { baseDefense, defenseRatio, wavesBlocked };
   }
@@ -882,11 +925,17 @@
   // 採集獲得量：食物/飲水 1~2（避免0造成連續虧損），廢料 0~2
   // state可選：探索樹1/5階提升採集量、5階10%機率「意外發現」+1廢料
   function gatherYield(rng = Math.random, state = null) {
-    return {
+    const base = {
       food: 1 + Math.floor(rng() * 2),
       water: 1 + Math.floor(rng() * 2),
       scrap: Math.floor(rng() * 3)
     };
+    // 2026-07-04：阿海指派「expedition」任務時，採集/遠征收穫額外加成(見COMPANIONS_REGISTRY)
+    const bonusRatio = state ? getCompanionTaskEffect(state, "gatherYieldBonusRatio") : 0;
+    if (bonusRatio) {
+      Object.keys(base).forEach((k) => { base[k] = Math.round(base[k] * (1 + bonusRatio)); });
+    }
+    return base;
   }
 
   // #21-2追加：物資轉換(SA 23節)——消耗囤積的廢料換取當下更需要的補給，作為cautious策略後期的廢料出口
@@ -966,6 +1015,9 @@
   function reinforceCost(state) {
     let cost = REINFORCE_COST;
     if (state && state.reinforceDiscount) cost -= state.reinforceDiscount;
+    // 2026-07-04：小雨指派「base」任務時，強化據點額外打折(見COMPANIONS_REGISTRY)
+    const companionDiscount = state ? getCompanionTaskEffect(state, "reinforceDiscountRatio") : 0;
+    if (companionDiscount) cost = Math.round(cost * (1 - companionDiscount));
     return Math.max(3, cost);
   }
 
@@ -979,9 +1031,7 @@
     let chance = state.baseRaidChance - state.baseDefense * 0.03;
     if (state.facilities && state.facilities.command >= 3) chance -= 0.03; // 22.2：指揮核心Lv3再降低夜襲機率
     if (factionTier(state, "aero") >= 2) chance -= 0.05; // 25.3 大氣幽魂T2：音波干擾
-    if (state.companion && state.companionTask === "guard") chance -= 0.3;
-    if (state.companions && state.companions["雷恩"] === "guard") chance -= 0.3;
-    if (state.companions && state.companions["阿卡"] === "blast") chance -= 0.1; // 28.1：阿卡爆破手額外威嚇
+    chance += getCompanionTaskEffect(state, "raidChanceDelta"); // 雷恩(guard)-0.3、阿卡(blast)-0.1，見COMPANIONS_REGISTRY
     chance += getFurnitureRaidChanceDelta(state); // 27.2：重力晶簇掛鏡(家具)-5%
     chance += getAccessoryEffect(state, "raidChanceDelta"); // 27.1：重力晶簇掛鏡(飾品)-5%
     return Math.max(0.02, chance);
@@ -1608,6 +1658,9 @@
     if (state.facilities && state.facilities.workshop >= 1) cost = Math.round(cost * 0.8);
     const discount = getAccessoryEffect(state, "merchantDiscount");
     if (discount) cost = Math.round(cost * (1 - discount));
+    // 2026-07-04：老周指派「craft」任務時，重鍛前綴額外打折(見COMPANIONS_REGISTRY)
+    const companionDiscount = getCompanionTaskEffect(state, "reforgeDiscountRatio");
+    if (companionDiscount) cost = Math.round(cost * (1 - companionDiscount));
     return cost;
   }
   function reforgePrefix(state, ref, rng = Math.random) {
@@ -1822,7 +1875,7 @@
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,
     getAccessoryEffect, getEffectiveSanMax, getEffectiveHpMax, getResourceCap, PREFIX_POOL,
     gainExp, LEVEL_UP_HP_BONUS, LEVEL_UP_ATK_BONUS, applyPrologueEnding,
-    COMPANION_TASKS, recruitCompanion, refreshCompanionUnlocks, dispatchCompanion, companionAssigned,
+    COMPANION_TASKS, COMPANION_NAMES, defaultCompanionsState, recruitCompanion, refreshCompanionUnlocks, dispatchCompanion, companionAssigned, getCompanionTaskEffect,
     FACILITY_KEYS, syncBaseDefense, reinforceFacility, restSanRegen,
     FARM_PLOT_LAYOUT, CROPS, currentPhaseIndex, farmPlotUnlockCost, unlockFarmPlot, plantSeed, waterPlot, getCropStage, harvestFarmPlot,
     PEN_LAYOUT, SPECIES, FEED_COST, getPenProductionState, penUnlockCost, unlockPen, placeAnimal, feedAnimal, petAnimal, collectPen,

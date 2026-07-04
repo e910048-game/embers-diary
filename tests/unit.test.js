@@ -528,10 +528,12 @@ test("raidChance: 同伴指派「警戒」時降低0.30", () => {
 });
 
 test("restHealAmount: 同伴指派「照護」時+5、覺醒痊癒體質+5、洋流寄生T4額外+5%hpMax", () => {
+  // 2026-07-04更新：V3多同伴後勤系統上線後，「照護」是艾莉的專屬任務(COMPANIONS_REGISTRY)，
+  // 雷恩只能執行「guard」，不再測試「雷恩執行照護」這個新架構下不存在的組合
   const s = L.defaultState();
   assert.strictEqual(L.restHealAmount(s), 0);
-  s.companion = true;
-  s.companionTask = "care";
+  L.recruitCompanion(s, "艾莉");
+  L.dispatchCompanion(s, "艾莉", "care");
   assert.strictEqual(L.restHealAmount(s), 5);
   s.awakening = L.AWAKENING_TRAITS.find(t => t.id === "recovery");
   assert.strictEqual(L.restHealAmount(s), 10);
@@ -836,6 +838,65 @@ test("reinforceFacility: 指揮中心升至Lv3時自動解鎖阿卡", () => {
   L.reinforceFacility(s, "command");
   assert.strictEqual(s.facilities.command, 3);
   assert.notStrictEqual(s.companions["阿卡"], "locked");
+});
+
+// 2026-07-04 V3多同伴後勤系統：新增3位同伴(老周/小雨/阿海)+2個確認缺口修正的測試
+test("refreshCompanionUnlocks: 溫室升至Lv3時自動解鎖艾莉（修正原本永久卡在locked的bug）", () => {
+  const s = L.defaultState();
+  assert.strictEqual(s.companions["艾莉"], "locked");
+  s.facilities.greenhouse = 3;
+  L.refreshCompanionUnlocks(s);
+  assert.strictEqual(s.companions["艾莉"], "standby");
+});
+
+test("COMPANIONS_REGISTRY: 老周/小雨/阿海透過flags旗標解鎖後可正常招募/指派", () => {
+  const s = L.defaultState();
+  assert.strictEqual(L.dispatchCompanion(s, "老周", "craft").ok, false);
+  s.flags.laozhou_recruited = true;
+  s.flags.xiaoyu_recruited = true;
+  s.flags.ahai_recruited = true;
+  L.refreshCompanionUnlocks(s);
+  assert.strictEqual(s.companions["老周"], "standby");
+  assert.strictEqual(s.companions["小雨"], "standby");
+  assert.strictEqual(s.companions["阿海"], "standby");
+  assert.strictEqual(L.dispatchCompanion(s, "老周", "craft").ok, true);
+  assert.strictEqual(L.dispatchCompanion(s, "小雨", "base").ok, true);
+  assert.strictEqual(L.dispatchCompanion(s, "阿海", "expedition").ok, true);
+});
+
+test("resolveBloodMoonDefense: 阿卡指派blast時額外提供血月防禦加成", () => {
+  const s = L.defaultState();
+  s.baseDefense = 0;
+  const before = L.resolveBloodMoonDefense(s).defenseRatio;
+  s.flags.laozhou_recruited = s.flags.xiaoyu_recruited = s.flags.ahai_recruited = true;
+  s.facilities.command = 3;
+  L.refreshCompanionUnlocks(s);
+  L.dispatchCompanion(s, "阿卡", "blast");
+  assert.ok(L.resolveBloodMoonDefense(s).defenseRatio > before);
+});
+
+test("reforgePrefixCost/reinforceCost: 老周(craft)/小雨(base)分別提供折扣", () => {
+  const s = L.defaultState();
+  const baseReforge = L.reforgePrefixCost(s);
+  const baseReinforce = L.reinforceCost(s);
+  s.flags.laozhou_recruited = true;
+  s.flags.xiaoyu_recruited = true;
+  L.refreshCompanionUnlocks(s);
+  L.dispatchCompanion(s, "老周", "craft");
+  L.dispatchCompanion(s, "小雨", "base");
+  assert.ok(L.reforgePrefixCost(s) < baseReforge);
+  assert.ok(L.reinforceCost(s) < baseReinforce);
+});
+
+test("gatherYield: 阿海指派expedition時採集收穫額外加成", () => {
+  const s = L.defaultState();
+  s.flags.ahai_recruited = true;
+  L.refreshCompanionUnlocks(s);
+  L.dispatchCompanion(s, "阿海", "expedition");
+  const rng = () => 0.99; // 固定rng讓基準值可預期
+  const withBonus = L.gatherYield(rng, s);
+  const without = L.gatherYield(rng, null);
+  assert.ok(withBonus.food >= without.food && withBonus.water >= without.water);
 });
 
 test("syncBaseDefense: baseDefense = 指揮中心*2 + bonusDefense", () => {
