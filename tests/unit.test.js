@@ -1566,5 +1566,62 @@ test("getCompanionTaskEffect：同伴劇情線完成後的永久加成，即使�
   assert.ok(Math.abs(L.getCompanionTaskEffect(s, "reforgeDiscountRatio") - 0.25) < 1e-9); // 0.2(任務本身) + 0.05(劇情加成)疊加
 });
 
+// 2026-07-05 補接4項原本「未接入」的裝備效果
+test("applyEffect: mind_robe裝備時SAN損失打7折（不限來源，事件/戰鬥皆算）", () => {
+  const s = L.defaultState();
+  s.equipment.armor = "mind_robe";
+  s.san = 50;
+  L.applyEffect(s, { san: -10 });
+  assert.strictEqual(s.san, 43); // -10*0.7=-7 -> 50-7=43
+
+  const s2 = L.defaultState();
+  s2.equipment.armor = "ceramic_vest";
+  s2.san = 50;
+  L.applyEffect(s2, { san: -10 });
+  assert.strictEqual(s2.san, 40); // 未裝備mind_robe，不打折
+
+  const s3 = L.defaultState();
+  s3.equipment.armor = "mind_robe";
+  s3.san = 50;
+  L.applyEffect(s3, { san: 10 }); // san回復不受影響，只打折負值
+  assert.strictEqual(s3.san, 60);
+});
+
+test("applyAtkShred/getShreddedAtk: mind_fork每擊使敵方攻擊力-1，疊加上限-5（原設計「扣AP」重新詮釋）", () => {
+  const s = L.defaultState();
+  s.equipment.weapon = "mind_fork";
+  const enemy = { atk: 10 };
+  for (let i = 0; i < 8; i++) L.applyAtkShred(enemy, s);
+  assert.strictEqual(enemy._atkShred, 5);
+  assert.strictEqual(L.getShreddedAtk(enemy), 5);
+
+  const s2 = L.defaultState();
+  s2.equipment.weapon = "knife_01";
+  const enemy2 = { atk: 10 };
+  L.applyAtkShred(enemy2, s2);
+  assert.strictEqual(L.getShreddedAtk(enemy2), 10); // 未裝備mind_fork，不衰減
+});
+
+test("evt_injury：aero_pouch裝備時觸發權重降低30%（陷阱事件機率-30%）", () => {
+  const evt = L.EVENTS.find(e => e.id === "evt_injury");
+  const s = L.defaultState();
+  assert.strictEqual(evt.weightModifier(s), 0); // 未裝備時不調整
+
+  s.equipment.accessory = "aero_pouch";
+  assert.strictEqual(evt.weightModifier(s), -2); // -round(8*0.3) = -2
+});
+
+test("evt_shadow_on_wall：mind_eye裝備時多一個看穿幻覺的安全選項", () => {
+  const evt = L.EVENTS.find(e => e.id === "evt_shadow_on_wall");
+  const mindEyeOpt = evt.options.find(o => o.condition);
+  assert.ok(mindEyeOpt, "應該有一個掛condition的mind_eye選項");
+
+  const s = L.defaultState();
+  assert.strictEqual(mindEyeOpt.condition(s), false);
+  s.equipment.accessory = "mind_eye";
+  assert.strictEqual(mindEyeOpt.condition(s), true);
+  assert.ok(!mindEyeOpt.effect || mindEyeOpt.effect.san === undefined || mindEyeOpt.effect.san >= 0); // 看穿真相不應該扣SAN
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

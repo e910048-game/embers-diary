@@ -371,6 +371,7 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 }
 .statusBadge.stunned { background: rgba(255, 207, 77, 0.18); color: #ffcf4d; border: 1px solid rgba(255,207,77,0.4); }
 .statusBadge.defShred { background: rgba(255, 77, 77, 0.15); color: #ff8d8d; border: 1px solid rgba(255,77,77,0.35); }
+.statusBadge.atkShred { background: rgba(154, 128, 255, 0.15); color: #c3b3ff; border: 1px solid rgba(154,128,255,0.35); }
 /* #16：像素圖示(8x8 SVG)統一尺寸與顯示風格 */
 .icon svg { display: block; image-rendering: pixelated; shape-rendering: crispEdges; border-radius: 3px; }
 .icon.inline { display: inline-block; vertical-align: -3px; margin-right: 2px; }

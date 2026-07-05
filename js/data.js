@@ -116,7 +116,7 @@ const ITEMS = {
   aero_dagger: { id: "aero_dagger", name: "高頻次聲波刃", type: "weapon", icon: "🔪", stats: { atk: 8 }, rarity: "epic", factionTag: "aero", desc: "攻擊無視敵方防禦", effects: { ignoreDefBonus: 1 } },
   cyber_hammer: { id: "cyber_hammer", name: "電磁改裝重錘", type: "weapon", icon: "🔨", stats: { atk: 9 }, rarity: "epic", factionTag: "cyber", desc: "對機械系敵人傷害+100%" },
   ocean_mace: { id: "ocean_mace", name: "水銀液態流星錘", type: "weapon", icon: "⚒️", stats: { atk: 7 }, rarity: "epic", factionTag: "ocean", desc: "25%機率使敵暈眩1回合（27.4 stun）" },
-  mind_fork: { id: "mind_fork", name: "神經干擾音叉", type: "weapon", icon: "🍴", stats: { atk: 3 }, rarity: "epic", factionTag: "mind", desc: "每擊扣目標1AP（未接入敵方AP機制，文案保留）" },
+  mind_fork: { id: "mind_fork", name: "神經干擾音叉", type: "weapon", icon: "🍴", stats: { atk: 3 }, rarity: "epic", factionTag: "mind", desc: "神經干擾：每擊使敵方攻擊力-1，疊加上限-5（27.4 atkShred，呼應原「扣AP」設定）" },
   mind_greatsword: { id: "mind_greatsword", name: "重力晶格巨劍", type: "weapon", icon: "🗡️", stats: { atk: 14 }, rarity: "legendary", factionTag: "mind", desc: "閃避歸零但暴擊倍率200%", effects: { critMultiplierOverride: 2.0 } },
   // 2026-07-01新增：各流派裝備補充，蓋亞原本只有1把武器明顯偏少，順便補齊其餘流派
   gaia_spore_dart: { id: "gaia_spore_dart", name: "孢子噴射匕首", type: "weapon", icon: "🍄", stats: { atk: 4 }, rarity: "uncommon", factionTag: "gaia", desc: "刃口塗滿活化孢子，攻擊額外+5%吸血（與活化荊棘刺鞭分開計算）", effects: { lifestealBonus: 0.05 } },
@@ -129,12 +129,12 @@ const ITEMS = {
   ocean_jacket: { id: "ocean_jacket", name: "重水防護夾克", type: "armor", icon: "🧥", stats: { def: 2 }, rarity: "rare", factionTag: "ocean", desc: "閃避率+5%", effects: { dodgeBonus: 0.05 } },
   aero_cloak: { id: "aero_cloak", name: "氣流避彈防風衣", type: "armor", icon: "🧥", stats: { def: 1 }, rarity: "rare", factionTag: "aero", desc: "遠程/爆炸傷害-20%（未接入傷害類型判定，文案保留）" },
   cyber_suit: { id: "cyber_suit", name: "金屬活化液壓甲", type: "armor", icon: "🦾", stats: { def: 5 }, rarity: "epic", factionTag: "cyber", desc: "20%機率將受傷轉為護盾（27.4 shield）" },
-  mind_robe: { id: "mind_robe", name: "晶格折射風衣", type: "armor", icon: "👘", stats: { def: 4 }, rarity: "epic", factionTag: "mind", desc: "精神傷害/SAN損失-30%（未接入SAN傷害判定，文案保留）" },
+  mind_robe: { id: "mind_robe", name: "晶格折射風衣", type: "armor", icon: "👘", stats: { def: 4 }, rarity: "epic", factionTag: "mind", desc: "SAN損失-30%（任何來源，不限戰鬥）" },
   gaia_skin: { id: "gaia_skin", name: "深淵黑血外皮", type: "armor", icon: "🩸", stats: { def: 7 }, rarity: "legendary", factionTag: "gaia", desc: "物理傷害減免+15%，但探索每回合-1SAN", effects: { battleDamageReductionBonus: 0.15 } },
   // 飾品(8，不加攻防，僅effects/文案)
-  aero_pouch: { id: "aero_pouch", name: "大氣隨身風向儀", type: "accessory", icon: "🎒", rarity: "common", factionTag: "aero", desc: "陷阱事件機率-30%（未接入陷阱事件，文案保留）" },
+  aero_pouch: { id: "aero_pouch", name: "大氣隨身風向儀", type: "accessory", icon: "🎒", rarity: "common", factionTag: "aero", desc: "陷阱事件觸發機率-30%" },
   merchant_token: { id: "merchant_token", name: "黑市VIP徽章", type: "accessory", icon: "🎫", rarity: "common", factionTag: "none", desc: "商城/重鍛價格-10%", effects: { merchantDiscount: 0.1 } },
-  mind_eye: { id: "mind_eye", name: "澄澈石英眼眸", type: "accessory", icon: "👁️", rarity: "rare", factionTag: "mind", desc: "sanMax+20，免疫幻覺事件（未接入幻覺事件，文案保留）", effects: { sanMaxBonus: 20 } },
+  mind_eye: { id: "mind_eye", name: "澄澈石英眼眸", type: "accessory", icon: "👁️", rarity: "rare", factionTag: "mind", desc: "sanMax+20，佩戴時能看穿幻覺類事件的真相", effects: { sanMaxBonus: 20 } },
   ocean_leech: { id: "ocean_leech", name: "洋流寄生蛭", type: "accessory", icon: "🪱", rarity: "rare", factionTag: "ocean", desc: "hpMax+10，但每階段水消耗+1", effects: { hpMaxBonus: 10, extraWaterDecay: 1 } },
   tesla_battery: { id: "tesla_battery", name: "高壓儲能電容", type: "accessory", icon: "🔋", rarity: "rare", factionTag: "cyber", desc: "流派主動技能30%額外觸發（未接入主動技能機制，文案保留）" },
   cyber_pendant: { id: "cyber_pendant", name: "內燃機核心吊墜", type: "accessory", icon: "📿", rarity: "epic", factionTag: "cyber", desc: "戰鬥首回合必定觸發一次額外攻擊" },
@@ -876,6 +876,9 @@ const EVENTS = [
   {
     id: "evt_injury", title: "受傷",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 8,
+    // aero_pouch(大氣隨身風向儀)：陷阱事件觸發機率-30%，本事件是遊戲裡「不可迴避的環境傷害」代表事件，故接上此效果
+    // （aero_pouch是common飾品不會被實例化附前綴，直接比對itemId即可，跟evt_mirage_hall的mind_eye判定同一種簡化寫法）
+    weightModifier: (state) => (state.equipment && state.equipment.accessory === "aero_pouch") ? -Math.round(8 * 0.3) : 0,
     text: "在翻找雜物時，一塊藏在暗處、邊緣沾著螢光鏽斑的鐵片劃過你的手臂，刺痛感瞬間竄上來。你低頭一看，傷口雖不深，但血已經滲了出來，在這種環境下，傷口感染的風險不容小覷。",
     textPool: [
       "在翻找雜物時，一塊藏在暗處、邊緣鏽蝕的鐵片劃過你的手臂，刺痛感瞬間竄上來。你低頭一看，傷口雖不深，但血已經滲了出來，在這種環境下，傷口感染的風險不容小覷。",
@@ -2103,7 +2106,8 @@ const EVENTS = [
           fail: { effect: { san: -5 }, resultText: "你越靠近，那道影子的形狀越發不對勁，你猛地後退，再也不敢直視那個角落，一夜難眠。" }
         }
       },
-      { label: "假裝沒看見，蒙頭睡覺", effect: { san: -2 }, resultText: "你把毯子一路拉到頭頂，告訴自己那只是錯覺，但那道影子的殘像卻在腦海裡揮之不去。" }
+      { label: "假裝沒看見，蒙頭睡覺", effect: { san: -2 }, resultText: "你把毯子一路拉到頭頂，告訴自己那只是錯覺，但那道影子的殘像卻在腦海裡揮之不去。" },
+      { label: "透過石英眼眸看穿真相", condition: (state) => state.equipment && state.equipment.accessory === "mind_eye", resultText: "透過石英眼眸，那道影子瞬間顯出原形——只是掛鉤上舊外套投下的普通輪廓。你毫無波瀾地翻身睡去。" }
     ]
   },
   {

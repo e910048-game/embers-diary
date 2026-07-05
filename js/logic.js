@@ -453,7 +453,13 @@
       state.stamina = clamp(state.stamina + effect.stamina, 0, state.staminaMax);
     }
     if (effect.san) {
-      state.san = clamp(state.san + effect.san, 0, getEffectiveSanMax(state));
+      let sanDelta = effect.san;
+      if (sanDelta < 0) {
+        // mind_robe(晶格折射風衣)：SAN損失-30%，不限來源(事件/戰鬥皆算)，故直接掛在這個統一入口而非個別扣血點
+        const armor = getEquipRef(state, state.equipment && state.equipment.armor);
+        if (armor && armor.item && armor.item.id === "mind_robe") sanDelta = Math.round(sanDelta * 0.7);
+      }
+      state.san = clamp(state.san + sanDelta, 0, getEffectiveSanMax(state));
     }
     if (effect.exp) {
       gainExp(state, effect.exp);
@@ -832,6 +838,24 @@
 
   function getShreddedDef(enemyObj) {
     return Math.max(0, (enemyObj.def || 0) - (enemyObj._defShred || 0));
+  }
+
+  // mind_fork(神經干擾音叉)：每擊使敵方攻擊力-1，疊加上限-5（由呼叫端記錄在enemy物件的_atkShred上）
+  // 沿用defShred同一套寫法，把原設計「扣目標1AP」重新詮釋成「削弱敵方攻擊力」，不需要另建敵方AP機制
+  function getAtkShredPerHit(state) {
+    const weapon = getEquipRef(state, state.equipment && state.equipment.weapon);
+    if (weapon && weapon.item && weapon.item.id === "mind_fork") return 1;
+    return 0;
+  }
+
+  function applyAtkShred(enemyObj, state) {
+    const shred = getAtkShredPerHit(state);
+    if (shred <= 0) return;
+    enemyObj._atkShred = Math.min(5, (enemyObj._atkShred || 0) + shred);
+  }
+
+  function getShreddedAtk(enemyObj) {
+    return Math.max(0, (enemyObj.atk || 0) - (enemyObj._atkShred || 0));
   }
 
   const CRIT_MULTIPLIER = 1.5;
@@ -2172,6 +2196,7 @@
     getEffectiveStats, getCritChance, CRIT_MULTIPLIER, getCritMultiplier, consumeAmmoForAttack, getSkillBonusRatio,
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
+    applyAtkShred, getShreddedAtk, getAtkShredPerHit,
     getLifestealRatio, getDodgeChance, getIgnoreDefRatio, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,

@@ -2935,11 +2935,13 @@ function renderBattle(message) {
   const pct = Math.max(0, (b.enemy.hpLeft / b.enemy.hp) * 100);
   const myStats = getEffectiveStats(state);
   const enemyDef = getShreddedDef(b.enemy);
+  const enemyAtk = getShreddedAtk(b.enemy);
   const enemySrc = resolveAsset("enemy", b.enemy.id);
   // 草稿5b：狀態badge——眩暈/防禦削減目前生效時常駐顯示在敵人名稱旁，掃一眼就能知道戰況，不用逐字讀戰報
   const statusBadges = [
     b.enemy.stunned ? `<span class="statusBadge stunned">💫眩暈</span>` : "",
-    (b.enemy._defShred || 0) > 0 ? `<span class="statusBadge defShred">🛡️-${b.enemy._defShred}</span>` : ""
+    (b.enemy._defShred || 0) > 0 ? `<span class="statusBadge defShred">🛡️-${b.enemy._defShred}</span>` : "",
+    (b.enemy._atkShred || 0) > 0 ? `<span class="statusBadge atkShred">⚔️-${b.enemy._atkShred}</span>` : ""
   ].filter(Boolean).join("");
   renderText(`
     <div class="enemyCard" id="battleEnemyCard">
@@ -2952,7 +2954,7 @@ function renderBattle(message) {
     </div>
     <div class="vsCompare">
       <span class="vsSelf">⚔️你 ❤️${state.hp}/${state.hpMax} ⚔️${myStats.atk} 🛡️${myStats.def}</span>
-      <span class="vsEnemy">${b.enemy.name} ⚔️${b.enemy.atk} 🛡️${enemyDef}</span>
+      <span class="vsEnemy">${b.enemy.name} ⚔️${enemyAtk} 🛡️${enemyDef}</span>
     </div>
         ${message}${sysLogHtml()}`, { kind: "battle" });
   renderOptions([
@@ -2967,7 +2969,7 @@ function resolveEnemyHit(b, myStats) {
     return { dmg: 0, dodged: false, stunned: true };
   }
   if (Math.random() < getDodgeChance(state)) return { dmg: 0, dodged: true };
-  let dmg = Math.max(1, b.enemy.atk - myStats.def);
+  let dmg = Math.max(1, getShreddedAtk(b.enemy) - myStats.def);
   dmg = Math.round(dmg * (1 - getBattleDamageReductionRatio(state)));
   return { dmg: Math.max(0, dmg), dodged: false };
 }
@@ -3029,6 +3031,7 @@ function battleAttack() {
     const critText = crit ? "💥爆擊！" : "";
   b.enemy.hpLeft -= dmgToEnemy;
   applyDefShred(b.enemy, state); // 27.4
+  applyAtkShred(b.enemy, state); // mind_fork
   if (maybeStunEnemy(state)) b.enemy.stunned = true; // 27.4
   const lifesteal = Math.round(dmgToEnemy * getLifestealRatio(state));
   if (lifesteal > 0) applyEffect({ hp: lifesteal });
