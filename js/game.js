@@ -2419,6 +2419,14 @@ function showLocationList() {
       visitLocation(loc);
     }
   }));
+  if (state.flags && state.flags.tier0_liberated) {
+    opts.push({
+      label: "📋 委派隊員自動探索",
+      hint: `跳過走路動畫，快速結算一趟近距離地點的收穫｜體力-${actionStaminaCost(state, "explore_near")}`,
+      variant: "ghost",
+      onClick: delegateExplore
+    });
+  }
   opts.push({ label: "返回", variant: "ghost", onClick: showExploreChoice });
   renderOptions(opts);
 }
@@ -2466,6 +2474,33 @@ function renderExploreProgress(isBattle, onComplete) {
   }, 220);
 }
 
+// 從resolveLocation()的非戰鬥結果套用資源/道具效果，回傳{effectText,qty,lootFlavorPool}供全動畫版(visitLocation)
+// 跟委派快速結算版(delegateVisitLocation)共用，避免兩處各自重複一份加總邏輯
+function applyLootResult(result, stResult) {
+  let effectText = "";
+  let lootFlavorPool;
+  const qty = stResult.overdraw ? Math.max(1, Math.floor(result.qty * stResult.resourceMultiplier)) : result.qty;
+  if (RESOURCE_DROP_KEYS.includes(result.itemId)) {
+    applyEffect({ resources: { [result.itemId]: qty } });
+    effectText = formatEffect({ resources: { [result.itemId]: qty } });
+    lootFlavorPool = result.itemId === "scrap" ? LOOT_FLAVOR_BY_TYPE.material : (LOOT_FLAVOR_BY_TYPE["consumable_" + result.itemId] || LOOT_TEXTS);
+  } else {
+    addItemToInventory(result.itemId, qty);
+    const item = ITEMS[result.itemId];
+    effectText = `
+獲得 ${item.icon} ${item.name} x${qty}`;
+    if (item.type === "weapon") lootFlavorPool = LOOT_FLAVOR_BY_TYPE.weapon;
+    else if (item.type === "armor") lootFlavorPool = LOOT_FLAVOR_BY_TYPE.armor;
+    else if (item.useEffect && item.useEffect.resources) {
+      const key = Object.keys(item.useEffect.resources)[0];
+      lootFlavorPool = LOOT_FLAVOR_BY_TYPE["consumable_" + key] || LOOT_TEXTS;
+    } else {
+      lootFlavorPool = LOOT_TEXTS;
+    }
+  }
+  return { effectText, qty, lootFlavorPool };
+}
+
 function visitLocation(loc) {
   const stResult = spendStamina(state, loc.distance === "far" ? "explore_far" : "explore_near", loc);
   if (state.hp <= 0) { renderGameOver(); return; }
@@ -2487,27 +2522,7 @@ function visitLocation(loc) {
       return;
     }
 
-    let effectText = "";
-    let lootFlavorPool;
-    const qty = stResult.overdraw ? Math.max(1, Math.floor(result.qty * stResult.resourceMultiplier)) : result.qty;
-    if (RESOURCE_DROP_KEYS.includes(result.itemId)) {
-      applyEffect({ resources: { [result.itemId]: qty } });
-      effectText = formatEffect({ resources: { [result.itemId]: qty } });
-      lootFlavorPool = result.itemId === "scrap" ? LOOT_FLAVOR_BY_TYPE.material : (LOOT_FLAVOR_BY_TYPE["consumable_" + result.itemId] || LOOT_TEXTS);
-    } else {
-      addItemToInventory(result.itemId, qty);
-      const item = ITEMS[result.itemId];
-      effectText = `
-獲得 ${item.icon} ${item.name} x${qty}`;
-      if (item.type === "weapon") lootFlavorPool = LOOT_FLAVOR_BY_TYPE.weapon;
-      else if (item.type === "armor") lootFlavorPool = LOOT_FLAVOR_BY_TYPE.armor;
-      else if (item.useEffect && item.useEffect.resources) {
-        const key = Object.keys(item.useEffect.resources)[0];
-        lootFlavorPool = LOOT_FLAVOR_BY_TYPE["consumable_" + key] || LOOT_TEXTS;
-      } else {
-        lootFlavorPool = LOOT_TEXTS;
-      }
-    }
+    const { effectText, lootFlavorPool } = applyLootResult(result, stResult);
     renderStatusBar();
     const beats = SEARCH_BEATS[loc.riskLevel] || SEARCH_BEATS[1];
     // 草稿4(2026-07-04)：day60後改用「後期版本」文字池，呈現世界逐漸復甦的跡象；day60前或沒有
@@ -2521,6 +2536,32 @@ function visitLocation(loc) {
 ${flavor}${effectText}${travelText}`, { kind: "event" });
     renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
   });
+}
+
+// 節奏優化：委派探索——跳過走路動畫跟地點清單重選的功夫，直接快速結算，解決「已經很熟悉的近距離地點每天重跑」的垃圾時間感
+// 解鎖條件：state.flags.tier0_liberated(第一個Tier區域已收復，代表玩家已經度過最初期的脆弱階段)
+// 只從near距離地點抽選(不含far)：far地點的高風險/高價值內容維持要玩家親自跑一趟，委派只省掉真正瑣碎重複的部分
+// 遇到戰鬥仍會進入正常應戰流程(不會偷偷幫玩家打完)，維持「危險不會被悄悄免除」的既有設計原則
+function delegateExplore() {
+  const available = LOCATIONS.filter(l => l.distance === "near"
+    && (state.day >= (l.unlockDay || 1) || (l.unlockFlag && state.flags && state.flags[l.unlockFlag])));
+  const loc = pickLocations(available, 1, Math.random)[0];
+  const stResult = spendStamina(state, "explore_near", loc);
+  if (state.hp <= 0) { renderGameOver(); return; }
+  const travelText = stResult.overdraw ? overdrawFlavor(stResult.streak) : "";
+  const result = resolveLocation(loc, Math.random, state);
+  if (result.type === "battle") {
+    renderStatusBar();
+    const encounterPool = ENCOUNTER_TEXTS[loc.id];
+    const encounterLine = encounterPool ? encounterPool[Math.floor(Math.random() * encounterPool.length)] : "未知的威脅突然出現，你被迫戰鬥！";
+    renderText(`📋 委派隊員前往${loc.icon}${loc.name}，卻半路撞上了麻煩——${encounterLine}${travelText}`, { kind: "battle" });
+    renderOptions([{ label: "⚔️ 應戰", variant: "danger", onClick: () => startBattle(result.enemyId, () => finishAction(), false, { loc }) }]);
+    return;
+  }
+  const { effectText } = applyLootResult(result, stResult);
+  renderStatusBar();
+  renderText(`📋 委派隊員快速前往${loc.icon}${loc.name}探了一趟，帶回了一些收穫。${effectText}${travelText}`, { kind: "event" });
+  renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
 }
 
 function doConvert() {
