@@ -1386,9 +1386,53 @@ test("startProcessing/getProcessingState/collectProcessing：壓縮配方輸出e
   assert.strictEqual(s2.inventory.find(i => i.itemId === "furn_mutant_lamp").qty, 1);
 });
 
+test("placeYardDecor/removeYardDecor：裝飾道具可換來換去，取下時還給背包(不是消耗品)", () => {
+  const s = L.defaultState();
+  s.inventory.push({ itemId: "yard_lantern", qty: 1 });
+  let r = L.placeYardDecor(s, "decor_1", "yard_lantern");
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(s.yardDecorSlots.decor_1.itemId, "yard_lantern");
+  assert.strictEqual(s.inventory.some(i => i.itemId === "yard_lantern"), false); // 背包扣除
+
+  // 換成另一個道具：原本擺放的燈籠應該自動還給背包
+  s.inventory.push({ itemId: "yard_scarecrow", qty: 1 });
+  r = L.placeYardDecor(s, "decor_1", "yard_scarecrow");
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(s.yardDecorSlots.decor_1.itemId, "yard_scarecrow");
+  assert.strictEqual(s.inventory.find(i => i.itemId === "yard_lantern").qty, 1); // 燈籠還給背包
+
+  // 取下：稻草人還給背包，槽位清空
+  r = L.removeYardDecor(s, "decor_1");
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(s.yardDecorSlots.decor_1.itemId, null);
+  assert.strictEqual(s.inventory.find(i => i.itemId === "yard_scarecrow").qty, 1);
+});
+
+test("getYardDecorEffect/addNoise：風鈴的noiseGenRatio讓噪音累積更快(跟隔音家具方向相反)", () => {
+  const s = L.defaultState();
+  L.addNoise(s, 20);
+  const withoutChime = s.noiseLevel;
+  const s2 = L.defaultState();
+  s2.inventory.push({ itemId: "yard_windchime", qty: 1 });
+  L.placeYardDecor(s2, "decor_1", "yard_windchime");
+  L.addNoise(s2, 20);
+  assert.ok(s2.noiseLevel > withoutChime); // 有風鈴時同樣的噪音量累積得更多
+  assert.strictEqual(s2.noiseLevel, 20 * (1 + 0.05));
+});
+
+test("getYardDecorEffect/getCropStage：蓋亞靈能圖騰的cropGrowthBonusPhases比照澆水疊加成長進度", () => {
+  const s = L.defaultState();
+  s.farm.plots.plot_1.crop = { seedId: "seed_potato", plantedAtPhaseIndex: 0, waterBonusPhases: 0, lastWateredDay: null };
+  const withoutTotem = L.getCropStage(s, s.farm.plots.plot_1);
+  s.inventory.push({ itemId: "yard_gaia_totem", qty: 1 });
+  L.placeYardDecor(s, "decor_1", "yard_gaia_totem");
+  const withTotem = L.getCropStage(s, s.farm.plots.plot_1);
+  assert.ok(withTotem.stageIdx >= withoutTotem.stageIdx); // 圖騰讓成長進度至少一樣快，通常更快
+});
+
 // #21-1：CI剛性斷言 - 所有ITEMS effects與PREFIX_POOL effect中的比例型數值須介於0~1
 test("CI斷言：ITEMS/PREFIX_POOL中的比例型加成(dodgeBonus/lifestealBonus/skillBonusRatio等)須介於0~1", () => {
-  const ratioKeys = ["dodgeBonus", "lifestealBonus", "lifestealRatio", "critBonus", "skillBonusRatio", "ignoreDefRatio", "noiseDampRatio"];
+  const ratioKeys = ["dodgeBonus", "lifestealBonus", "lifestealRatio", "critBonus", "skillBonusRatio", "ignoreDefRatio", "noiseDampRatio", "noiseGenRatio"];
   Object.values(L.ITEMS).forEach(item => {
     if (!item.effects) return;
     ratioKeys.forEach(key => {

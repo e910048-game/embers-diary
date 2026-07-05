@@ -99,6 +99,13 @@ const ITEMS = {
   blueprint_mutant_lamp: { id: "blueprint_mutant_lamp", name: "變異孢子提燈圖紙", type: "blueprint", icon: "📜", rarity: "rare", desc: "加工區專屬配方圖紙，持有即可在加工站製作對應家具（不會被消耗）" },
   furn_mutant_lamp: { id: "furn_mutant_lamp", name: "變異孢子提燈", type: "furniture", icon: "🏮", slot: "table", rarity: "epic", factionTag: "none", desc: "探索限定家具，柔光有助於放鬆，休息SAN回復+5", effects: { restSanBonus: 5 } },
 
+  // 庭院裝飾區(2026-07-05)：見規格文件/庭院裝飾區_設計規格.md，經濟迴圈的花錢出口，不是新產出節點
+  yard_lantern: { id: "yard_lantern", name: "庭院石燈籠", type: "yard_decor", icon: "🏮", rarity: "common", shopPrice: { embers: 10 }, desc: "純裝飾，點亮庭院的夜晚氛圍" },
+  yard_scarecrow: { id: "yard_scarecrow", name: "稻草人", type: "yard_decor", icon: "🎃", rarity: "rare", shopPrice: { embers: 16 }, desc: "純裝飾，帶點復古的田園風情" },
+  yard_windchime: { id: "yard_windchime", name: "銅製風鈴", type: "yard_decor", icon: "🎐", rarity: "rare", shopPrice: { embers: 16 }, desc: "微風吹動時清脆作響，但風鈴聲也會傳得比較遠，噪音累積+5%", effects: { noiseGenRatio: 0.05 } },
+  yard_flower_bed: { id: "yard_flower_bed", name: "野花花圃", type: "yard_decor", icon: "🌼", rarity: "epic", shopPrice: { embers: 24 }, desc: "五顏六色的野花，讓庭院看起來生機盎然，休息時額外回SAN+3", effects: { returnSanBonus: 3 } },
+  yard_gaia_totem: { id: "yard_gaia_totem", name: "蓋亞靈能圖騰", type: "yard_decor", icon: "🗿", rarity: "epic", desc: "探索限定裝飾，蓋亞流派的靈能圖騰，庭院裡的作物似乎生長得更好些", effects: { cropGrowthBonusPhases: 1 } },
+
   // 27.1/32.3 裝備池：28項武器(10)/防具(8)/飾品(8)，rare以上掉落時實例化為weaponInstances並可疊加前綴詞(PREFIX_POOL)
   // 武器(10)
   scrap_chainsaw: { id: "scrap_chainsaw", name: "工兵改裝電鋸", type: "weapon", icon: "⚙️", stats: { atk: 2 }, rarity: "common", factionTag: "none", desc: "初始武器" },
@@ -713,6 +720,7 @@ const LOCATIONS = [
       { itemId: "gaia_armor", qty: 1, weight: 10 },
       { itemId: "gaia_seed_pouch", qty: 1, weight: 8 },
       { itemId: "blueprint_mutant_lamp", qty: 1, weight: 8 },
+      { itemId: "yard_gaia_totem", qty: 1, weight: 8 },
       { itemId: "scrap", qty: 2, weight: 40 },
       { itemId: "food_can", qty: 1, weight: 32 }
     ],

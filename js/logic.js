@@ -232,6 +232,7 @@
       farm: { plots: FARM_PLOT_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, crop: null }; return acc; }, {}) }, // 農場區(2026-07-02)：僅第一塊地預設解鎖
       pens: { plots: PEN_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, animal: null }; return acc; }, {}) }, // 養殖區(2026-07-02)：僅第一個欄位預設解鎖
       processing: { stations: WORKSHOP_STATION_LAYOUT.reduce((acc, s, idx) => { acc[s.id] = { unlocked: idx === 0, job: null }; return acc; }, {}) }, // 加工區(2026-07-04)：僅第一站預設解鎖
+      yardDecorSlots: YARD_DECOR_SLOTS.reduce((acc, s) => { acc[s.id] = { itemId: null }; return acc; }, {}), // 庭院裝飾區(2026-07-05)：4個槽位皆不需解鎖，空槽時退回原本的野生擺設
       bonusDefense: 0, // 22.2：事件/道具給予的舊式baseDefense加成，疊加於facilities.command*2之上
       baseSlots: { wall: null, wall2: null }, // 27.2陳列格(僅牆面，固定2格——牆面是固定掛點，跟地板/桌面的free-form擺放邏輯不同，故保留)
       placedFurniture: [{ itemId: "furn_sleeping_bag", gx: 3, gy: 3 }], // v166：table/floor/rug改為free-form擺放，取代原本wall/table/floor/rug四類固定槓位制度；每項{itemId,gx,gy}，無容量上限(僅受9x6邏輯網格範圍限制)。#31：初始小屋僅一張睡袋+人物
@@ -1151,7 +1152,9 @@
   function addNoise(state, amount) {
     if (!state || !amount) return;
     const dampRatio = Math.min(0.6, sumFurnitureEffect(state, "noiseDampRatio"));
-    state.noiseLevel = clamp((state.noiseLevel || 0) + amount * (1 - dampRatio), 0, 100);
+    // 庭院裝飾區(2026-07-05)：風鈴等裝飾道具的noiseGenRatio是反向疊加(好看但更吵)，跟隔音的dampRatio相減
+    const genRatio = state.yardDecorSlots ? getYardDecorEffect(state, "noiseGenRatio") : 0;
+    state.noiseLevel = clamp((state.noiseLevel || 0) + amount * (1 - dampRatio + genRatio), 0, 100);
   }
 
   // v110：舒適度系統——已陳列家具依稀有度加總，回饋探索/採集/休息
@@ -1285,7 +1288,10 @@
     const seedItem = ITEMS[plot.crop.seedId];
     const crop = seedItem && CROPS[seedItem.cropId];
     if (!crop) return null;
-    const elapsed = currentPhaseIndex(state) - plot.crop.plantedAtPhaseIndex + (plot.crop.waterBonusPhases || 0);
+    // 庭院裝飾區(2026-07-05)：蓋亞靈能圖騰等裝飾道具的cropGrowthBonusPhases是被動的一次性澆水加成，
+    // 跟waterBonusPhases同一種疊加方式，差別是不用玩家每天手動澆水
+    const decorBonus = state.yardDecorSlots ? getYardDecorEffect(state, "cropGrowthBonusPhases") : 0;
+    const elapsed = currentPhaseIndex(state) - plot.crop.plantedAtPhaseIndex + (plot.crop.waterBonusPhases || 0) + decorBonus;
     const stageIdx = Math.min(crop.stages - 1, Math.floor(elapsed / (crop.phasesToMature / crop.stages)));
     return { stageIdx, mature: elapsed >= crop.phasesToMature, crop };
   }
@@ -1535,6 +1541,55 @@
     station.job = null;
     state.questFlags.workshopCraftCount = (state.questFlags.workshopCraftCount || 0) + 1;
     return { ok: true, recipe };
+  }
+
+  // ---------- 庭院裝飾區（2026-07-05，見規格文件/庭院裝飾區_設計規格.md） ----------
+  // 定位是經濟迴圈的「花錢出口」，不是新的生產節點：沿用既有YARD_DECOR的4個位置，
+  // 從寫死擺設改成玩家可自選的裝飾槽，不新增場景/不新增生產流程
+  const YARD_DECOR_SLOTS = [
+    { id: "decor_1", gx: 0, gy: 0 },
+    { id: "decor_2", gx: 6, gy: 0 },
+    { id: "decor_3", gx: 1, gy: 6 },
+    { id: "decor_4", gx: 10, gy: 6 },
+  ];
+
+  // 裝飾道具是可換來換去的耐久品(不是消耗品)，取下時要還給背包，不是憑空消失
+  function placeYardDecor(state, slotId, itemId) {
+    const slot = state.yardDecorSlots[slotId];
+    if (!slot) return { ok: false, reason: "invalid_slot" };
+    const item = ITEMS[itemId];
+    if (!item || item.type !== "yard_decor") return { ok: false, reason: "invalid_item" };
+    const invSlot = state.inventory.find(i => i.itemId === itemId && i.qty > 0);
+    if (!invSlot) return { ok: false, reason: "not_in_inventory" };
+    if (slot.itemId) {
+      const existing = state.inventory.find(i => i.itemId === slot.itemId);
+      if (existing) existing.qty += 1;
+      else state.inventory.push({ itemId: slot.itemId, qty: 1 });
+    }
+    invSlot.qty -= 1;
+    if (invSlot.qty <= 0) state.inventory = state.inventory.filter(i => i !== invSlot);
+    slot.itemId = itemId;
+    return { ok: true };
+  }
+
+  function removeYardDecor(state, slotId) {
+    const slot = state.yardDecorSlots[slotId];
+    if (!slot || !slot.itemId) return { ok: false, reason: "empty" };
+    const existing = state.inventory.find(i => i.itemId === slot.itemId);
+    if (existing) existing.qty += 1;
+    else state.inventory.push({ itemId: slot.itemId, qty: 1 });
+    slot.itemId = null;
+    return { ok: true };
+  }
+
+  // 比照sumFurnitureEffect，加總所有已放置庭院裝飾道具的effects[key]（noiseGenRatio/cropGrowthBonusPhases等）
+  function getYardDecorEffect(state, key) {
+    let total = 0;
+    Object.values(state.yardDecorSlots).forEach(slot => {
+      const item = slot.itemId && ITEMS[slot.itemId];
+      if (item && item.effects && typeof item.effects[key] === "number") total += item.effects[key];
+    });
+    return total;
   }
 
   // 22.2：休息時SAN回復量；生態溫室Lv3時回復效率+50%
@@ -2056,6 +2111,7 @@
     FARM_PLOT_LAYOUT, CROPS, currentPhaseIndex, farmPlotUnlockCost, unlockFarmPlot, plantSeed, waterPlot, getCropStage, harvestFarmPlot,
     PEN_LAYOUT, SPECIES, FEED_COST, getPenProductionState, penUnlockCost, unlockPen, placeAnimal, feedAnimal, petAnimal, collectPen,
     WORKSHOP_STATION_LAYOUT, RECIPES, recipeAvailable, canAffordRecipe, processingStationUnlockCost, unlockProcessingStation, startProcessing, getProcessingState, collectProcessing,
+    YARD_DECOR_SLOTS, placeYardDecor, removeYardDecor, getYardDecorEffect,
     placeFurniture, getFurnitureDefBonus, getFurnitureRaidChanceDelta, loungeInteract, sumFurnitureEffect,
     hasFurniturePlaced, allPlacedFurnitureIds, findEmptyGridCell,
     getComfortLevel, getComfortLabel, radioInteract, eggNestInteract, furnitureEasterEggInteract,

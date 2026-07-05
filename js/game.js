@@ -48,7 +48,7 @@ function sysLogHtml() {
 function saveGame() {
   localStorage.setItem(SAVE_KEY, JSON.stringify(state));
 }
-const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "attributes", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress", "farm", "pens", "processing"];
+const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "attributes", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress", "farm", "pens", "processing", "yardDecorSlots"];
 // v167相容：v166以前的存檔把table/floor/rug類家具放在baseSlots的這些鍵裡，free-form改版後這些鍵已不再被
 // 任何程式碼讀取——若不搬移，舊存檔讀進來的家具會「卡在baseSlots裡但形同消失」（不在room顯示、不算舒適度、
 // 也回不去背包）。讀檔時偵測到就搬進placedFurniture，搬完即從baseSlots刪除，只需做這一次
@@ -882,24 +882,31 @@ function yardPlotCellHtml(state, plotDef) {
   const stateCls = stage.mature ? " mature" : " growing";
   return `<div class="roomCell farmPlot${stateCls}" id="farmPlot_${plotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}"><div class="icon">${icon}</div><div class="homeLabel">${label}</div></div>`;
 }
-// 2026-07-03（使用者反饋「庭院應該更多些裝飾」）：純視覺、無互動的擺設，位置刻意避開FARM_PLOT_LAYOUT
-// 的地塊座標，不佔用/不影響任何遊戲邏輯，只是讓庭院看起來不再只有光禿禿的地塊
-// 2026-07-04美術到位：對應真實素材(deco_fence_post/deco_rock_cluster/deco_bush/deco_tree_small)
-const YARD_DECOR = [
-  { gx: 0, gy: 0, tile: "deco_fence_post", icon: "🌻", label: "圍籬" },
-  { gx: 6, gy: 0, tile: "deco_rock_cluster", icon: "🍂", label: "石堆" },
-  { gx: 1, gy: 6, tile: "deco_bush", icon: "🌿", label: "灌木叢" },
-  { gx: 10, gy: 6, tile: "deco_tree_small", icon: "🦋", label: "小樹" },
-];
-function yardDecorCellHtml(d) {
-  const pos = gridPos(d.gx, d.gy);
-  const z = cellZ(d.gx + d.gy);
-  const art = farmTileHtml(d.tile, "farmTileDecor");
-  return `<div class="roomCell yardDecor" style="left:${pos.left};top:${pos.top};z-index:${z}"><div class="icon">${art || d.icon}</div><div class="homeLabel">${d.label}</div></div>`;
+// 庭院裝飾區(2026-07-05)：YARD_DECOR原本是寫死、玩家不能互動的純視覺擺設，現在改成state.yardDecorSlots
+// 空槽時顯示的「野生預設值」，位置沿用YARD_DECOR_SLOTS(logic.js)，避開FARM_PLOT_LAYOUT的地塊座標
+const YARD_DECOR_WILD = {
+  decor_1: { tile: "deco_fence_post", icon: "🌻", label: "圍籬" },
+  decor_2: { tile: "deco_rock_cluster", icon: "🍂", label: "石堆" },
+  decor_3: { tile: "deco_bush", icon: "🌿", label: "灌木叢" },
+  decor_4: { tile: "deco_tree_small", icon: "🦋", label: "小樹" },
+};
+function yardDecorCellHtml(state, slotDef) {
+  const slot = state.yardDecorSlots[slotDef.id];
+  const pos = gridPos(slotDef.gx, slotDef.gy);
+  const z = cellZ(slotDef.gx + slotDef.gy);
+  if (!slot.itemId) {
+    const wild = YARD_DECOR_WILD[slotDef.id];
+    const art = farmTileHtml(wild.tile, "farmTileDecor");
+    return `<div class="roomCell yardDecor" id="decorSlot_${slotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊擺放裝飾"><div class="icon">${art || wild.icon}</div><div class="homeLabel">${wild.label}</div></div>`;
+  }
+  const item = ITEMS[slot.itemId];
+  const iconSrc = resolveAsset("icon", item.id);
+  const iconHtml = iconSrc ? `<img class="pixelImg" src="${iconSrc}" alt="${item.name}">` : item.icon;
+  return `<div class="roomCell yardDecor placed" id="decorSlot_${slotDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${item.name}"><div class="icon">${iconHtml}</div><div class="homeLabel">${item.name}</div></div>`;
 }
 function yardSceneHtml(state) {
   if (outdoorScene !== "yard") { outdoorScene = "yard"; outdoorPlayerPos = null; }
-  const items = YARD_DECOR.map(yardDecorCellHtml).concat(FARM_PLOT_LAYOUT.map(p => yardPlotCellHtml(state, p)));
+  const items = YARD_DECOR_SLOTS.map(s => yardDecorCellHtml(state, s)).concat(FARM_PLOT_LAYOUT.map(p => yardPlotCellHtml(state, p)));
   items.push(outdoorPlayerCellHtml("yard"));
   // 庭院是室外土地，不沿用state.roomFloor(小屋室內地板樣式)，改用專屬的ground-farmland紋理
   return `<div class="homeScene"><div class="homePillRow homeTabPills"><button class="homePill" id="yardBackBtn">← 返回小屋</button></div><div class="roomCanvas ground-farmland" id="yardCanvas">${items.join("")}</div></div>`;
@@ -910,7 +917,11 @@ function renderYardScene() {
   const backBtn = document.getElementById("yardBackBtn");
   if (backBtn) backBtn.onclick = renderMain;
   const canvas = document.getElementById("yardCanvas");
-  if (canvas) bindOutdoorWalk(canvas, "yard", FARM_PLOT_LAYOUT, showFarmPlotPanel);
+  // 庭院裝飾槽跟農場地塊共用同一套走路互動：抵達後依id前綴分派到對應面板
+  if (canvas) bindOutdoorWalk(canvas, "yard", [...FARM_PLOT_LAYOUT, ...YARD_DECOR_SLOTS], (id) => {
+    if (id.startsWith("decor_")) showYardDecorPanel(id);
+    else showFarmPlotPanel(id);
+  });
 }
 function showPlantSeedPanel(plotId) {
   renderStatusBar();
@@ -979,6 +990,41 @@ function showFarmPlotPanel(plotId) {
       } },
     { label: "返回", variant: "ghost", onClick: renderYardScene }
   ]);
+}
+
+// 庭院裝飾區(2026-07-05)：低風險操作(裝飾道具可換來換去、取下會還給背包)，不用二段確認，
+// 跟餵食/互動同一個等級
+function showYardDecorPanel(slotId) {
+  renderStatusBar();
+  const slot = state.yardDecorSlots[slotId];
+  const decorEntries = (state.inventory || []).filter(i => { const item = ITEMS[i.itemId]; return item && item.type === "yard_decor" && i.qty > 0; });
+  const currentItem = slot.itemId ? ITEMS[slot.itemId] : null;
+  const hintText = currentItem ? `目前擺放：${currentItem.icon} ${currentItem.name}` : "目前是空槽（顯示野生擺設）";
+  renderText(`<div class="subtitle">庭院裝飾</div><div class="hint">${hintText}${decorEntries.length ? "" : "\n背包裡沒有裝飾道具，先去商城購買或探索取得。"}</div>`);
+  const opts = decorEntries.map(i => {
+    const item = ITEMS[i.itemId];
+    return {
+      label: `${item.icon} ${item.name}`,
+      hint: `x${i.qty}`,
+      onClick: () => {
+        const result = placeYardDecor(state, slotId, i.itemId);
+        if (result.ok) saveGame();
+        renderYardScene();
+      }
+    };
+  });
+  if (currentItem) {
+    opts.push({
+      label: "取下目前的裝飾", variant: "ghost",
+      onClick: () => {
+        const result = removeYardDecor(state, slotId);
+        if (result.ok) saveGame();
+        renderYardScene();
+      }
+    });
+  }
+  opts.push({ label: "返回", variant: "ghost", onClick: renderYardScene });
+  renderOptions(opts);
 }
 
 // ---------- 養殖區/獸欄場景 ----------
@@ -1453,7 +1499,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 220; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 221; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
