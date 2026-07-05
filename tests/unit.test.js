@@ -458,50 +458,51 @@ test("gainExp: level1->2時觸發覺醒並獲得1技能點", () => {
   assert.strictEqual(s.skillPoints, 1);
 });
 
-// ---------- 25.3 五大流派技能樹 ----------
-test("spendSkillPoint: 未鎖定主流派或點數不足時回傳false，否則依序+1直到T4", () => {
+// ---------- 25.3 五大流派技能樹（2026-07-05技能點系統重設：state.skills改為{faction,tiers,unlockOrder}多流派結構）----------
+test("chooseFaction/spendSkillPoint: 未選流派時spendSkillPoint回傳false，選定後依序+1直到T4", () => {
   const s = L.defaultState();
   s.skillPoints = 10;
-  assert.strictEqual(L.spendSkillPoint(s), false); // 未覺醒/未鎖定流派
-  s.skills.faction = "cyber";
+  assert.strictEqual(L.spendSkillPoint(s, "cyber"), false); // 未選流派
+  assert.strictEqual(L.chooseFaction(s, "cyber"), true);
+  assert.strictEqual(L.chooseFaction(s, "gaia"), false); // 已選過，不能再換
   for (let i = 1; i <= 4; i++) {
-    assert.strictEqual(L.spendSkillPoint(s), true);
-    assert.strictEqual(s.skills.tier, i);
+    assert.strictEqual(L.spendSkillPoint(s, "cyber"), true);
+    assert.strictEqual(s.skills.tiers.cyber, i);
   }
-  assert.strictEqual(L.spendSkillPoint(s), false); // 已滿T4
+  assert.strictEqual(L.spendSkillPoint(s, "cyber"), false); // 已滿T4
   assert.strictEqual(s.skillPoints, 6);
 });
 
 test("getEffectiveStats: 鋼鐵活化T1+2防禦、T2+1攻擊、T4攻擊+30%", () => {
   const s = L.defaultState();
-  s.skills.faction = "cyber";
+  L.chooseFaction(s, "cyber");
   const base = L.getEffectiveStats(s);
-  s.skills.tier = 1;
+  s.skills.tiers.cyber = 1;
   assert.strictEqual(L.getEffectiveStats(s).def, base.def + 2);
-  s.skills.tier = 2;
+  s.skills.tiers.cyber = 2;
   const t2 = L.getEffectiveStats(s);
   assert.strictEqual(t2.atk, base.atk + 1);
-  s.skills.tier = 4;
+  s.skills.tiers.cyber = 4;
   const t4 = L.getEffectiveStats(s);
   assert.strictEqual(t4.atk, Math.round((base.atk + 1) * 1.3));
 });
 
 test("getCritChance/getBattleDamageReductionRatio: 蓋亞T3低SAN爆擊、心靈晶格T4減傷25%", () => {
   const s = L.defaultState();
-  s.skills.faction = "gaia";
-  s.skills.tier = 3;
+  L.chooseFaction(s, "gaia");
+  s.skills.tiers.gaia = 3;
   s.san = 30;
   assert.ok(L.getCritChance(s) >= 0.15);
   const s2 = L.defaultState();
-  s2.skills.faction = "mind";
-  s2.skills.tier = 4;
+  L.chooseFaction(s2, "mind");
+  s2.skills.tiers.mind = 4;
   assert.strictEqual(L.getBattleDamageReductionRatio(s2), 0.25);
 });
 
 test("gaiaCheatDeath: 蓋亞T4每局1次致命傷免死並回復50%HP", () => {
   const s = L.defaultState();
-  s.skills.faction = "gaia";
-  s.skills.tier = 4;
+  L.chooseFaction(s, "gaia");
+  s.skills.tiers.gaia = 4;
   s.hp = 0;
   assert.strictEqual(L.gaiaCheatDeath(s), true);
   assert.strictEqual(s.hp, Math.round(s.hpMax * 0.5));
@@ -537,8 +538,8 @@ test("restHealAmount: 同伴指派「照護」時+5、覺醒痊癒體質+5、洋
   assert.strictEqual(L.restHealAmount(s), 5);
   s.awakening = L.AWAKENING_TRAITS.find(t => t.id === "recovery");
   assert.strictEqual(L.restHealAmount(s), 10);
-  s.skills.faction = "ocean";
-  s.skills.tier = 4;
+  L.chooseFaction(s, "ocean");
+  s.skills.tiers.ocean = 4;
   assert.strictEqual(L.restHealAmount(s), 10 + Math.round(s.hpMax * 0.05));
 });
 
@@ -1093,8 +1094,8 @@ test("v182 getSkillBonusRatio：【共鳴的】前綴只放大流派加成部分
   assert.ok(Math.abs(L.getSkillBonusRatio(s) - 0.1) < 1e-9);
 
   // 暴擊率：aero T1流派加成0.05，套用+10%後應為0.055
-  s.skills.faction = "aero";
-  s.skills.tier = 1;
+  L.chooseFaction(s, "aero");
+  s.skills.tiers.aero = 1;
   const sNoAcc = { ...s, equipment: { ...s.equipment, accessory: null } };
   const baseAeroCrit = L.getCritChance(sNoAcc);
   const boostedCrit = L.getCritChance(s);
@@ -1449,6 +1450,38 @@ test("getAbyssSurgeBattle：4個TIER_ZONES全數插旗前不會觸發，插旗�
   s.bloodMoonWins = 20; // surgeCount=16，extraTier應封頂在8
   surge = L.getAbyssSurgeBattle(s);
   assert.strictEqual(surge.extraTier, 8);
+});
+
+test("覺醒鏈：nextAwakeningAvailable/chooseNextFaction/allUnlockedFactionsMaxed——主流派封頂+day門檻才能解鎖下一個流派，最終5個都能解鎖", () => {
+  const s = L.defaultState();
+  assert.strictEqual(L.nextAwakeningAvailable(s), false); // 尚未選主流派
+  L.chooseFaction(s, "gaia");
+  assert.strictEqual(L.nextAwakeningAvailable(s), false); // 主流派未封頂
+  s.skills.tiers.gaia = 4; // 封頂
+  s.day = 50;
+  assert.strictEqual(L.nextAwakeningAvailable(s), false); // day未達100門檻
+  s.day = 100;
+  assert.strictEqual(L.nextAwakeningAvailable(s), true);
+  assert.strictEqual(L.chooseNextFaction(s, "gaia"), false); // 不能重選已解鎖的流派
+  assert.strictEqual(L.chooseNextFaction(s, "cyber"), true);
+  assert.deepStrictEqual(s.skills.unlockOrder, ["gaia", "cyber"]);
+  assert.strictEqual(L.nextAwakeningAvailable(s), false); // cyber剛解鎖未封頂
+
+  // 依序把5個流派都解鎖完
+  s.skills.tiers.cyber = 4;
+  s.day = 150;
+  L.chooseNextFaction(s, "ocean");
+  s.skills.tiers.ocean = 4;
+  s.day = 200;
+  L.chooseNextFaction(s, "aero");
+  s.skills.tiers.aero = 4;
+  s.day = 250;
+  L.chooseNextFaction(s, "mind");
+  s.skills.tiers.mind = 4;
+  assert.strictEqual(s.skills.unlockOrder.length, 5); // 全部5個流派都解鎖了
+  assert.strictEqual(L.nextAwakeningAvailable(s), false); // 沒有下一個可解鎖的了
+  assert.strictEqual(L.allUnlockedFactionsMaxed(s), true);
+  assert.strictEqual(L.spendSkillPoint(s, "gaia"), false); // 全部封頂，花點失敗
 });
 
 // #21-1：CI剛性斷言 - 所有ITEMS effects與PREFIX_POOL effect中的比例型數值須介於0~1

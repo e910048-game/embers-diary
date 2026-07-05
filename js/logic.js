@@ -54,10 +54,12 @@
     return Math.min(bonus, STAMINA_BONUS_CAP);
   }
 
-  // 25.3：取得玩家在某流派已解鎖的階數（0~4），未鎖定該流派則為0
+  // 25.3：取得玩家在某流派已解鎖的階數（0~4），未解鎖該流派則為0
+  // 2026-07-05技能點系統重設：state.skills從單一{faction,tier}改成多流派{faction,tiers,unlockOrder}，
+  // 呼叫端(getFactionDamageMultiplier/getMechanicalDamageMultiplier/getSkillBonusRatio等)完全不用改，
+  // 直接吃到多流派的效果加總
   function factionTier(state, faction) {
-    if (!state.skills || state.skills.faction !== faction) return 0;
-    return state.skills.tier || 0;
+    return (state.skills && state.skills.tiers && state.skills.tiers[faction]) || 0;
   }
 
   // 含技能樹/覺醒加成的實際體力上限
@@ -247,7 +249,7 @@
       log: [],
       awakening: null,
       skillPoints: 0,
-      skills: { faction: null, tier: 0 }, // 25.3：五大流派，faction為覺醒鎖定的主流派id，tier為已解鎖T1~T4階數
+      skills: { faction: null, tiers: {}, unlockOrder: [] }, // 25.3：五大流派。2026-07-05技能點系統重設：faction=第一個選的主流派(供UI參考)，tiers={流派id:已解鎖T1~T4階數}，unlockOrder=依序解鎖的流派清單，長期玩家最終可解鎖全部5個流派
       upcomingThreat: null,
       currency: { embers: 150 }, // 32.8
       itemUseCount: {},
@@ -1952,25 +1954,66 @@
   }
 
   // ---------- 覺醒（24.3） ----------
+  // 2026-07-05技能點系統重設：移除自動隨機指派流派，改由玩家在技能面板手動選擇(見chooseFaction)，
+  // 覺醒特質/hpMaxBonus/embers獎勵維持隨機無妨(次要小額加成，不影響玩法深度)
   function triggerAwakening(state, rng = Math.random) {
     const trait = AWAKENING_TRAITS[Math.floor(rng() * AWAKENING_TRAITS.length)];
     state.awakening = trait;
     if (trait.hpMaxBonus) state.hpMax += trait.hpMaxBonus;
-    if (!state.skills) state.skills = { faction: null, tier: 0 };
-    if (!state.skills.faction) {
-      state.skills.faction = FACTION_IDS[Math.floor(rng() * FACTION_IDS.length)];
-    }
+    if (!state.skills) state.skills = { faction: null, tiers: {}, unlockOrder: [] };
     applyEffect(state, { embers: 20 });
     return trait;
   }
 
-  // ---------- 技能樹（25.3：五大流派，覺醒鎖定主流派後線性解鎖T1~T4） ----------
-  function spendSkillPoint(state) {
+  // 玩家在技能面板手動選擇第一個(主)流派，一旦選定不能更換
+  function chooseFaction(state, factionId) {
+    if (!state.skills) state.skills = { faction: null, tiers: {}, unlockOrder: [] };
+    if (state.skills.faction) return false;
+    if (!FACTION_IDS.includes(factionId)) return false;
+    state.skills.faction = factionId;
+    state.skills.tiers = { [factionId]: 0 };
+    state.skills.unlockOrder = [factionId];
+    return true;
+  }
+
+  // ---------- 技能樹（25.3：五大流派。2026-07-05技能點系統重設：覺醒鏈，長期玩家最終可解鎖全部5個流派）----------
+  // 索引=目前已解鎖流派數，null代表第1個流派覺醒當下即解鎖，不需要額外day門檻
+  const AWAKENING_DAY_THRESHOLDS = [null, 100, 150, 200, 250];
+
+  // 是否可以解鎖「下一個」流派：目前最後解鎖的流派已封頂 + day數達標 + 尚未解鎖滿5個
+  function nextAwakeningAvailable(state) {
     if (!state.skills || !state.skills.faction) return false;
+    const order = state.skills.unlockOrder || [];
+    if (order.length >= FACTION_IDS.length) return false;
+    const last = order[order.length - 1];
+    const lastMaxed = (state.skills.tiers[last] || 0) >= SKILLS_TREE[last].tiers.length;
+    if (!lastMaxed) return false;
+    return state.day >= AWAKENING_DAY_THRESHOLDS[order.length];
+  }
+
+  function chooseNextFaction(state, factionId) {
+    if (!nextAwakeningAvailable(state)) return false;
+    if (state.skills.unlockOrder.includes(factionId) || !FACTION_IDS.includes(factionId)) return false;
+    state.skills.tiers[factionId] = 0;
+    state.skills.unlockOrder.push(factionId);
+    return true;
+  }
+
+  // UI用：是否所有已解鎖流派都已封頂且沒有下一個可解鎖(判斷要不要顯示「兌換晶燼」選項)
+  function allUnlockedFactionsMaxed(state) {
+    if (!state.skills || !state.skills.unlockOrder || !state.skills.unlockOrder.length) return false;
+    const allMaxed = state.skills.unlockOrder.every(f => (state.skills.tiers[f] || 0) >= SKILLS_TREE[f].tiers.length);
+    return allMaxed && !nextAwakeningAvailable(state);
+  }
+
+  // 花技能點：指定要點哪個「已解鎖」流派，未封頂才會成功；全部流派都封頂時對任何factionId皆回傳false，
+  // 交給既有的convertSkillPointToEmbers()兜底，不用額外判斷「全部封頂」的情況
+  function spendSkillPoint(state, factionId) {
+    if (!state.skills || !state.skills.unlockOrder || !state.skills.unlockOrder.includes(factionId)) return false;
     if ((state.skillPoints || 0) <= 0) return false;
-    const tiers = SKILLS_TREE[state.skills.faction].tiers;
-    if ((state.skills.tier || 0) >= tiers.length) return false;
-    state.skills.tier = (state.skills.tier || 0) + 1;
+    const cur = state.skills.tiers[factionId] || 0;
+    if (cur >= SKILLS_TREE[factionId].tiers.length) return false;
+    state.skills.tiers[factionId] = cur + 1;
     state.skillPoints -= 1;
     return true;
   }
@@ -2128,7 +2171,8 @@
     hasFurniturePlaced, allPlacedFurnitureIds, findEmptyGridCell,
     getComfortLevel, getComfortLabel, radioInteract, eggNestInteract, furnitureEasterEggInteract,
     getMilestoneEvent, MILESTONE_EVENTS,
-    triggerAwakening, spendSkillPoint, convertSkillPointToEmbers, SKILL_POINT_EMBERS_VALUE, enemyTier, getScaledEnemy, TIER_PREFIXES, getLocationOverpower,
+    triggerAwakening, chooseFaction, AWAKENING_DAY_THRESHOLDS, nextAwakeningAvailable, chooseNextFaction, allUnlockedFactionsMaxed,
+    spendSkillPoint, convertSkillPointToEmbers, SKILL_POINT_EMBERS_VALUE, enemyTier, getScaledEnemy, TIER_PREFIXES, getLocationOverpower,
     checkUpcomingThreat, isThreatDue, clearUpcomingThreat, THREAT_LEAD_DAYS, BLOOD_MOON_CYCLE_MIN, BLOOD_MOON_CYCLE_MAX,
     resolveBloodMoonDefense, bloodMoonRewards, bloodMoonRewardMultiplier, TIER_ZONES, getTierZoneForBloodMoonWin,
     getAbyssSurgeBattle, ABYSS_SURGE_EQUIPMENT_POOL,

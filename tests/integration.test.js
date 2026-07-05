@@ -195,6 +195,25 @@ test("舊存檔相容：只含3位舊夥伴的companions存檔，讀檔後應自
   assert.strictEqual(Object.keys(merged).length, 6);
 });
 
+test("舊存檔相容：技能點系統重設前的{faction,tier}單一流派存檔，讀檔後應正確轉換成{faction,tiers,unlockOrder}且保留進度", () => {
+  // 模擬game.js的loadGame()：NESTED_STATE_FIELDS的淺層合併對skills只會做{...defaults.skills, ...saved.skills}，
+  // 舊格式{faction:"cyber",tier:2}合併後tiers/unlockOrder會是defaults的空值，等於進度歸零——
+  // 這就是loadGame()額外那段偵測舊格式手動重建的邏輯要防止的情況，這裡直接複製該邏輯驗證行為
+  const defaults = L.defaultState();
+  const oldSave = { faction: "cyber", tier: 2 };
+  let merged = { ...defaults.skills, ...oldSave };
+  // 淺層合併後的錯誤狀態：faction保留了，但tiers/unlockOrder是空的(進度看似歸零)
+  assert.strictEqual(merged.faction, "cyber");
+  assert.deepStrictEqual(merged.tiers, {});
+  // loadGame()額外的偵測與重建邏輯
+  if (typeof oldSave.tier === "number" && oldSave.faction && !(merged.tiers && Object.keys(merged.tiers).length)) {
+    merged = { faction: oldSave.faction, tiers: { [oldSave.faction]: oldSave.tier }, unlockOrder: [oldSave.faction] };
+  }
+  assert.strictEqual(merged.faction, "cyber");
+  assert.strictEqual(merged.tiers.cyber, 2); // 舊進度正確保留，不會歸零
+  assert.deepStrictEqual(merged.unlockOrder, ["cyber"]);
+});
+
 // ===== 規則式事件條件在完整遊玩流程中的影響 =====
 
 test("完整流程：companion=true且level>=3時，跑長時間夜晚事件迴圈不會出錯，且能抽到專屬事件", () => {

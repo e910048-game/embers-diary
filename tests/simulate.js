@@ -194,10 +194,10 @@ function simulateOneRun(strategy, faction, opts = {}) {
       L.applyEffect(state, { resources: L.gatherYield(Math.random) });
     }
 
-    // 主流派覺醒後，依模擬指定的faction覆寫隨機分配，並把所有技能點投入該流派
+    // 主流派覺醒後，依模擬指定的faction選定(2026-07-05技能點系統重設：改由玩家手動選擇，不再隨機)，並把所有技能點投入該流派
     if (state.awakening && state.skills && faction) {
-      state.skills.faction = faction;
-      while (L.spendSkillPoint(state)) { /* 投完所有技能點 */ }
+      if (!state.skills.faction) L.chooseFaction(state, faction);
+      while (L.spendSkillPoint(state, faction)) { /* 投完所有技能點 */ }
     }
 
     // #21-2：廢料溢出曲線——記錄scrap觸頂(達resourceCaps.scrap)的階段數與首次觸頂的天數

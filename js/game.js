@@ -89,6 +89,12 @@ function loadGame() {
   if (saved.processing && saved.processing.stations) {
     merged.processing.stations = { ...defaults.processing.stations, ...saved.processing.stations };
   }
+  // 技能點系統重設(2026-07-05)：舊存檔state.skills是{faction,tier}單一流派格式，NESTED_STATE_FIELDS的
+  // 淺層合併不會自動轉換成新格式{faction,tiers,unlockOrder}，會導致舊存檔的技能樹進度憑空消失
+  // (faction留著但tiers是空的，等於進度歸零)——偵測到舊格式時手動重建
+  if (saved.skills && typeof saved.skills.tier === "number" && saved.skills.faction && !(saved.skills.tiers && Object.keys(saved.skills.tiers).length)) {
+    merged.skills = { faction: saved.skills.faction, tiers: { [saved.skills.faction]: saved.skills.tier }, unlockOrder: [saved.skills.faction] };
+  }
   return merged;
 }
 function hasSave() {
@@ -1499,7 +1505,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 222; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 223; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -1646,6 +1652,12 @@ function renderMain() {
   let extra = "";
   if (state.skillPoints > 0) {
         extra += `\n⭐ 你有 ${state.skillPoints} 點未使用的技能點！`;
+  }
+  // 2026-07-05技能點系統重設：覺醒不再自動指派流派，非侵入式提示導引玩家自己去技能面板選擇
+  if (state.awakening && !(state.skills && state.skills.faction)) {
+    extra += `\n🌀 覺醒已發生，請前往技能面板選擇你的流派！`;
+  } else if (state.skills && nextAwakeningAvailable(state)) {
+    extra += `\n🌀 新的覺醒機會已出現，前往技能面板可以解鎖下一個流派！`;
   }
   // 任務系統：消費上一次finishAction/endPhase留下的完成通知，顯示一次後清空，不寫入存檔
   if (pendingQuestNotice) {
@@ -3339,55 +3351,95 @@ function showAchievementPanel() {
   renderOptions(opts);
 }
 
+// 2026-07-05技能點系統重設：state.skills從單一{faction,tier}改成多流派{faction,tiers,unlockOrder}——
+// 覺醒時不再隨機指派流派，改由玩家手動選擇；主流派點滿T4後隨day數推進可依序解鎖下一個流派，
+// 長期玩家最終可解鎖全部5個流派(20/20項天賦)。見規格文件/技能點系統重設_設計規格.md
 function showSkillPanel() {
   renderStatusBar();
-  const faction = state.skills && state.skills.faction;
+  const unlockOrder = (state.skills && state.skills.unlockOrder) || [];
+  if (!state.skills || !state.skills.faction) {
+    showFactionChoicePanel(false);
+    return;
+  }
   let html = `<div class="subtitle">你的技能點數：${state.skillPoints}</div>`;
-  if (!faction) {
-    html += `<div class="hint">使用技能點可提升角色能力，點擊下方選項使用</div>`;
-  } else {
+  unlockOrder.forEach(faction => {
     const tree = SKILLS_TREE[faction];
-    const cur = state.skills.tier || 0;
+    const cur = state.skills.tiers[faction] || 0;
     html += `<div class="faction-${faction}"><div class="invRow"><span>技能樹：${tree.name}（${tree.role}）</span><span class="qty">${cur}/${tree.tiers.length}</span></div>`;
     tree.tiers.forEach((t, idx) => {
       const unlocked = idx < cur;
       html += `<div class="hint" style="padding:0 0 4px 0">${unlocked ? "🔓" : "🔒"} T${idx + 1} ${t.name}：${t.desc}</div>`;
     });
-    html += `</div><div class="hint" style="padding:8px 0 0 0">使用技能點可永久提升角色能力</div>`;
-  }
+    html += `</div>`;
+  });
+  html += `<div class="hint" style="padding:8px 0 0 0">使用技能點可永久提升角色能力</div>`;
   renderText(html);
 
   const opts = [];
-  if (faction) {
+  unlockOrder.forEach(faction => {
     const tree = SKILLS_TREE[faction];
-    const cur = state.skills.tier || 0;
+    const cur = state.skills.tiers[faction] || 0;
     if (cur < tree.tiers.length) {
       opts.push({
-                label: `🎯 強化攻擊力`,
+        label: `🎯 強化：${tree.name}`,
         hint: `T${cur + 1} ${tree.tiers[cur].name}`,
         disabled: state.skillPoints <= 0,
         onClick: () => {
-          spendSkillPoint(state);
+          spendSkillPoint(state, faction);
           saveGame();
-          showSkillPanel();
-        }
-      });
-    } else {
-      // 2026-07-04新增：T4封頂後技能點不再無處可去，改成可兌換晶燼，避免純粹變成廢數字
-      opts.push({
-        label: `🔥 兌換晶燼`,
-        hint: `技能樹已封頂，1技能點 = ${SKILL_POINT_EMBERS_VALUE}🔥`,
-        disabled: state.skillPoints <= 0,
-        onClick: () => {
-          convertSkillPointToEmbers(state);
-          saveGame();
-          renderStatusBar();
           showSkillPanel();
         }
       });
     }
+  });
+  if (nextAwakeningAvailable(state)) {
+    opts.push({
+      label: "🌀 覺醒：解鎖下一個流派",
+      variant: "primary",
+      onClick: () => showFactionChoicePanel(true)
+    });
+  }
+  if (allUnlockedFactionsMaxed(state)) {
+    // 2026-07-04新增：全部已解鎖流派封頂後技能點不再無處可去，改成可兌換晶燼，避免純粹變成廢數字
+    opts.push({
+      label: `🔥 兌換晶燼`,
+      hint: `已無可解鎖流派，1技能點 = ${SKILL_POINT_EMBERS_VALUE}🔥`,
+      disabled: state.skillPoints <= 0,
+      onClick: () => {
+        convertSkillPointToEmbers(state);
+        saveGame();
+        renderStatusBar();
+        showSkillPanel();
+      }
+    });
   }
   opts.push({ label: "返回", variant: "ghost", onClick: renderMain });
+  renderOptions(opts);
+}
+
+// isNext=false：第一次覺醒選主流派(chooseFaction)；isNext=true：解鎖下一個流派(chooseNextFaction)，
+// 只列出尚未解鎖的流派供選擇
+function showFactionChoicePanel(isNext) {
+  renderStatusBar();
+  const unlockOrder = (state.skills && state.skills.unlockOrder) || [];
+  const available = FACTION_IDS.filter(f => !unlockOrder.includes(f));
+  const title = isNext ? "覺醒：選擇下一個流派" : "覺醒：選擇你的流派";
+  const rows = available.map(f => {
+    const tree = SKILLS_TREE[f];
+    return `<div class="invRow"><span>${tree.name}（${tree.role}）</span><span class="hint">T1 ${tree.tiers[0].name}：${tree.tiers[0].desc}</span></div>`;
+  }).join("");
+  renderText(`<div class="subtitle">${title}</div><div class="invList">${rows}</div><div class="hint" style="padding-top:8px">一旦選定即無法更換</div>`);
+  const opts = available.map(f => ({
+    label: `${SKILLS_TREE[f].name}`,
+    hint: SKILLS_TREE[f].role,
+    onClick: () => {
+      if (isNext) chooseNextFaction(state, f);
+      else chooseFaction(state, f);
+      saveGame();
+      showSkillPanel();
+    }
+  }));
+  opts.push({ label: "返回", variant: "ghost", onClick: isNext ? showSkillPanel : renderMain });
   renderOptions(opts);
 }
 
