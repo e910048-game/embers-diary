@@ -685,6 +685,18 @@
     return zone;
   }
 
+  // 無限模式後期內容(2026-07-05，見規格文件/無限模式後期內容_設計規格.md)：4個TIER_ZONES全數插旗後，
+  // 血月狂潮的Tier戰內容原本就此打住(getTierZoneForBloodMoonWin永遠回傳null)——「深淵擴散」讓第5次起
+  // 的每次血月勝利改觸發可重複的加碼戰，避免無限模式後期只剩數值放大的血月夜
+  const ABYSS_SURGE_EQUIPMENT_POOL = ["gaia_skin", "mind_mirror", "mind_greatsword", "cyber_suit"];
+  function getAbyssSurgeBattle(state) {
+    if (!(state.flags && state.flags.tier3_liberated)) return null;
+    const surgeCount = (state.bloodMoonWins || 0) - TIER_ZONES.length;
+    if (surgeCount < 1) return null;
+    const extraTier = Math.min(8, 3 + surgeCount); // 沿用母體核心的extraTier:3為基準往上疊，上限+8避免數值失控
+    return { bossEnemyId: "enemy_abyss_herald", extraTier, surgeCount, reward: { equipment_pool: ABYSS_SURGE_EQUIPMENT_POOL } };
+  }
+
   function battleDamage(attackerAtk, defenderDef) {
     return Math.max(1, attackerAtk - defenderDef);
   }
@@ -2119,6 +2131,7 @@
     triggerAwakening, spendSkillPoint, convertSkillPointToEmbers, SKILL_POINT_EMBERS_VALUE, enemyTier, getScaledEnemy, TIER_PREFIXES, getLocationOverpower,
     checkUpcomingThreat, isThreatDue, clearUpcomingThreat, THREAT_LEAD_DAYS, BLOOD_MOON_CYCLE_MIN, BLOOD_MOON_CYCLE_MAX,
     resolveBloodMoonDefense, bloodMoonRewards, bloodMoonRewardMultiplier, TIER_ZONES, getTierZoneForBloodMoonWin,
+    getAbyssSurgeBattle, ABYSS_SURGE_EQUIPMENT_POOL,
     ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS,
     replacePlayerNameTag, dailyMoodCheckin, depositToFridge, withdrawFromFridge, generateSyncCode, applySyncCode,
     QUESTS, ACHIEVEMENTS, applyQuestReward, checkQuestsAndAchievements,

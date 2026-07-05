@@ -229,6 +229,20 @@ const ENEMIES = {
       { itemId: "cyber_pendant", qty: 1, weight: 15 },
       { itemId: "medicine", qty: 2, weight: 35 }
     ]
+  },
+  // 無限模式後期內容(2026-07-05)：「深淵擴散」戰的招牌敵人，刻意跟enemy_cyborg_nemesis做出數值取捨差異——
+  // 高攻低防的玻璃大炮型態(vs指揮官的攻防均衡型)，且不是mechanical(不吃cyber_hammer的機械傷害加成)，
+  // 也不在getBossFactionCounterMult的特判名單裡(玩家的流派傷害加成在這裡不會被削弱)，兩隻Boss打法真正不同
+  enemy_abyss_herald: {
+    id: "enemy_abyss_herald", name: "深淵先驅", icon: "👁️",
+    hp: 70, atk: 14, def: 1, expReward: 80,
+    scaling: { hpPerTier: 30, atkPerTier: 4 },
+    dropTable: [
+      { itemId: "scrap", qty: 6, weight: 25 },
+      { itemId: "medicine", qty: 2, weight: 30 },
+      { itemId: "mind_lens", qty: 1, weight: 10 },
+      { itemId: "aero_barometer", qty: 1, weight: 10 }
+    ]
   }
 };
 
@@ -2476,8 +2490,22 @@ const BLOOD_MOON_VICTORY_TEXTS = [
   "血月的紅光徹底消散，取而代之的是熟悉的夜色，你終於敢放鬆緊繃了一整晚的肩膀。"
 ];
 
+// 無限模式後期內容(2026-07-05)：「深淵擴散」戰的開場/勝利文案，呼應「四大行政區收復後，
+// 母體核心的殘餘勢力仍持續反撲」的世界觀延續，見規格文件/無限模式後期內容_設計規格.md
+const ABYSS_SURGE_INTRO_TEXTS = [
+  "四大行政區的旗幟都已插上，但地脈深處傳來的震動絲毫沒有平息——母體核心的殘餘勢力，正從裂縫中湧出。",
+  "你以為收復行動已經告一段落，直到那道熟悉的血色再次染紅天際，這次帶著一股更原始的敵意。",
+  "「深淵先驅」——你從未聽過這個稱呼，但此刻空氣中瀰漫的壓迫感，讓你明白這不是普通的血月夜。",
+  "收復四大行政區的餘波還沒散去，一股更深沉的威脅已經從地底甦醒，朝著你的據點逼近。"
+];
+const ABYSS_SURGE_VICTORY_TEXTS = [
+  "深淵先驅倒下的瞬間，地脈的震動也隨之平息——但你知道，這股力量遲早還會再度湧現。",
+  "你靠著牆大口喘氣，這一戰比任何一次Tier區域的收復戰都更加驚險，但你撐了下來。",
+  "殘餘的威脅暫時被壓制，你清點著滿身的傷痕，心裡清楚，深淵不會就此罷休。"
+];
+
 if (typeof module !== "undefined") {
-  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, COMPANIONS_REGISTRY };
+  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
   window.ITEMS = ITEMS;
@@ -2494,5 +2522,7 @@ if (typeof module !== "undefined") {
   window.SPECIES = SPECIES;
   window.BLOOD_MOON_INTRO_TEXTS = BLOOD_MOON_INTRO_TEXTS;
   window.BLOOD_MOON_VICTORY_TEXTS = BLOOD_MOON_VICTORY_TEXTS;
+  window.ABYSS_SURGE_INTRO_TEXTS = ABYSS_SURGE_INTRO_TEXTS;
+  window.ABYSS_SURGE_VICTORY_TEXTS = ABYSS_SURGE_VICTORY_TEXTS;
   window.COMPANIONS_REGISTRY = COMPANIONS_REGISTRY;
 }

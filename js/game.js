@@ -1499,7 +1499,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 221; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 222; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];
@@ -2657,7 +2657,14 @@ function runBloodMoonWave(waves, idx) {
     if (zone) {
       renderOptions([{ label: "繼續", variant: "ghost", onClick: () => startTierZoneBattle(zone) }]);
     } else {
-      renderOptions([{ label: "繼續", variant: "ghost", onClick: () => endPhase() }]);
+      // 無限模式後期內容(2026-07-05)：4個Tier區域全數插旗後，改檢查「深淵擴散」是否觸發，
+      // 避免第5次起的血月勝利就此變成純數值放大、沒有新內容的空窗
+      const surge = getAbyssSurgeBattle(state);
+      if (surge) {
+        renderOptions([{ label: "繼續", variant: "ghost", onClick: () => startAbyssSurgeBattle(surge) }]);
+      } else {
+        renderOptions([{ label: "繼續", variant: "ghost", onClick: () => endPhase() }]);
+      }
     }
     return;
   }
@@ -2677,6 +2684,23 @@ function onTierZoneWon(zone) {
   renderStatusBar();
   renderText(`🔓 「${zone.name}」已被你解放！
 ${formatEffect(zone.reward)}`, { kind: "event" });
+  renderOptions([{ label: "繼續", variant: "ghost", onClick: () => endPhase() }]);
+}
+
+// 無限模式後期內容(2026-07-05)：「深淵擴散」——4個Tier區域全數收復後可重複觸發的加碼戰，
+// 沿用startTierZoneBattle/onTierZoneWon同一套呼叫模式，不需要新戰鬥迴圈
+function startAbyssSurgeBattle(surge) {
+  const introText = ABYSS_SURGE_INTRO_TEXTS[Math.floor(Math.random() * ABYSS_SURGE_INTRO_TEXTS.length)];
+  renderText(`👁️ ${introText}`, { kind: "event" });
+  renderOptions([{ label: "⚔️ 迎戰深淵擴散", variant: "danger", onClick: () => startBattle(surge.bossEnemyId, () => onAbyssSurgeWon(surge), false, { extraTier: surge.extraTier }) }]);
+}
+
+function onAbyssSurgeWon(surge) {
+  applyEffect(surge.reward);
+  renderStatusBar();
+  const victoryText = ABYSS_SURGE_VICTORY_TEXTS[Math.floor(Math.random() * ABYSS_SURGE_VICTORY_TEXTS.length)];
+  renderText(`👁️ ${victoryText}
+${formatEffect(surge.reward)}`, { kind: "event" });
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => endPhase() }]);
 }
 

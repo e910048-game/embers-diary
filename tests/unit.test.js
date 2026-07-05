@@ -1430,6 +1430,27 @@ test("getYardDecorEffect/getCropStage：蓋亞靈能圖騰的cropGrowthBonusPhas
   assert.ok(withTotem.stageIdx >= withoutTotem.stageIdx); // 圖騰讓成長進度至少一樣快，通常更快
 });
 
+test("getAbyssSurgeBattle：4個TIER_ZONES全數插旗前不會觸發，插旗後第5次血月起才開始且extraTier隨次數遞增至上限8", () => {
+  const s = L.defaultState();
+  s.bloodMoonWins = 10; // 即使血月贏很多次，沒插旗tier3_liberated就不該觸發
+  assert.strictEqual(L.getAbyssSurgeBattle(s), null);
+
+  s.flags.tier3_liberated = true;
+  s.bloodMoonWins = 4; // 第4次(=TIER_ZONES.length)還不算深淵擴散，第5次才開始
+  assert.strictEqual(L.getAbyssSurgeBattle(s), null);
+
+  s.bloodMoonWins = 5; // 第1次深淵擴散
+  let surge = L.getAbyssSurgeBattle(s);
+  assert.strictEqual(surge.surgeCount, 1);
+  assert.strictEqual(surge.extraTier, 4); // min(8, 3+1)
+  assert.strictEqual(surge.bossEnemyId, "enemy_abyss_herald");
+  assert.deepStrictEqual(surge.reward, { equipment_pool: L.ABYSS_SURGE_EQUIPMENT_POOL });
+
+  s.bloodMoonWins = 20; // surgeCount=16，extraTier應封頂在8
+  surge = L.getAbyssSurgeBattle(s);
+  assert.strictEqual(surge.extraTier, 8);
+});
+
 // #21-1：CI剛性斷言 - 所有ITEMS effects與PREFIX_POOL effect中的比例型數值須介於0~1
 test("CI斷言：ITEMS/PREFIX_POOL中的比例型加成(dodgeBonus/lifestealBonus/skillBonusRatio等)須介於0~1", () => {
   const ratioKeys = ["dodgeBonus", "lifestealBonus", "lifestealRatio", "critBonus", "skillBonusRatio", "ignoreDefRatio", "noiseDampRatio", "noiseGenRatio"];
