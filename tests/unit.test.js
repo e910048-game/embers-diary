@@ -1623,5 +1623,27 @@ test("evt_shadow_on_wall：mind_eye裝備時多一個看穿幻覺的安全選項
   assert.ok(!mindEyeOpt.effect || mindEyeOpt.effect.san === undefined || mindEyeOpt.effect.san >= 0); // 看穿真相不應該扣SAN
 });
 
+// 2026-07-05 序章結局→無限模式生態變數：4篇序章共用companion/alone/weak/dead結局代碼，
+// applyPrologueEnding設定的flags.alone/weak不只是開局當下的一次性加成，會持續影響本局後續表現
+test("結局生態變數：alone永久+15%採集收穫，weak永久+5%探索驚動機率", () => {
+  const rng = () => 0.99; // 固定rng讓基準值可預期
+  const sAlone = L.defaultState();
+  L.applyPrologueEnding(sAlone, "alone");
+  const withAlone = L.gatherYield(rng, sAlone);
+  const withoutAlone = L.gatherYield(rng, L.defaultState());
+  // 比照既有「阿海指派expedition」測試同一種寫法(>=)：base值上限只有2，15%/20%比例加成經Math.round後
+  // 常常四捨五入不出來(2*1.15=2.3->2)，這是gatherYield既有的捨入特性，不是這次新增的行為，故沿用同一種容忍度
+  assert.ok(withAlone.food >= withoutAlone.food && withAlone.water >= withoutAlone.water);
+
+  const loc = { encounterChance: 0.5, encounterEnemyIds: ["enemy_walker_weak"], lootTable: [{ itemId: "scrap", qty: 1, weight: 1 }] };
+  const sWeak = L.defaultState();
+  L.applyPrologueEnding(sWeak, "weak");
+  // rng落在0.5~0.55之間：一般狀態(encounterChance 0.5)不會觸發battle，weak(+0.05)則會觸發
+  const normalResult = L.resolveLocation(loc, () => 0.52, L.defaultState());
+  const weakResult = L.resolveLocation(loc, () => 0.52, sWeak);
+  assert.strictEqual(normalResult.type, "loot");
+  assert.strictEqual(weakResult.type, "battle");
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

@@ -1018,7 +1018,9 @@
       scrap: Math.floor(rng() * 3)
     };
     // 2026-07-04：阿海指派「expedition」任務時，採集/遠征收穫額外加成(見COMPANIONS_REGISTRY)
-    const bonusRatio = state ? getCompanionTaskEffect(state, "gatherYieldBonusRatio") : 0;
+    // 2026-07-05：序章「獨自生還(alone)」結局的生態變數——沒有同伴分擔，逼出更強的自力更生能力，永久+15%採集收穫
+    let bonusRatio = state ? getCompanionTaskEffect(state, "gatherYieldBonusRatio") : 0;
+    if (state && state.flags && state.flags.alone) bonusRatio += 0.15;
     if (bonusRatio) {
       Object.keys(base).forEach((k) => { base[k] = Math.round(base[k] * (1 + bonusRatio)); });
     }
@@ -1053,7 +1055,9 @@
   // 解析地點探索結果：可能遭遇敵人，也可能拾獲戰利品
   // state可選：第15天起，威脅升級，較高機率遇到清單中較強的敵人（陣列尾端）
   function resolveLocation(location, rng = Math.random, state = null) {
-    if (rng() < location.encounterChance) {
+    // 2026-07-05：序章「帶傷生還(weak)」結局的生態變數——傷勢未癒導致行動不夠俐落，探索時驚動怪物的機率永久+5%
+    const encounterBonus = (state && state.flags && state.flags.weak) ? 0.05 : 0;
+    if (rng() < location.encounterChance + encounterBonus) {
       const ids = location.encounterEnemyIds;
       let enemyId;
       if (state && state.day >= 15 && ids.length > 1 && rng() < 0.5) {
@@ -1068,7 +1072,10 @@
     return { type: "loot", itemId: drop.itemId, qty: drop.qty };
   }
 
-  // 套用短篇序章「第一晚」的結局效果到state（MVP4，沙盒模式開局加成/懲罰）
+  // 套用短篇序章結局效果到state（MVP4，沙盒模式開局加成/懲罰；4篇序章共用同一套companion/alone/weak/dead結局代碼，
+  // 故這裡的效果不分章節、只認結局代碼——2026-07-05起，這組flags也是「結局→無限模式生態變數」的機制入口，
+  // state.flags.alone/weak在這裡設定後，會持續影響本局後續的採集/探索表現，不只是開局當下的一次性加成，
+  // 見gatherYield()的自力更生加成、resolveLocation()的驚動機率debuff）
   function applyPrologueEnding(state, endingId) {
     if (!state.flags) state.flags = {};
     state.flags[endingId] = true;
