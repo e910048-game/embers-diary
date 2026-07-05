@@ -2400,6 +2400,28 @@ const ENCOUNTER_TEXTS = {
   ]
 };
 
+// 氛圍細節：高階(變異/兇暴/深淵級)戰鬥的視覺化描寫，取代「只有稱號變了、數值變大」的空洞感——
+// 通用於所有敵人類型(殭屍/機械/靈能)，不寫死特定生物特徵(如「皮膚」)，故用「輪廓/體表/氣息」這類中性詞彙
+// 索引對應TIER_PREFIXES(logic.js)：[0]=""不使用，[1]=變異的，[2]=兇暴的，[3]=深淵級的
+const TIER_FLAVOR_TEXTS = [
+  [],
+  [
+    "牠的輪廓邊緣泛著一層不自然的螢光紋路，行動比記憶中更快也更難預測。",
+    "體表浮現細密的靈能結晶顆粒，隨著動作發出細碎的摩擦聲。",
+    "瞳孔已經完全渾濁，卻精準地鎖定著你，彷彿靠著別的感官在追蹤。"
+  ],
+  [
+    "體表已經開始角質化，一般武器揮上去只留下淺淺的白痕。",
+    "肌肉纖維不正常地賁張，每一次咆哮都震得周遭的瓦礫簌簌掉落。",
+    "傷口不再流血，只滲出一種黏稠的螢光體液，很快又重新癒合。"
+  ],
+  [
+    "體表徹底角質化，尋常彈藥打上去只發出一聲悶響便被彈開，你甚至懷疑普通武器能不能傷到它。",
+    "牠散發的靈能壓迫感讓周遭空氣都微微扭曲，光是站在牠面前，呼吸就變得沉重。",
+    "體內傳出低頻的嗡鳴，彷彿有什麼龐大的東西正在牠身體深處甦醒。"
+  ]
+];
+
 const LOCATIONS_PER_VISIT = 3;
 const DISTANCE_LABELS = { near: "近距離", far: "遠距離（額外消耗食物/飲水1）" };
 
@@ -2675,14 +2697,40 @@ function startBloodMoonNight() {
     // 噪音系統：噪音每滿20點血月狂潮多一波敵人(上限100噪音=+5波)，呼應累積的噪音招來更多動靜
     const noiseWaveCount = Math.floor((state.noiseLevel || 0) / 20);
     const noiseText = noiseWaveCount > 0 ? `\n📢 你累積的噪音招來了額外${noiseWaveCount}波敵人！` : "";
-    renderText(`🌙 ${introText}
-${blockText}${noiseText}`, { kind: "battle" });
 
     const waves = [];
     if (defense.wavesBlocked === 0) waves.push({ enemyId: "enemy_walker_brute", extraTier: 1 });
     waves.push({ enemyId: "enemy_cyborg_nemesis", extraTier: 1 });
     for (let i = 0; i < noiseWaveCount; i++) waves.push({ enemyId: "enemy_walker_weak", extraTier: 0 });
 
+    // 氛圍細節(2026-07-05)：防禦被突破且獸欄有動物時，額外插入「死守 vs 撤退」抉擇——
+    // 撤退不會讓動物永久消失(呼應養殖區既有定案「動物是持久資產」)，只是重挫好感度/延後產出，
+    // 死守則是拿玩家HP換取獸欄毫髮無傷，兩條路都要繼續打完同一組waves，抉擇只影響獸欄/HP，不影響戰鬥本身
+    if (defense.wavesBlocked === 0 && hasAnyPenAnimal(state)) {
+      renderText(`🌙 ${introText}
+${blockText}${noiseText}
+
+外圍的怪物已經突破防線，獸欄方向傳來動物驚慌的叫聲——你要死守獸欄，還是放棄獸欄、集中兵力退守安全屋？`, { kind: "battle" });
+      renderOptions([
+        { label: "🛡️ 死守獸欄", variant: "danger", onClick: () => {
+          applyEffect({ hp: -10 });
+          if (state.hp <= 0) { renderGameOver(); return; }
+          renderStatusBar();
+          renderText("你們死守在獸欄前，狠狠打退了撲上來的怪物——代價是身上又添了幾道傷。（HP-10）", { kind: "battle" });
+          renderOptions([{ label: "⚔️ 迎戰", variant: "danger", onClick: () => runBloodMoonWave(waves, 0) }]);
+        } },
+        { label: "🚪 放棄獸欄，退守安全屋", variant: "ghost", onClick: () => {
+          resetPensAfterRetreat(state);
+          renderStatusBar();
+          renderText("你們放棄了獸欄，集中兵力退回安全屋。驚慌的動物在圍欄裡亂竄了一整夜，好感度跌回谷底，產出也得重新開始累積——但至少，牠們都還活著。", { kind: "battle" });
+          renderOptions([{ label: "⚔️ 迎戰", variant: "danger", onClick: () => runBloodMoonWave(waves, 0) }]);
+        } }
+      ]);
+      return;
+    }
+
+    renderText(`🌙 ${introText}
+${blockText}${noiseText}`, { kind: "battle" });
         renderOptions([{ label: "⚔️ 迎戰", variant: "danger", onClick: () => runBloodMoonWave(waves, 0) }]);
   });
 }
@@ -2967,7 +3015,10 @@ function startBattle(enemyId, onEnd, isPrologue, opts = {}) {
     loc: loc || null // v182：gaia_armor「荒野每回合回HP」判定用——有loc代表是探索遭遇戰，血月/據點防衛戰沒有loc
   };
   pushSysLog(`[ENCOUNTER] ${enemyData.id || enemyData.name} HP=${enemyData.hp} ATK=${enemyData.atk}`);
-  renderBattle(`你遭遇了${enemyData.name}，戰鬥開始！`);
+  // 氛圍細節：tier1+才附加視覺化描寫，避免每場戰鬥都塞一樣的贅字
+  const tierFlavorPool = TIER_FLAVOR_TEXTS[Math.min(enemyData.tier || 0, TIER_FLAVOR_TEXTS.length - 1)];
+  const tierFlavor = tierFlavorPool && tierFlavorPool.length ? `\n\n${tierFlavorPool[Math.floor(Math.random() * tierFlavorPool.length)]}` : "";
+  renderBattle(`你遭遇了${enemyData.name}，戰鬥開始！${tierFlavor}`);
 }
 
 function renderBattle(message) {

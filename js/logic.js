@@ -1443,6 +1443,23 @@
     return { ok: true };
   }
 
+  // 血月「死守養殖區 vs 撤退」抉擇（2026-07-05氛圍細節）：是否至少一個獸欄有動物，決定要不要跳出這個抉擇
+  function hasAnyPenAnimal(state) {
+    return !!(state.pens && Object.values(state.pens.plots).some(p => p.animal));
+  }
+
+  // 撤退代價：好感度歸零+視同剛收成一次(下次產出要重新累計天數)，動物本身不會消失
+  // （呼應V2既有定案「動物是持久資產不會消失」——這裡沿用同一條原則，撤退只是重挫進度，不是永久失去牲畜）
+  function resetPensAfterRetreat(state) {
+    if (!state.pens) return;
+    const idx = currentPhaseIndex(state);
+    Object.values(state.pens.plots).forEach(p => {
+      if (!p.animal) return;
+      p.animal.happiness = 0;
+      p.animal.lastCollectedAtPhaseIndex = idx;
+    });
+  }
+
   // 撫摸免費、每日限一次+10好感度，比照companionBubbleLove的「每日一次小互動」手法
   function petAnimal(state, penId) {
     const pen = state.pens.plots[penId];
@@ -2215,6 +2232,7 @@
     FACILITY_KEYS, syncBaseDefense, reinforceFacility, restSanRegen,
     FARM_PLOT_LAYOUT, CROPS, currentPhaseIndex, farmPlotUnlockCost, unlockFarmPlot, plantSeed, waterPlot, getCropStage, harvestFarmPlot,
     PEN_LAYOUT, SPECIES, FEED_COST, getPenProductionState, penUnlockCost, unlockPen, placeAnimal, feedAnimal, petAnimal, collectPen,
+    hasAnyPenAnimal, resetPensAfterRetreat,
     WORKSHOP_STATION_LAYOUT, RECIPES, recipeAvailable, canAffordRecipe, processingStationUnlockCost, unlockProcessingStation, startProcessing, getProcessingState, collectProcessing,
     YARD_DECOR_SLOTS, placeYardDecor, removeYardDecor, getYardDecorEffect,
     placeFurniture, getFurnitureDefBonus, getFurnitureRaidChanceDelta, loungeInteract, sumFurnitureEffect,

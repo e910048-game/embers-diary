@@ -1645,5 +1645,22 @@ test("結局生態變數：alone永久+15%採集收穫，weak永久+5%探索驚�
   assert.strictEqual(weakResult.type, "battle");
 });
 
+// 2026-07-05 氛圍細節：血月「死守獸欄 vs 撤退」抉擇——撤退不會讓動物消失，只重挫好感度/延後產出
+test("hasAnyPenAnimal/resetPensAfterRetreat：撤退後動物仍在，只有好感度歸零、產出計時重置", () => {
+  const s = L.defaultState();
+  assert.strictEqual(L.hasAnyPenAnimal(s), false); // 剛開局沒有動物
+
+  s.inventory.push({ itemId: "chick_token", qty: 1 });
+  assert.strictEqual(L.placeAnimal(s, "pen_1", "chick_token").ok, true);
+  assert.strictEqual(L.hasAnyPenAnimal(s), true);
+
+  s.pens.plots.pen_1.animal.happiness = 80;
+  s.day = 5;
+  L.resetPensAfterRetreat(s);
+  assert.ok(s.pens.plots.pen_1.animal, "動物不會因撤退而消失");
+  assert.strictEqual(s.pens.plots.pen_1.animal.happiness, 0);
+  assert.strictEqual(L.getPenProductionState(s, s.pens.plots.pen_1).ready, false); // 剛重置，還沒到收成時間
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
