@@ -1517,5 +1517,54 @@ test("CI斷言：EVENTS的text/resultText每段(以\\n\\n切割)字數不得超�
   });
 });
 
+// 2026-07-05 同伴劇情線：以老周為代表，驗證3階段condition的鏈式gating（未招募不可能觸發/需間隔10天/完成後不重觸發）
+test("同伴劇情線：老周3階段condition正確串接，未招募/天數不足/已完成時皆不會觸發", () => {
+  const arc1 = L.EVENTS.find(e => e.id === "evt_arc_laozhou_1");
+  const arc2 = L.EVENTS.find(e => e.id === "evt_arc_laozhou_2");
+  const arc3 = L.EVENTS.find(e => e.id === "evt_arc_laozhou_3");
+  assert.ok(arc1 && arc2 && arc3);
+
+  const s = L.defaultState();
+  s.day = 20;
+  assert.strictEqual(arc1.condition(s), false); // 尚未招募
+
+  s.flags.laozhou_recruited = true;
+  L.refreshCompanionUnlocks(s);
+  assert.strictEqual(arc1.condition(s), true); // 已招募+day達20
+
+  s.flags["老周_arc1"] = s.day; // 觸發第1階
+  assert.strictEqual(arc1.condition(s), false); // 已觸發過，不再符合
+  assert.strictEqual(arc2.condition(s), false); // 間隔未滿10天
+
+  s.day += 9;
+  assert.strictEqual(arc2.condition(s), false); // 差1天還不夠
+  s.day += 1;
+  assert.strictEqual(arc2.condition(s), true); // 滿10天
+
+  s.flags["老周_arc2"] = s.day;
+  assert.strictEqual(arc2.condition(s), false);
+  assert.strictEqual(arc3.condition(s), false);
+  s.day += 10;
+  assert.strictEqual(arc3.condition(s), true);
+
+  s.flags["老周_arc_done"] = s.day;
+  assert.strictEqual(arc3.condition(s), false); // 完成後不再重觸發
+});
+
+// 2026-07-05 同伴劇情線：驗證COMPANION_ARC_BONUS是永久加成，不受同伴當下是否被指派任務影響
+test("getCompanionTaskEffect：同伴劇情線完成後的永久加成，即使同伴目前standby也生效", () => {
+  const s = L.defaultState();
+  s.flags.laozhou_recruited = true;
+  L.refreshCompanionUnlocks(s);
+  assert.strictEqual(s.companions["老周"], "standby"); // 尚未指派任務
+  assert.strictEqual(L.getCompanionTaskEffect(s, "reforgeDiscountRatio"), 0);
+
+  s.flags["老周_arc_done"] = s.day;
+  assert.strictEqual(L.getCompanionTaskEffect(s, "reforgeDiscountRatio"), 0.05); // standby狀態下劇情加成依然生效
+
+  L.dispatchCompanion(s, "老周", "craft");
+  assert.ok(Math.abs(L.getCompanionTaskEffect(s, "reforgeDiscountRatio") - 0.25) < 1e-9); // 0.2(任務本身) + 0.05(劇情加成)疊加
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

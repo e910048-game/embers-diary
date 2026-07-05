@@ -163,6 +163,16 @@
     return !!(state.companions && Object.values(state.companions).includes(task));
   }
 
+  // 同伴劇情線完成後的小額永久加成，呼應該同伴的任務效果本身（不是憑空加數值），見規格文件「同伴劇情線_設計規格.md」
+  const COMPANION_ARC_BONUS = {
+    "雷恩": { raidChanceDelta: -0.05 },
+    "艾莉": { restHealBonus: 2 },
+    "阿卡": { bloodMoonDefenseBonus: 0.05 },
+    "老周": { reforgeDiscountRatio: 0.05 },
+    "小雨": { reinforceDiscountRatio: 0.05 },
+    "阿海": { gatherYieldBonusRatio: 0.05 },
+  };
+
   // 通用同伴任務效果加總器：掃描COMPANIONS_REGISTRY裡每個「非locked/非standby」的同伴，
   // 把該同伴目前執行任務對應的taskEffects[effectKey]數值加總回傳。取代原本散落在
   // restHealAmount/raidChance等函式裡的硬編碼「state.companions["艾莉"]==="care"」判斷式，
@@ -187,6 +197,14 @@
       const eff = reg && reg.taskEffects && reg.taskEffects[state.companionTask];
       if (eff && typeof eff[effectKey] === "number") total += eff[effectKey];
     }
+    // 2026-07-05 同伴劇情線：完成後的小額永久加成，不看目前是否被指派任務（呼應「永久」二字，
+    // 也避免玩家把同伴切去standby時，辛苦解完的劇情獎勵無故消失）
+    COMPANION_NAMES.forEach((name) => {
+      if (state.flags && state.flags[name + "_arc_done"]) {
+        const bonus = COMPANION_ARC_BONUS[name];
+        if (bonus && typeof bonus[effectKey] === "number") total += bonus[effectKey];
+      }
+    });
     return total;
   }
 

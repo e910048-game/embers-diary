@@ -1596,6 +1596,190 @@ const EVENTS = [
       { label: "只是交換一下情報", effect: { exp: 5 }, resultText: "你們交換了彼此知道的地點情報，雖然他沒有留下，這些消息想必之後會派上用場。" }
     ]
   },
+  // ---------- 2026-07-05 同伴劇情線：6同伴各3階段，見規格文件「同伴劇情線_設計規格.md」 ----------
+  // 每階段沿用evt_second_augmented同一種condition/flags鏈式模式，不使用weight:0+weightModifier
+  // （不需要「一定要優先觸發」的急迫感，維持跟一般事件同池競爭的weight:6即可，反正只看flag不看機率窗口，
+  // 不會有錯過就永久拿不到的問題）。setFlag存的是「哪一天設定的」，第2/3階用「距上一階至少10天」做相對門檻。
+  {
+    id: "evt_arc_laozhou_1", title: "深夜的工作台",
+    minDay: 20, maxDay: null, phase: ["night"], weight: 6,
+    condition: (state) => !!(state.companions && state.companions["老周"] && state.companions["老周"] !== "locked"
+      && !(state.flags && state.flags["老周_arc1"])),
+    text: "深夜，你路過老周的工作台，發現他還沒睡——正低頭擺弄著一台老舊的收音機，工具散了一桌。見你靠近，他手忙腳亂地想把東西藏起來，隨口說著「隨便修修，打發時間」，語氣卻有些不自然。",
+    options: [
+      { label: "沒有多問，先回去休息", effect: { setFlag: "老周_arc1" }, resultText: "你識趣地沒有追問，只是那台缺了個零件的收音機，看起來莫名眼熟——你一時想不起在哪見過。" }
+    ]
+  },
+  {
+    id: "evt_arc_laozhou_2", title: "缺角的收音機",
+    minDay: 1, maxDay: null, phase: ["night"], weight: 6,
+    condition: (state) => !!(state.flags && state.flags["老周_arc1"] && state.day - state.flags["老周_arc1"] >= 10
+      && !state.flags["老周_arc2"]),
+    text: "你終於想起來——那台老周深夜偷偷修的收音機，跟他當初蹲在巷口修理、最後被你邀請入伙的那台報廢收音機，是同一台。你趁著他去打水，多看了兩眼，才發現機身內側刻著一行褪色的名字縮寫，不是老周自己的。",
+    options: [
+      { label: "問他這台收音機的來歷", effect: { setFlag: "老周_arc2" }, resultText: "老周沉默了很久，才低聲說那是他女兒的。訊號塔倒下那晚，她說要出去找爸爸最後留的頻率，就再也沒回來——這台收音機，是她留給老周唯一的東西。" }
+    ]
+  },
+  {
+    id: "evt_arc_laozhou_3", title: "沙啞的老歌",
+    minDay: 1, maxDay: null, phase: ["night"], weight: 6,
+    condition: (state) => !!(state.flags && state.flags["老周_arc2"] && state.day - state.flags["老周_arc2"] >= 10
+      && !state.flags["老周_arc_done"]),
+    text: "老周喊住你，說收音機終於修好了。他把它擺在工作台正中央，轉開開關——先是一陣刺耳的雜訊，接著，一段沙啞卻辨得出旋律的老歌斷斷續續地流洩出來。他的眼眶有些發紅，卻笑著說「她以前最愛聽這首」。",
+    options: [
+      { label: "陪他把這首歌聽完", effect: { setFlag: "老周_arc_done" }, resultText: "你在他身邊坐下，什麼都沒說，只是陪他把這首斷續的老歌聽到最後。老周輕輕拍了拍收音機，像是道別，又像是終於放下。「往後裝備維修，算你優惠一點。」他嗓音有些啞，卻少了平時的滄桑。" }
+    ]
+  },
+  {
+    id: "evt_arc_leien_1", title: "異常緊繃的守夜",
+    minDay: 20, maxDay: null, phase: ["night"], weight: 6,
+    condition: (state) => !!(state.companions && state.companions["雷恩"] && state.companions["雷恩"] !== "locked"
+      && !(state.flags && state.flags["雷恩_arc1"])),
+    text: "輪到雷恩守夜的那晚，你發現他比平常更加緊繃——聽到一點風吹草動就猛地轉身，握著武器的手指節發白。你問他怎麼了，他只是搖搖頭，說「習慣了，多留意總沒有壞處」，語氣裡卻藏著一絲你從沒見過的不安。",
+    options: [
+      { label: "不勉強追問，先讓他休息", effect: { setFlag: "雷恩_arc1" }, resultText: "你沒有繼續追問，只是那份反常的警覺，讓你開始留意起雷恩過去甚少提起的事。" }
+    ]
+  },
+  {
+    id: "evt_arc_leien_2", title: "沒能守住的那次",
+    minDay: 1, maxDay: null, phase: ["night"], weight: 6,
+    condition: (state) => !!(state.flags && state.flags["雷恩_arc1"] && state.day - state.flags["雷恩_arc1"] >= 10
+      && !state.flags["雷恩_arc2"]),
+    text: "一次閒聊時，雷恩難得鬆口，說起自己曾經也是某個小據點的守衛——直到一個平靜的夜裡，他判斷失誤，讓一群掠奪者摸了進來。「我沒能守住任何人。」他盯著手裡的武器，聲音很輕，「從那之後，我不敢再掉以輕心。」",
+    options: [
+      { label: "告訴他，這裡不一樣", effect: { setFlag: "雷恩_arc2" }, resultText: "雷恩沒有回應，只是深深看了你一眼，像是把這句話收進了心裡某個角落。" }
+    ]
+  },
+  {
+    id: "evt_arc_leien_3", title: "卸下防備的血月夜",
+    minDay: 1, maxDay: null, phase: ["night"], weight: 6,
+    condition: (state) => !!(state.flags && state.flags["雷恩_arc2"] && state.day - state.flags["雷恩_arc2"] >= 10
+      && !state.flags["雷恩_arc_done"]),
+    text: "又一個血月夜過去，據點的圍欄依然完好無損。雷恩坐在哨位上，罕見地卸下了一貫的緊繃，任由武器靠在腳邊。「這次，總算守住了。」他輕聲說，像是說給自己聽，也像是說給那個他沒能守住的人聽。",
+    options: [
+      { label: "在他身邊坐下", effect: { setFlag: "雷恩_arc_done" }, resultText: "你在他身邊坐下，一起望著漸漸亮起的天色。雷恩難得露出一絲近乎輕鬆的神情：「有你在，這次守住的機率，好像又更高了一點。」" }
+    ]
+  },
+  {
+    id: "evt_arc_aili_1", title: "溫室角落的小盆栽",
+    minDay: 20, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !!(state.companions && state.companions["艾莉"] && state.companions["艾莉"] !== "locked"
+      && !(state.flags && state.flags["艾莉_arc1"])),
+    text: "整理溫室時，你注意到角落擺著一株跟作物完全無關的小盆栽，明顯被細心呵護過——葉片修剪得整整齊齊，土壤濕度也控制得剛剛好。艾莉看見你在看，臉上閃過一絲慌張，隨口說「順手種的，別在意」。",
+    options: [
+      { label: "沒有追問，繼續手邊的事", effect: { setFlag: "艾莉_arc1" }, resultText: "你沒有多問，只是那盆植物明顯不屬於溫室原本的作物清單，讓你多留了個心眼。" }
+    ]
+  },
+  {
+    id: "evt_arc_aili_2", title: "帶著思念的種子",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !!(state.flags && state.flags["艾莉_arc1"] && state.day - state.flags["艾莉_arc1"] >= 10
+      && !state.flags["艾莉_arc2"]),
+    text: "你找了個機會，隨口問起那株小盆栽的來歷。艾莉沉默了一下，才輕聲說，那是她從家裡帶出來的最後一點東西——「城市淪陷那天，我只來得及抓一把種子。種下的每一株，都像是還留著一點『家』的樣子。」",
+    options: [
+      { label: "靜靜聽她說完", effect: { setFlag: "艾莉_arc2" }, resultText: "你沒有說什麼安慰的話，只是靜靜聽她把話說完。艾莉抹了抹眼角，笑了笑，繼續回頭照料她的溫室。" }
+    ]
+  },
+  {
+    id: "evt_arc_aili_3", title: "終於開花",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !!(state.flags && state.flags["艾莉_arc2"] && state.day - state.flags["艾莉_arc2"] >= 10
+      && !state.flags["艾莉_arc_done"]),
+    text: "那株小盆栽，終於開出一朵不起眼卻鮮豔的小花。艾莉蹲在花前看了很久，才小心翼翼摘下幾顆種子，走過來遞到你手上。「分你一點——也許你的庭院，也能有個地方留住點什麼。」",
+    options: [
+      { label: "收下這份心意", effect: { setFlag: "艾莉_arc_done" }, resultText: "你鄭重地收下那幾顆種子。艾莉的笑容裡少了幾分小心翼翼，多了一份久違的踏實。「往後你們的休息，我會顧得更仔細一點。」" }
+    ]
+  },
+  {
+    id: "evt_arc_aka_1", title: "血月夜前的沉默",
+    minDay: 20, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !!(state.companions && state.companions["阿卡"] && state.companions["阿卡"] !== "locked"
+      && !(state.flags && state.flags["阿卡_arc1"])),
+    text: "又一次血月將至，阿卡卻反常地異常沉默，一個人站在防禦工事前檢查了一遍又一遍，眼神飄向很遠的地方，像是想起了什麼不願觸碰的事。",
+    options: [
+      { label: "先不打擾他", effect: { setFlag: "阿卡_arc1" }, resultText: "你沒有出聲，只是那種近乎執著的沉默，讓你隱約察覺阿卡跟血月之間，或許藏著比你以為的更深的過去。" }
+    ]
+  },
+  {
+    id: "evt_arc_aka_2", title: "親手了結的那次",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !!(state.flags && state.flags["阿卡_arc1"] && state.day - state.flags["阿卡_arc1"] >= 10
+      && !state.flags["阿卡_arc2"]),
+    text: "撐過那場血月後，阿卡難得主動開口，說起自己曾經有個親近的人被感染——「變成那樣之後，能做的只剩一件事。」他頓了頓，聲音很平靜，卻透著壓抑許久的沉重，「是我親手了結的。」",
+    options: [
+      { label: "沒有評判，只是陪著他", effect: { setFlag: "阿卡_arc2" }, resultText: "你沒有說任何評判的話，只是安靜地陪在他身邊。阿卡看了你一眼，像是鬆了口氣——這件事，他已經一個人扛了很久。" }
+    ]
+  },
+  {
+    id: "evt_arc_aka_3", title: "無需言語的理解",
+    minDay: 1, maxDay: null, phase: ["night"], weight: 6,
+    condition: (state) => !!(state.flags && state.flags["阿卡_arc2"] && state.day - state.flags["阿卡_arc2"] >= 10
+      && !state.flags["阿卡_arc_done"]),
+    text: "又一場血月狂潮過去，據點再次撐了下來。阿卡站在硝煙未散的防禦工事前，罕見地卸下了慣有的緊繃神情，朝你點了點頭——那個動作裡，有種無需言語就能懂的東西。",
+    options: [
+      { label: "回以同樣的點頭", effect: { setFlag: "阿卡_arc_done" }, resultText: "你回以同樣的點頭。從這天起，阿卡在血月夜裡的防禦部署，似乎又更沉穩了幾分。" }
+    ]
+  },
+  {
+    id: "evt_arc_xiaoyu_1", title: "帳本裡的另一頁",
+    minDay: 20, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !!(state.companions && state.companions["小雨"] && state.companions["小雨"] !== "locked"
+      && !(state.flags && state.flags["小雨_arc1"])),
+    text: "你無意間瞄到小雨的帳本，除了密密麻麻的物資紀錄，角落還有一頁反覆塗改、寫著日期跟一個名字的筆跡。她發現你在看，迅速把帳本闔上，只說了句「習慣，別在意」。",
+    options: [
+      { label: "沒有追問", effect: { setFlag: "小雨_arc1" }, resultText: "你沒有多問，只是那個反覆出現的名字，跟其他頁面工整的物資紀錄格格不入，讓你有些好奇。" }
+    ]
+  },
+  {
+    id: "evt_arc_xiaoyu_2", title: "失散的人",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !!(state.flags && state.flags["小雨_arc1"] && state.day - state.flags["小雨_arc1"] >= 10
+      && !state.flags["小雨_arc2"]),
+    text: "聊起帳本裡那個名字，小雨終於鬆口——那是她失散的家人，城市淪陷那天走散，再也沒能聯繫上。「我一直在記著各地傳回來的消息，哪怕只是隻字片語。」她的聲音很輕，「說不定哪天，能拼湊出他的下落。」",
+    options: [
+      { label: "答應幫她留意消息", effect: { setFlag: "小雨_arc2" }, resultText: "小雨愣了一下，隨即露出一個有些勉強卻真心的笑容。「謝謝你。」她把帳本重新收好，像是把這份牽掛，暫時交給了你一起扛。" }
+    ]
+  },
+  {
+    id: "evt_arc_xiaoyu_3", title: "得到消息",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !!(state.flags && state.flags["小雨_arc2"] && state.day - state.flags["小雨_arc2"] >= 10
+      && !state.flags["小雨_arc_done"]),
+    text: "一次探索歸來，你帶回了一則輾轉聽來的消息——關於小雨一直在找的那個人。你把消息告訴她，她盯著那張字條看了很久很久，眼眶泛紅，卻先深深吸了一口氣。",
+    options: [
+      { label: "把消息完整地告訴她", effect: { setFlag: "小雨_arc_done" }, resultText: "無論消息是好是壞，小雨最終還是輕輕點了頭，把那頁反覆塗改的紀錄，仔細地闔上收好。「謝謝你，陪我把這件事，做了個了結。」她的眼神，似乎也因此篤定了一些。" }
+    ]
+  },
+  {
+    id: "evt_arc_ahai_1", title: "刻意繞開的路線",
+    minDay: 20, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !!(state.companions && state.companions["阿海"] && state.companions["阿海"] !== "locked"
+      && !(state.flags && state.flags["阿海_arc1"])),
+    text: "規劃遠征路線時，你發現阿海那張畫滿符號的地圖上，有一塊區域被刻意留白——沒有任何標記，甚至連危險提示都沒有。你隨口提起，他立刻收起地圖，語氣少見地生硬：「那裡，不用去。」",
+    options: [
+      { label: "沒有勉強他", effect: { setFlag: "阿海_arc1" }, resultText: "你沒有再多說什麼，只是那片刻意留白的地圖角落，跟阿海平時鉅細靡遺的標註方式截然不同，讓你隱約猜到那裡藏著什麼。" }
+    ]
+  },
+  {
+    id: "evt_arc_ahai_2", title: "他無法承受的事",
+    minDay: 1, maxDay: null, phase: ["day", "night"], weight: 6,
+    condition: (state) => !!(state.flags && state.flags["阿海_arc1"] && state.day - state.flags["阿海_arc1"] >= 10
+      && !state.flags["阿海_arc2"]),
+    text: "一次夜談，阿海終於說起那片留白的地方——深埋地下避難所，曾經是他帶隊撤離的地點。「我以為那裡最安全。」他的聲音很低，「結果，是我這輩子帶過最多人進去，卻帶最少人出來的一次。」",
+    options: [
+      { label: "沒有催促，只是聽他說完", effect: { setFlag: "阿海_arc2" }, resultText: "你沒有催促，只是靜靜聽他把那段記憶說完。阿海苦笑了一下，把地圖上那片留白，第一次補上了一個小小的記號。" }
+    ]
+  },
+  {
+    id: "evt_arc_ahai_3", title: "一起去面對",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 6,
+    condition: (state) => !!(state.flags && state.flags["阿海_arc2"] && state.day - state.flags["阿海_arc2"] >= 10
+      && !state.flags["阿海_arc_done"]),
+    text: "阿海主動提起，想再去一次那座深埋地下避難所——不是為了忘記，而是想親眼確認，那裡如今變成了什麼樣子。「這次，陪我一起去嗎？」",
+    options: [
+      { label: "陪他走這一趟", effect: { setFlag: "阿海_arc_done" }, resultText: "你們並肩走進那座塵封已久的地下避難所。斷裂的管線、鏽蝕的門，一如阿海記憶中那樣沉重——但這一次，他不是一個人面對。走出來時，他罕見地舒了一口氣：「往後帶你去哪，我都能更放心一點。」" }
+    ]
+  },
   // ---------- 27.5 連鎖事件擴充：黑膠唱片 ----------
   {
     id: "evt_vinyl_found", title: "舊時代的黑膠唱片",
