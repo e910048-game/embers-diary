@@ -109,11 +109,129 @@ const PROLOGUE_ENDINGS_2 = {
   }
 };
 
+// 2026-07-05新增：短篇序章第三篇「地鐵驚魂」——通勤情境(地下密閉空間 vs 前兩篇的住家/辦公室)，
+// 同樣沿用companion/alone/weak/dead結局代碼，見規格文件/短篇模式新增序章_設計規格.md
+const PROLOGUE_SCENES_3 = {
+  c3_intro: {
+    text: "地鐵行駛到一半突然緊急煞車，車廂燈光劇烈閃爍後只剩下應急照明。廣播斷斷續續：「...因應緊急狀況...列車暫停...請乘客留在車廂內...」隔壁車廂隱約傳來壓抑的尖叫與撞擊聲，越來越靠近。",
+    options: [
+      { label: "沿著軌道摸黑往前走", next: "c3_walk_tracks" },
+      { label: "留在車廂裡，等待進一步廣播", next: "c3_wait_train" }
+    ]
+  },
+  c3_walk_tracks: {
+    text: "你翻下車廂，深一腳淺一腳地沿著漆黑的軌道摸索前進。手電筒的光掃過前方，一名感染者正卡在維修口的欄杆間，發出低沉的嘶吼，正努力想掙脫過來對付你。",
+    options: [
+      { label: "迎面戰鬥", battle: "enemy_walker_weak" },
+      { label: "繞道避開，加快腳步離開", next: "c3_avoid" }
+    ]
+  },
+  c3_avoid: {
+    text: "你貼著牆壁悄悄繞了過去，前方不遠處，一名同樣受困的乘客正蹲坐在角落，腳踝似乎扭傷了，看見你便虛弱地伸出手求助。",
+    options: [
+      { label: "扶她一起走", ending: "companion" },
+      { label: "無暇顧及，獨自繼續前進", ending: "alone" }
+    ]
+  },
+  c3_wait_train: {
+    text: "你選擇留在原地，車廂內的乘客越來越不安。突然，車廂連接處的門被猛力拍打，一個滿身是血、驚慌失措的乘務員哀求著要進來避難。",
+    options: [
+      { label: "開門讓他進來", next: "c3_conductor_decide" },
+      { label: "不予理會，緊閉車門", resolve: "flee" }
+    ]
+  },
+  c3_conductor_decide: {
+    text: "乘務員渾身發抖地告訴你，前方幾節車廂已經完全失控。「我知道緊急逃生通道在哪，跟我一起走，也許還來得及。」他看著你，等待答案。",
+    options: [
+      { label: "跟他一起行動", ending: "companion" },
+      { label: "婉拒，自己另尋出路", ending: "alone" }
+    ]
+  }
+};
+const PROLOGUE_ENDINGS_3 = {
+  companion: {
+    title: "生還・患難之交",
+    text: "你們互相攙扶著走完剩下的軌道，終於在地面重見天日。素不相識的兩人，在這場驚魂未定的通勤路上，成了彼此的依靠。\n\n（夥伴將協助據點防禦，據點防禦+1，並留下一些醫療物資）"
+  },
+  alone: {
+    title: "生還・獨自脫困",
+    text: "你獨自摸黑走完剩下的軌道，爬出地鐵站時，天已經濛濛亮。街道一片死寂，你知道，從今以後只能靠自己了。"
+  },
+  weak: {
+    title: "生還・驚魂未定",
+    text: "你狼狽地爬出地鐵站，渾身是傷地找到一處據點，簡單包紮後便昏睡過去。這一夜的驚魂，讓你好一陣子都緩不過來。\n\n（你的最大HP暫時降低，且初始HP較低）"
+  },
+  dead: {
+    title: "地鐵驚魂...",
+    text: "你倒在了漆黑的軌道旁，再也沒有起來。\n\n——故事在地下的那一夜就結束了。"
+  }
+};
+
+// 2026-07-05新增：短篇序章第四篇「醫院夜班」——醫護視角(照護者身分 vs 前三篇的一般平民視角)，
+// 同樣沿用companion/alone/weak/dead結局代碼
+const PROLOGUE_SCENES_4 = {
+  c4_intro: {
+    text: "值夜班的你正在護理站核對病歷，走廊盡頭的病房監視器忽然同時發出刺耳警報。廣播系統傳出雜訊夾雜的指令，話還沒說完就被切斷。隱約能聽見病房方向傳來重物倒地與低吼聲。",
+    options: [
+      { label: "衝去查看病房狀況", next: "c4_check_ward" },
+      { label: "先鎖上護理站的門觀察情勢", next: "c4_lockdown" }
+    ]
+  },
+  c4_check_ward: {
+    text: "你推開病房門，眼前的景象讓你心頭一涼——一名原本臥床的病患竟撲向了隔壁床位，渾濁的雙眼裡沒有一絲理智，直直朝你逼近。",
+    options: [
+      { label: "迎面戰鬥", battle: "enemy_walker_weak" },
+      { label: "拉著還清醒的病患往外逃", next: "c4_flee_with_patient" }
+    ]
+  },
+  c4_flee_with_patient: {
+    text: "你拉著那名還算清醒的病患衝出病房，他雖然虛弱，卻死死抓著你的手不放。「求求你……別丟下我……」",
+    options: [
+      { label: "帶著他一起找地方躲藏", ending: "companion" },
+      { label: "甩開他的手，獨自逃離", ending: "alone" }
+    ]
+  },
+  c4_lockdown: {
+    text: "你鎖上護理站的門，透過監視器畫面，看見同事正在走廊上被一群失控的病患追趕，拼命拍打著緊閉的防火門求救。",
+    options: [
+      { label: "衝出去開門救人", next: "c4_rescue_colleague" },
+      { label: "假裝沒看到，繼續留在原地", ending: "alone" }
+    ]
+  },
+  c4_rescue_colleague: {
+    text: "你衝出去拉開防火門，同事連滾帶爬地衝了進來，你們合力把門重新頂上，身後的咆哮聲撞得門板震動不已。",
+    options: [
+      { label: "喘口氣，一起想辦法撐下去", ending: "companion" },
+      { label: "顧不上道別，各自逃命", resolve: "flee" }
+    ]
+  }
+};
+const PROLOGUE_ENDINGS_4 = {
+  companion: {
+    title: "生還・醫者仁心",
+    text: "你們互相扶持著撐過了這一夜，在混亂中找到一處能暫時棲身的據點。那份在崩潰邊緣依然選擇不放手的心情，成了你們往後日子裡最珍貴的默契。\n\n（夥伴將協助據點防禦，據點防禦+1，並留下一些醫療物資）"
+  },
+  alone: {
+    title: "生還・獨自值守",
+    text: "你獨自逃出了失控的醫院，天亮時分站在空蕩的街道上，回想起那一夜做出的選擇，心裡五味雜陳。從今以後，只能靠自己了。"
+  },
+  weak: {
+    title: "生還・傷痕累累",
+    text: "你狼狽地逃出醫院，渾身是傷地回到一處臨時據點，簡單包紮後倒頭昏睡。這一夜的驚魂，讓你好一陣子都緩不過來。\n\n（你的最大HP暫時降低，且初始HP較低）"
+  },
+  dead: {
+    title: "醫院夜班...",
+    text: "你倒在了病房外冰冷的走廊上，再也沒有站起來。\n\n——故事在值夜的那一晚就結束了。"
+  }
+};
+
 // 短篇章節登記表：startPrologue()從中隨機挑一篇，之後renderPrologueScene()/finishPrologue()都依此表查詢對應的scenes/endings，
-// 不再直接寫死PROLOGUE_SCENES/PROLOGUE_ENDINGS——新增第三篇短篇時，只需要在此陣列多加一個項目，不需要再改game.js的邏輯
+// 不再直接寫死PROLOGUE_SCENES/PROLOGUE_ENDINGS——新增新篇短篇時，只需要在此陣列多加一個項目，不需要再改game.js的邏輯
 const PROLOGUE_CHAPTERS = [
   { id: "first_night", startScene: "intro", scenes: PROLOGUE_SCENES, endings: PROLOGUE_ENDINGS },
-  { id: "blackout_night", startScene: "c2_intro", scenes: PROLOGUE_SCENES_2, endings: PROLOGUE_ENDINGS_2 }
+  { id: "blackout_night", startScene: "c2_intro", scenes: PROLOGUE_SCENES_2, endings: PROLOGUE_ENDINGS_2 },
+  { id: "subway_scare", startScene: "c3_intro", scenes: PROLOGUE_SCENES_3, endings: PROLOGUE_ENDINGS_3 },
+  { id: "hospital_night_shift", startScene: "c4_intro", scenes: PROLOGUE_SCENES_4, endings: PROLOGUE_ENDINGS_4 }
 ];
 
 // 里程碑事件：特定天數第一次到達時觸發的一次性特殊事件
