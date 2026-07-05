@@ -48,7 +48,7 @@ function sysLogHtml() {
 function saveGame() {
   localStorage.setItem(SAVE_KEY, JSON.stringify(state));
 }
-const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "attributes", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress", "farm", "pens"];
+const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "attributes", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress", "farm", "pens", "processing"];
 // v167相容：v166以前的存檔把table/floor/rug類家具放在baseSlots的這些鍵裡，free-form改版後這些鍵已不再被
 // 任何程式碼讀取——若不搬移，舊存檔讀進來的家具會「卡在baseSlots裡但形同消失」（不在room顯示、不算舒適度、
 // 也回不去背包）。讀檔時偵測到就搬進placedFurniture，搬完即從baseSlots刪除，只需做這一次
@@ -84,6 +84,10 @@ function loadGame() {
   // 養殖區(2026-07-02)：同一種淺層合併的坑，比照farm的處理方式
   if (saved.pens && saved.pens.plots) {
     merged.pens.plots = { ...defaults.pens.plots, ...saved.pens.plots };
+  }
+  // 加工區(2026-07-04)：同一種淺層合併的坑，比照farm/pens的處理方式
+  if (saved.processing && saved.processing.stations) {
+    merged.processing.stations = { ...defaults.processing.stations, ...saved.processing.stations };
   }
   return merged;
 }
@@ -741,6 +745,7 @@ const windowCls = `homeWindow ${state.phase === "night" ? "is-night" : "is-day"}
     <button class="homePill" id="homeComfortPill" title="居住舒適度">🛋️ 舒適 ${getComfortLevel(state)}（${getComfortLabel(getComfortLevel(state))}）</button>
     <button class="homePill homeTabBtn" id="homeTabYard">🌾 庭院</button>
     <button class="homePill homeTabBtn" id="homeTabPen">🐑 獸欄</button>
+    <button class="homePill homeTabBtn" id="homeTabWorkshop">🏭 加工間</button>
   </div>`;
 const avatarRow = `<div class="homeAvatarRow">
     <div class="homeAvatar">
@@ -773,7 +778,8 @@ function bindHomeTabPills() {
     homeComfortPill: () => togglePanel("comfort", showComfortDetail),
     homeQuestTargetPill: () => togglePanel("quest", () => showQuestPanel()),
     homeTabYard: renderYardScene,
-    homeTabPen: renderPenScene
+    homeTabPen: renderPenScene,
+    homeTabWorkshop: renderWorkshopScene
   };
   for (const id in map) {
     const el = document.getElementById(id);
@@ -786,7 +792,9 @@ function bindHomeTabPills() {
 // 故沿用等角gx/gy網格與共用的GRID_COL_MAX/GRID_FLOOR_ROW_MAX邊界，不另建平面座標系統
 let outdoorScene = null, outdoorPlayerPos = null, outdoorWalkLock = false;
 function outdoorSpawnPos(scene) {
-  return scene === "pen" ? gridPos(0, 2) : gridPos(0, 3);
+  if (scene === "pen") return gridPos(0, 2);
+  if (scene === "workshop") return gridPos(0, 2);
+  return gridPos(0, 3);
 }
 function outdoorPlayerCellHtml(scene) {
   const pos = outdoorPlayerPos || outdoorSpawnPos(scene);
@@ -1131,6 +1139,108 @@ function showPenActionsPanel(penId) {
   renderOptions(opts);
 }
 
+// ---------- 加工區/加工間場景（2026-07-04，見規格文件/加工區_設計規格.md） ----------
+function workshopStationCellHtml(state, stationDef) {
+  const station = state.processing.stations[stationDef.id];
+  const pos = gridPos(stationDef.gx, stationDef.gy);
+  const z = cellZ(stationDef.gx + stationDef.gy);
+  if (!station.unlocked) {
+    const cost = processingStationUnlockCost(state);
+    return `<div class="roomCell workshopStation locked" id="station_${stationDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="解鎖加工站：${cost}📦"><div class="icon">🔒</div><div class="homeLabel">解鎖 ${cost}📦</div></div>`;
+  }
+  if (!station.job) {
+    return `<div class="roomCell workshopStation empty" id="station_${stationDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊選擇配方"><div class="icon">🛠️</div><div class="homeLabel">空站（點選擇配方）</div></div>`;
+  }
+  const prod = getProcessingState(state, station);
+  const label = prod.ready ? `${prod.recipe.name}（可收成）` : `${prod.recipe.name} 還差${prod.recipe.phasesToComplete - prod.elapsed}階段`;
+  const stateCls = prod.ready ? " ready" : " processing";
+  return `<div class="roomCell workshopStation${stateCls}" id="station_${stationDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}"><div class="icon">${prod.ready ? "✅" : "⚙️"}</div><div class="homeLabel">${label}</div></div>`;
+}
+function workshopSceneHtml(state) {
+  if (outdoorScene !== "workshop") { outdoorScene = "workshop"; outdoorPlayerPos = null; }
+  const items = WORKSHOP_STATION_LAYOUT.map(s => workshopStationCellHtml(state, s));
+  items.push(outdoorPlayerCellHtml("workshop"));
+  // 加工間定位為室內(工坊氛圍)，跟庭院/獸欄的戶外場景做出區隔，不沿用state.roomFloor
+  return `<div class="homeScene"><div class="homePillRow homeTabPills"><button class="homePill" id="workshopBackBtn">← 返回小屋</button></div><div class="roomCanvas ground-workshop" id="workshopCanvas">${items.join("")}</div></div>`;
+}
+function renderWorkshopScene() {
+  renderStatusBar();
+  renderText(workshopSceneHtml(state));
+  const backBtn = document.getElementById("workshopBackBtn");
+  if (backBtn) backBtn.onclick = renderMain;
+  const canvas = document.getElementById("workshopCanvas");
+  if (canvas) bindOutdoorWalk(canvas, "workshop", WORKSHOP_STATION_LAYOUT, showWorkshopStationPanel);
+}
+// 玩家走到加工站旁後才會呼叫這個面板；依站位狀態分派到對應互動（解鎖/選擇配方/加工中提示/收成）
+function showWorkshopStationPanel(stationId) {
+  renderStatusBar();
+  const station = state.processing.stations[stationId];
+  if (!station.unlocked) {
+    const cost = processingStationUnlockCost(state);
+    renderText(`<div class="subtitle">解鎖加工站</div><div class="hint">花費 ${cost}📦 建造這座加工站。</div>`);
+    renderOptions([
+      { label: `解鎖（${cost}📦）`, disabled: (state.resources.scrap || 0) < cost, onClick: () => {
+        const result = unlockProcessingStation(state, stationId);
+        if (result.ok) { runQuestCheck(); saveGame(); renderStatusBar(); }
+        renderWorkshopScene();
+      } },
+      { label: "返回", variant: "ghost", onClick: renderWorkshopScene }
+    ]);
+    return;
+  }
+  if (!station.job) { showRecipePanel(stationId); return; }
+  const prod = getProcessingState(state, station);
+  if (prod.ready) {
+    renderText(`<div class="subtitle">${prod.recipe.name}</div><div class="hint">加工完成，可以收成了！</div>`);
+    renderOptions([
+      { label: "✅ 收成", onClick: () => {
+        const result = collectProcessing(state, stationId);
+        if (result.ok) runQuestCheck();
+        saveGame(); renderStatusBar();
+        renderWorkshopScene();
+        if (result.ok) spawnFloatParticle(`station_${stationId}`, "✨");
+      } },
+      { label: "返回", variant: "ghost", onClick: renderWorkshopScene }
+    ]);
+    return;
+  }
+  renderText(`<div class="subtitle">${prod.recipe.name}</div><div class="hint">加工中，還差${prod.recipe.phasesToComplete - prod.elapsed}個階段。</div>`);
+  renderOptions([{ label: "返回", variant: "ghost", onClick: renderWorkshopScene }]);
+}
+// 材料不足/未解鎖的配方刻意「顯示但disabled」而非隱藏，讓玩家看得到還沒湊齊的配方是可以努力的目標，
+// 撿到探索圖紙後在清單裡「解鎖」的驚喜感也比完全隱藏更順（見規格文件第8節設計選擇說明）
+function showRecipePanel(stationId) {
+  renderStatusBar();
+  const inputText = (recipe) => {
+    const parts = [];
+    if (recipe.inputs.resources) for (const k in recipe.inputs.resources) parts.push(`${RESOURCE_ICONS[k] || k}${recipe.inputs.resources[k]}`);
+    if (recipe.inputs.items) for (const itemId in recipe.inputs.items) parts.push(`${ITEMS[itemId].icon}${ITEMS[itemId].name}x${recipe.inputs.items[itemId]}`);
+    return parts.join(" ");
+  };
+  const rows = Object.values(RECIPES).map(recipe => {
+    const available = recipeAvailable(state, recipe.id);
+    const afford = canAffordRecipe(state, recipe);
+    let hint;
+    if (!available) hint = recipe.unlockTier ? `未解鎖（工坊Lv${recipe.unlockTier}）` : "需要圖紙";
+    else if (!afford) hint = "材料不足";
+    else hint = recipe.output.embers ? formatEffectInline({ embers: recipe.output.embers }) : `${ITEMS[recipe.output.itemId].icon}${ITEMS[recipe.output.itemId].name}`;
+    return { recipe, available, afford, hint };
+  });
+  renderText(`<div class="subtitle">選擇配方</div><div class="invList">${rows.map(r => `<div class="invRow" title="${r.recipe.name}"><span>${r.recipe.name}</span><span class="hint">${inputText(r.recipe)}（${r.recipe.phasesToComplete}階段）</span></div>`).join("")}</div>`);
+  const opts = rows.map(r => ({
+    label: r.recipe.name,
+    hint: r.hint,
+    disabled: !r.available || !r.afford,
+    onClick: () => {
+      const result = startProcessing(state, stationId, r.recipe.id);
+      if (result.ok) saveGame();
+      renderWorkshopScene();
+    }
+  }));
+  opts.push({ label: "返回", variant: "ghost", onClick: renderWorkshopScene });
+  renderOptions(opts);
+}
+
 // v129：拖曳家具放開後磁吸對齊+鎖定按鈕，避免誤觸
 // v166：free-form佈置——牆面仍固定2格(顯示「空」)，table/floor/rug改為只列出實際已擺放的項目(無固定格數可列)
 function showComfortDetail() {
@@ -1343,7 +1453,7 @@ function itemIconHtml(itemId, type) {
 // 統一資產解析機制，取代ISO_ASSETS/ENEMY_ASSETS/ICON_ASSETS各自一份幾乎相同的「存在才換圖」判斷邏輯，
 // 並收斂玩家頭像(原本4處)/同伴頭像(原本3處)散落重複的硬編碼路徑。state為模組全域變數，
 // condition函式需要依劇情/天數/血月狀態挑圖時可直接讀取，不必額外傳參。
-const ASSET_CACHE_VERSION = 219; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
+const ASSET_CACHE_VERSION = 220; // 取代散落各處的?v=NNN字串，之後bump快取版號只需要改這一個數字
 const ASSET_REGISTRY = {};
 function registerAsset(category, id, file) {
   ASSET_REGISTRY[`${category}:${id}`] = [{ condition: () => true, file }];

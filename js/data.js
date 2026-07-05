@@ -95,6 +95,10 @@ const ITEMS = {
   rug_woven: { id: "rug_woven", name: "編織暖色地毯", type: "furniture", icon: "🟧", slot: "rug", rarity: "rare", factionTag: "none", shopPrice: { embers: 14 }, desc: "鋪在地板上提升小屋氛圍，隔音-10%噪音累積", effects: { noiseDampRatio: 0.1 } },
   rug_round: { id: "rug_round", name: "圓形毛絨地毯", type: "furniture", icon: "🔵", slot: "rug", rarity: "epic", factionTag: "none", shopPrice: { embers: 22 }, desc: "鋪在地板上提升小屋氛圍，隔音-15%噪音累積", effects: { noiseDampRatio: 0.15 } },
 
+  // 加工區(2026-07-04)：探索限定配方相關道具，見規格文件/加工區_設計規格.md
+  blueprint_mutant_lamp: { id: "blueprint_mutant_lamp", name: "變異孢子提燈圖紙", type: "blueprint", icon: "📜", rarity: "rare", desc: "加工區專屬配方圖紙，持有即可在加工站製作對應家具（不會被消耗）" },
+  furn_mutant_lamp: { id: "furn_mutant_lamp", name: "變異孢子提燈", type: "furniture", icon: "🏮", slot: "table", rarity: "epic", factionTag: "none", desc: "探索限定家具，柔光有助於放鬆，休息SAN回復+5", effects: { restSanBonus: 5 } },
+
   // 27.1/32.3 裝備池：28項武器(10)/防具(8)/飾品(8)，rare以上掉落時實例化為weaponInstances並可疊加前綴詞(PREFIX_POOL)
   // 武器(10)
   scrap_chainsaw: { id: "scrap_chainsaw", name: "工兵改裝電鋸", type: "weapon", icon: "⚙️", stats: { atk: 2 }, rarity: "common", factionTag: "none", desc: "初始武器" },
@@ -708,6 +712,7 @@ const LOCATIONS = [
       { itemId: "gaia_whip", qty: 1, weight: 10 },
       { itemId: "gaia_armor", qty: 1, weight: 10 },
       { itemId: "gaia_seed_pouch", qty: 1, weight: 8 },
+      { itemId: "blueprint_mutant_lamp", qty: 1, weight: 8 },
       { itemId: "scrap", qty: 2, weight: 40 },
       { itemId: "food_can", qty: 1, weight: 32 }
     ],
@@ -2252,6 +2257,12 @@ const QUESTS = {
     condition: (state) => !!(state.pens && Object.values(state.pens.plots).every(p => p.unlocked)),
     reward: { scrap: 15 },
   },
+  side_collect_workshop: {
+    id: "side_collect_workshop", type: "side", category: "collect",
+    title: "擴建加工間", desc: "解鎖加工間的全部3個加工站。",
+    condition: (state) => !!(state.processing && Object.values(state.processing.stations).every(s => s.unlocked)),
+    reward: { scrap: 15 },
+  },
 
   // ===== 支線·👥隊員 =====
   side_companion_full_squad: {
@@ -2382,6 +2393,12 @@ const ACHIEVEMENTS = {
     id: "ach_pen_collect", category: "collect",
     title: "第一份蛋（或毛）", desc: "在獸欄收成一次動物產出。",
     condition: (state) => (state.questFlags && state.questFlags.penCollectCount) >= 1,
+    reward: { embers: 10 }, hidden: false,
+  },
+  ach_workshop_craft: {
+    id: "ach_workshop_craft", category: "collect",
+    title: "第一份加工品", desc: "在加工間完成一次加工。",
+    condition: (state) => (state.questFlags && state.questFlags.workshopCraftCount) >= 1,
     reward: { embers: 10 }, hidden: false,
   },
   ach_wedding_ring: {

@@ -231,6 +231,7 @@
       facilities: { command: 0, greenhouse: 0, workshop: 0, radar: 0 }, // 22.2
       farm: { plots: FARM_PLOT_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, crop: null }; return acc; }, {}) }, // 農場區(2026-07-02)：僅第一塊地預設解鎖
       pens: { plots: PEN_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, animal: null }; return acc; }, {}) }, // 養殖區(2026-07-02)：僅第一個欄位預設解鎖
+      processing: { stations: WORKSHOP_STATION_LAYOUT.reduce((acc, s, idx) => { acc[s.id] = { unlocked: idx === 0, job: null }; return acc; }, {}) }, // 加工區(2026-07-04)：僅第一站預設解鎖
       bonusDefense: 0, // 22.2：事件/道具給予的舊式baseDefense加成，疊加於facilities.command*2之上
       baseSlots: { wall: null, wall2: null }, // 27.2陳列格(僅牆面，固定2格——牆面是固定掛點，跟地板/桌面的free-form擺放邏輯不同，故保留)
       placedFurniture: [{ itemId: "furn_sleeping_bag", gx: 3, gy: 3 }], // v166：table/floor/rug改為free-form擺放，取代原本wall/table/floor/rug四類固定槓位制度；每項{itemId,gx,gy}，無容量上限(僅受9x6邏輯網格範圍限制)。#31：初始小屋僅一張睡袋+人物
@@ -1406,6 +1407,136 @@
     return { ok: true, qty, crit, species };
   }
 
+  // ---------- 加工區（2026-07-04，見規格文件/加工區_設計規格.md） ----------
+  // 站位固定佈局：gx/gy給等角走路系統定位，理由跟FARM_PLOT_LAYOUT/PEN_LAYOUT一致
+  const WORKSHOP_STATION_LAYOUT = [
+    { id: "station_1", gx: 2, gy: 2 },
+    { id: "station_2", gx: 3, gy: 2 },
+    { id: "station_3", gx: 2, gy: 3 },
+  ];
+
+  // 兩大類配方：壓縮類(facilities.workshop等級解鎖，輸出embers——原草案輸出背包道具「賣給商人」，
+  // 但這個專案的商店只有購買、沒有賣出機制，改成直接輸出embers，不用另建賣出子系統)；
+  // 探索限定類(requiresBlueprint圖紙解鎖，圖紙持有即可用、不消耗，輸出探索限定家具)
+  const RECIPES = {
+    recipe_scrap_ingot: {
+      id: "recipe_scrap_ingot", name: "廢料壓縮提煉",
+      unlockTier: 1, // facilities.workshop >= 1
+      inputs: { resources: { scrap: 20 } },
+      output: { embers: 15 },
+      phasesToComplete: 2,
+    },
+    recipe_ration_pack: {
+      id: "recipe_ration_pack", name: "壓縮口糧回收",
+      unlockTier: 2, // facilities.workshop >= 2
+      inputs: { resources: { food: 10, water: 10 } },
+      output: { embers: 12 },
+      phasesToComplete: 2,
+    },
+    recipe_mutant_lamp: {
+      id: "recipe_mutant_lamp", name: "變異孢子提燈",
+      requiresBlueprint: "blueprint_mutant_lamp",
+      inputs: { resources: { scrap: 15 }, items: { mutant_berry_extract: 1, mutant_egg_essence: 1 } },
+      output: { itemId: "furn_mutant_lamp", qty: 1 },
+      phasesToComplete: 4,
+    },
+  };
+
+  // 配方可用性：unlockTier比照facilities等級，requiresBlueprint比照種子/動物token「持有即可用」，
+  // 但blueprint是「知識」不是「材料」，不消耗，允許重複製作同一配方多次
+  function recipeAvailable(state, recipeId) {
+    const recipe = RECIPES[recipeId];
+    if (!recipe) return false;
+    if (recipe.unlockTier) return (state.facilities && state.facilities.workshop || 0) >= recipe.unlockTier;
+    if (recipe.requiresBlueprint) return state.inventory.some(i => i.itemId === recipe.requiresBlueprint && i.qty > 0);
+    return false;
+  }
+
+  // 站位是否有足夠材料開始這個配方(資源+背包道具皆須檢查)
+  function canAffordRecipe(state, recipe) {
+    if (recipe.inputs.resources) {
+      for (const k in recipe.inputs.resources) {
+        if ((state.resources[k] || 0) < recipe.inputs.resources[k]) return false;
+      }
+    }
+    if (recipe.inputs.items) {
+      for (const itemId in recipe.inputs.items) {
+        const have = state.inventory.filter(i => i.itemId === itemId).reduce((sum, i) => sum + i.qty, 0);
+        if (have < recipe.inputs.items[itemId]) return false;
+      }
+    }
+    return true;
+  }
+
+  function processingStationUnlockCost(state) {
+    const n = Object.values(state.processing.stations).filter(s => s.unlocked).length;
+    return 15 + (n - 1) * 8;
+  }
+
+  function unlockProcessingStation(state, stationId) {
+    const station = state.processing.stations[stationId];
+    if (!station) return { ok: false, reason: "invalid_station" };
+    if (station.unlocked) return { ok: false, reason: "already_unlocked" };
+    const cost = processingStationUnlockCost(state);
+    if ((state.resources.scrap || 0) < cost) return { ok: false, reason: "insufficient_scrap" };
+    state.resources.scrap -= cost;
+    station.unlocked = true;
+    return { ok: true, cost };
+  }
+
+  function startProcessing(state, stationId, recipeId) {
+    const station = state.processing.stations[stationId];
+    if (!station) return { ok: false, reason: "invalid_station" };
+    if (!station.unlocked) return { ok: false, reason: "locked" };
+    if (station.job) return { ok: false, reason: "occupied" };
+    const recipe = RECIPES[recipeId];
+    if (!recipe) return { ok: false, reason: "invalid_recipe" };
+    if (!recipeAvailable(state, recipeId)) return { ok: false, reason: "recipe_locked" };
+    if (!canAffordRecipe(state, recipe)) return { ok: false, reason: "insufficient_materials" };
+    if (recipe.inputs.resources) {
+      for (const k in recipe.inputs.resources) state.resources[k] -= recipe.inputs.resources[k];
+    }
+    if (recipe.inputs.items) {
+      for (const itemId in recipe.inputs.items) {
+        let remaining = recipe.inputs.items[itemId];
+        state.inventory.forEach(i => {
+          if (i.itemId !== itemId || remaining <= 0) return;
+          const take = Math.min(i.qty, remaining);
+          i.qty -= take;
+          remaining -= take;
+        });
+        state.inventory = state.inventory.filter(i => i.qty > 0);
+      }
+    }
+    station.job = { recipeId, startedAtPhaseIndex: currentPhaseIndex(state) };
+    return { ok: true };
+  }
+
+  // 跟getCropStage/getPenProductionState同一種phase差值惰性推算手法，離線/忘記回來都不會漏算
+  function getProcessingState(state, station) {
+    if (!station.job) return null;
+    const recipe = RECIPES[station.job.recipeId];
+    const elapsed = currentPhaseIndex(state) - station.job.startedAtPhaseIndex;
+    return { ready: elapsed >= recipe.phasesToComplete, recipe, elapsed };
+  }
+
+  function collectProcessing(state, stationId) {
+    const station = state.processing.stations[stationId];
+    if (!station || !station.job) return { ok: false, reason: "empty" };
+    const prod = getProcessingState(state, station);
+    if (!prod.ready) return { ok: false, reason: "not_ready" };
+    const recipe = prod.recipe;
+    if (recipe.output.embers) applyEffect(state, { embers: recipe.output.embers });
+    if (recipe.output.itemId) {
+      const existing = state.inventory.find(i => i.itemId === recipe.output.itemId);
+      if (existing) existing.qty += recipe.output.qty;
+      else state.inventory.push({ itemId: recipe.output.itemId, qty: recipe.output.qty });
+    }
+    station.job = null;
+    state.questFlags.workshopCraftCount = (state.questFlags.workshopCraftCount || 0) + 1;
+    return { ok: true, recipe };
+  }
+
   // 22.2：休息時SAN回復量；生態溫室Lv3時回復效率+50%
   function restSanRegen(state) {
     let regen = 10;
@@ -1924,6 +2055,7 @@
     FACILITY_KEYS, syncBaseDefense, reinforceFacility, restSanRegen,
     FARM_PLOT_LAYOUT, CROPS, currentPhaseIndex, farmPlotUnlockCost, unlockFarmPlot, plantSeed, waterPlot, getCropStage, harvestFarmPlot,
     PEN_LAYOUT, SPECIES, FEED_COST, getPenProductionState, penUnlockCost, unlockPen, placeAnimal, feedAnimal, petAnimal, collectPen,
+    WORKSHOP_STATION_LAYOUT, RECIPES, recipeAvailable, canAffordRecipe, processingStationUnlockCost, unlockProcessingStation, startProcessing, getProcessingState, collectProcessing,
     placeFurniture, getFurnitureDefBonus, getFurnitureRaidChanceDelta, loungeInteract, sumFurnitureEffect,
     hasFurniturePlaced, allPlacedFurnitureIds, findEmptyGridCell,
     getComfortLevel, getComfortLabel, radioInteract, eggNestInteract, furnitureEasterEggInteract,

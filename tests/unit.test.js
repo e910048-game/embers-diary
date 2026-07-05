@@ -1326,6 +1326,66 @@ test("噪音生成：gatherYield/resolveLocation(loot分支)/reforgePrefix/repai
   assert.strictEqual(s.noiseLevel, L.NOISE_AMOUNTS.craft);
 });
 
+test("processingStationUnlockCost/unlockProcessingStation：站位解鎖成本序列15/23，扣款與已解鎖判定正確", () => {
+  const s = L.defaultState();
+  assert.strictEqual(s.processing.stations.station_1.unlocked, true);
+  assert.strictEqual(s.processing.stations.station_2.unlocked, false);
+  assert.strictEqual(L.processingStationUnlockCost(s), 15);
+  s.resources.scrap = 100;
+  let r = L.unlockProcessingStation(s, "station_2");
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.cost, 15);
+  assert.strictEqual(s.resources.scrap, 85);
+  assert.strictEqual(L.processingStationUnlockCost(s), 23);
+  r = L.unlockProcessingStation(s, "station_2");
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, "already_unlocked");
+});
+
+test("recipeAvailable：unlockTier比照facilities.workshop等級，requiresBlueprint比照持有判定(不消耗)", () => {
+  const s = L.defaultState();
+  assert.strictEqual(L.recipeAvailable(s, "recipe_scrap_ingot"), false);
+  s.facilities.workshop = 1;
+  assert.strictEqual(L.recipeAvailable(s, "recipe_scrap_ingot"), true);
+  assert.strictEqual(L.recipeAvailable(s, "recipe_ration_pack"), false);
+  s.facilities.workshop = 2;
+  assert.strictEqual(L.recipeAvailable(s, "recipe_ration_pack"), true);
+  assert.strictEqual(L.recipeAvailable(s, "recipe_mutant_lamp"), false);
+  s.inventory.push({ itemId: "blueprint_mutant_lamp", qty: 1 });
+  assert.strictEqual(L.recipeAvailable(s, "recipe_mutant_lamp"), true);
+});
+
+test("startProcessing/getProcessingState/collectProcessing：壓縮配方輸出embers、探索限定配方輸出家具且圖紙不被消耗", () => {
+  const s = L.defaultState();
+  s.facilities.workshop = 1;
+  s.resources.scrap = 20;
+  let r = L.startProcessing(s, "station_1", "recipe_scrap_ingot");
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(s.resources.scrap, 0); // 20 scrap全數扣除
+  assert.strictEqual(L.getProcessingState(s, s.processing.stations.station_1).ready, false);
+  s.day += 1; // currentPhaseIndex推進2(day+1天等於2個phase)，超過phasesToComplete=2
+  const embersBefore = s.currency.embers;
+  const collectResult = L.collectProcessing(s, "station_1");
+  assert.strictEqual(collectResult.ok, true);
+  assert.strictEqual(s.currency.embers, embersBefore + 15);
+  assert.strictEqual(s.processing.stations.station_1.job, null); // 收成後job清空，可立刻排下一個
+
+  // 探索限定配方：圖紙持有即可用、不消耗，輸出家具道具
+  const s2 = L.defaultState();
+  s2.inventory.push({ itemId: "blueprint_mutant_lamp", qty: 1 });
+  s2.inventory.push({ itemId: "mutant_berry_extract", qty: 1 });
+  s2.inventory.push({ itemId: "mutant_egg_essence", qty: 1 });
+  s2.resources.scrap = 15;
+  r = L.startProcessing(s2, "station_1", "recipe_mutant_lamp");
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(s2.inventory.find(i => i.itemId === "blueprint_mutant_lamp").qty, 1); // 圖紙不消耗
+  assert.strictEqual(s2.inventory.some(i => i.itemId === "mutant_berry_extract"), false); // 原料消耗
+  s2.day += 2; // phasesToComplete=4，需要至少4個phase
+  const collectResult2 = L.collectProcessing(s2, "station_1");
+  assert.strictEqual(collectResult2.ok, true);
+  assert.strictEqual(s2.inventory.find(i => i.itemId === "furn_mutant_lamp").qty, 1);
+});
+
 // #21-1：CI剛性斷言 - 所有ITEMS effects與PREFIX_POOL effect中的比例型數值須介於0~1
 test("CI斷言：ITEMS/PREFIX_POOL中的比例型加成(dodgeBonus/lifestealBonus/skillBonusRatio等)須介於0~1", () => {
   const ratioKeys = ["dodgeBonus", "lifestealBonus", "lifestealRatio", "critBonus", "skillBonusRatio", "ignoreDefRatio", "noiseDampRatio"];

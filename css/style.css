@@ -502,11 +502,11 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
    並用置中transform(而非只有原本.roomCell的translateX)，這樣FARM_PLOT_LAYOUT/PEN_LAYOUT用緊鄰1格
    座標時，菱形地塊會像磁磚一樣緊貼交錯，不留空隙也不重疊——理由詳見logic.js對應常數旁的註解。
    emoji佔位，等使用者提供美術素材後只需要把.icon背景/內容換成圖片，容器與間距邏輯都不用動 */
-.roomCell.farmPlot, .roomCell.penCell {
+.roomCell.farmPlot, .roomCell.penCell, .roomCell.workshopStation {
   width: 14%; height: 34px;
   transform: translate(-50%, -50%);
 }
-.roomCell.farmPlot .icon, .roomCell.penCell .icon {
+.roomCell.farmPlot .icon, .roomCell.penCell .icon, .roomCell.workshopStation .icon {
   width: 100%; height: 100%;
   clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
   font-size: 18px;
@@ -515,6 +515,11 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 .roomCell.farmPlot.empty .icon { background: linear-gradient(to bottom, #5a4632, #3f3122); }
 .roomCell.farmPlot.growing .icon { background: linear-gradient(to bottom, #3d4a30, #2a3320); }
 .roomCell.farmPlot.mature .icon { background: linear-gradient(to bottom, #3d4a30, #2a3320); filter: drop-shadow(0 0 5px rgba(150,220,120,0.75)); }
+/* 加工區(2026-07-04)：比照farmPlot的locked/empty/mature三態視覺手法，processing對應growing、ready對應mature */
+.roomCell.workshopStation.locked .icon { background: #3a3a42; opacity: 0.75; }
+.roomCell.workshopStation.empty .icon { background: linear-gradient(to bottom, #4a4a55, #33333c); }
+.roomCell.workshopStation.processing .icon { background: linear-gradient(to bottom, #3d3d5a, #2a2a3f); }
+.roomCell.workshopStation.ready .icon { background: linear-gradient(to bottom, #3d3d5a, #2a2a3f); filter: drop-shadow(0 0 5px rgba(150,180,255,0.75)); }
 .roomCell.penCell .icon { transition: transform 1.2s ease-in-out; } /* 配合game.js的startPenWander()，讓JS隨機設定的transform位移平滑過渡 */
 .roomCell.penCell.empty .icon { background: linear-gradient(to bottom, #4a4034, #332c24); }
 .roomCell.penCell.locked .icon { background: #2b2f36; opacity: 0.6; }
@@ -567,6 +572,13 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
   background-image:
     repeating-linear-gradient(0deg, rgba(0,0,0,0.12) 0 2px, transparent 2px 22px),
     linear-gradient(to bottom, #566237, #3a4326);
+}
+/* 加工間(2026-07-04)：定位為室內工坊(水泥/工作檯氛圍)，跟庭院/獸欄的戶外場景做出區隔 */
+.roomCanvas.ground-workshop {
+  background-color: #3a3d42;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.16) 0 2px, transparent 2px 22px),
+    linear-gradient(to bottom, #46494f, #2c2e32);
 }
 /* 飼料槽：V2星露谷式已取消會衰減的飽食度，改成「今天有沒有餵過」的當日提示，滿=今天餵過，空=還沒 */
 .penTrough {
