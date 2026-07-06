@@ -1662,5 +1662,34 @@ test("hasAnyPenAnimal/resetPensAfterRetreat：撤退後動物仍在，只有好�
   assert.strictEqual(L.getPenProductionState(s, s.pens.plots.pen_1).ready, false); // 剛重置，還沒到收成時間
 });
 
+// 2026-07-05 雙修流派共鳴：兩流派T3同時解鎖才生效，涵蓋10組全部組合的資料完整性+至少3組實際效果驗證
+test("FACTION_RESONANCE：10組共鳴涵蓋C(5,2)全部組合，且只有雙方都T3才生效", () => {
+  assert.strictEqual(L.FACTION_RESONANCE.length, 10);
+  const pairKeys = new Set(L.FACTION_RESONANCE.map(r => r.pair.slice().sort().join("+")));
+  assert.strictEqual(pairKeys.size, 10); // 沒有重複組合
+
+  const s = L.defaultState();
+  s.skills = { faction: "gaia", tiers: { gaia: 3 }, unlockOrder: ["gaia"] };
+  assert.strictEqual(L.factionResonanceActive(s, ["gaia", "cyber"]), false); // cyber還沒解鎖
+
+  s.skills.tiers.cyber = 2;
+  assert.strictEqual(L.factionResonanceActive(s, ["gaia", "cyber"]), false); // cyber只有T2
+
+  s.skills.tiers.cyber = 3;
+  assert.strictEqual(L.factionResonanceActive(s, ["gaia", "cyber"]), true); // 兩者皆T3，共鳴生效
+  assert.strictEqual(L.getActiveFactionResonances(s).length, 1);
+});
+
+test("雙修共鳴實際效果：gaia+cyber「荊棘裝甲」+5%吸血、gaia+mind「痛覺鈍化」+5%減傷", () => {
+  const s = L.defaultState();
+  s.skills = { faction: "gaia", tiers: { gaia: 3, cyber: 3 }, unlockOrder: ["gaia", "cyber"] };
+  // gaia T3已經包含T2「血藤鞭笞」的基礎15%吸血，共鳴額外+5%，兩者相加=20%
+  assert.ok(Math.abs(L.getLifestealRatio(s) - 0.20) < 1e-9);
+
+  const s2 = L.defaultState();
+  s2.skills = { faction: "gaia", tiers: { gaia: 3, mind: 3 }, unlockOrder: ["gaia", "mind"] };
+  assert.ok(Math.abs(L.getBattleDamageReductionRatio(s2) - 0.05) < 1e-9); // mind本身要T4才有基礎減傷，這裡只吃共鳴的+5%
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

@@ -62,6 +62,38 @@
     return (state.skills && state.skills.tiers && state.skills.tiers[faction]) || 0;
   }
 
+  // 雙修流派共鳴（2026-07-05，見TODO「Gemini內容深化」）：兩流派T3同時解鎖時解鎖的隱藏複合被動，
+  // C(5,2)=10組全數涵蓋，每組只給一個小額效果(疊加在既有比例效果上)，不追求精算平衡——
+  // 長線玩家搭配不同的雙流派組合，才會在無限模式中後期持續有「新解鎖」而不只是數值灌滿的感覺
+  const FACTION_RESONANCE = [
+    { pair: ["gaia", "cyber"], name: "荊棘裝甲", desc: "攻擊額外+5%吸血", effect: { lifestealBonus: 0.05 } },
+    { pair: ["gaia", "ocean"], name: "共生體液", desc: "休息回復額外+3", effect: { restHealBonus: 3 } },
+    { pair: ["gaia", "aero"], name: "血肉風暴", desc: "暴擊率額外+5%", effect: { critBonus: 0.05 } },
+    { pair: ["gaia", "mind"], name: "痛覺鈍化", desc: "戰鬥受到傷害額外-5%", effect: { battleDamageReductionBonus: 0.05 } },
+    { pair: ["cyber", "ocean"], name: "液態金屬", desc: "物理閃避率額外+5%", effect: { dodgeBonus: 0.05 } },
+    { pair: ["cyber", "aero"], name: "電磁裝甲", desc: "夜襲機率額外-0.05", effect: { raidChanceDelta: -0.05 } },
+    { pair: ["cyber", "mind"], name: "意識裝甲", desc: "防禦額外+3", effect: { defBonus: 3 } },
+    { pair: ["ocean", "aero"], name: "風暴亂流", desc: "暴擊率額外+5%", effect: { critBonus: 0.05 } },
+    { pair: ["ocean", "mind"], name: "靜水映象", desc: "SAN上限額外+15", effect: { sanMaxBonus: 15 } },
+    { pair: ["aero", "mind"], name: "風之思緒", desc: "流派比例加成額外放大+5%", effect: { skillBonusRatio: 0.05 } },
+  ];
+
+  function factionResonanceActive(state, pair) {
+    return factionTier(state, pair[0]) >= 3 && factionTier(state, pair[1]) >= 3;
+  }
+
+  function getActiveFactionResonances(state) {
+    return FACTION_RESONANCE.filter(r => factionResonanceActive(state, r.pair));
+  }
+
+  function getFactionResonanceBonus(state, effectKey) {
+    let total = 0;
+    FACTION_RESONANCE.forEach(r => {
+      if (factionResonanceActive(state, r.pair) && typeof r.effect[effectKey] === "number") total += r.effect[effectKey];
+    });
+    return total;
+  }
+
   // 含技能樹/覺醒加成的實際體力上限
   function staminaMax(state) {
     return staminaMaxForLevel(state.level) + staminaBonusFromSources(state);
@@ -215,6 +247,7 @@
     if (state.awakening && state.awakening.id === "recovery") heal += 5;
     heal += getCompanionTaskEffect(state, "restHealBonus");
     if (getComfortLevel(state) >= 6) heal += 5; // v110：舒適度≥6「安樂窩」休息HP額外+5
+    heal += getFactionResonanceBonus(state, "restHealBonus"); // 雙修共鳴：gaia+ocean「共生體液」
     return heal;
   }
 
@@ -760,6 +793,7 @@
     const mind = factionTier(state, "mind");
     if (mind >= 1) def += Math.floor((state.san || 0) / 20); // 水晶稜鏡
     if (mind >= 2) def += 1; // 認知偏折
+    def += getFactionResonanceBonus(state, "defBonus"); // 雙修共鳴：cyber+mind「意識裝甲」
     return { atk, def };
   }
 
@@ -772,6 +806,7 @@
     // 29.3：失落的結婚戒指，雙方QR互掃確認後暴擊率永久+15%（非流派技能，不吃skillBonusRatio）
     const acc = getEquipRef(state, state.equipment && state.equipment.accessory);
     if (acc && acc.item && acc.item.id === "wedding_ring" && state.spouseState && state.spouseState.weddingRingActive) c += 0.15;
+    c += getFactionResonanceBonus(state, "critBonus"); // 雙修共鳴：gaia+aero「血肉風暴」、ocean+aero「風暴亂流」
     return c;
   }
   // 27.1：遠程武器每次攻擊消耗1彈藥(ammo)；非遠程武器或彈藥已耗盡時不消耗
@@ -868,9 +903,11 @@
   // v182：【共鳴的】/晶格共鳴前綴的skillBonusRatio——原本「未接入，文案保留」，現在接上：
   // 套用在「流派(25.3)帶來的比例型技能效果」上(暴擊率/吸血/閃避的流派加成部分)，不影響武器/防具本身的固定加成
   function getSkillBonusRatio(state) {
+    let ratio = 0;
     const acc = getEquipRef(state, state.equipment && state.equipment.accessory);
-    if (acc && acc.prefix && acc.prefix.effect && typeof acc.prefix.effect.skillBonusRatio === "number") return acc.prefix.effect.skillBonusRatio;
-    return 0;
+    if (acc && acc.prefix && acc.prefix.effect && typeof acc.prefix.effect.skillBonusRatio === "number") ratio += acc.prefix.effect.skillBonusRatio;
+    ratio += getFactionResonanceBonus(state, "skillBonusRatio"); // 雙修共鳴：aero+mind「風之思緒」
+    return ratio;
   }
 
   // 25.3 蓋亞血脈T2：攻擊附帶15%吸血；27.1：活化荊棘刺鞭(+15%)與【飢渴的】前綴(+5%)疊加
@@ -882,6 +919,7 @@
       if (weapon.effects && weapon.effects.lifestealBonus) ratio += weapon.effects.lifestealBonus;
       if (weapon.prefix && weapon.prefix.effect && weapon.prefix.effect.lifestealBonus) ratio += weapon.prefix.effect.lifestealBonus;
     }
+    ratio += getFactionResonanceBonus(state, "lifestealBonus"); // 雙修共鳴：gaia+cyber「荊棘裝甲」
     return ratio;
   }
 
@@ -892,6 +930,7 @@
     let chance = factionChance * (1 + getSkillBonusRatio(state));
     const armor = getEquipRef(state, state.equipment && state.equipment.armor);
     if (armor && armor.effects && armor.effects.dodgeBonus) chance += armor.effects.dodgeBonus;
+    chance += getFactionResonanceBonus(state, "dodgeBonus"); // 雙修共鳴：cyber+ocean「液態金屬」
     return chance;
   }
 
@@ -932,6 +971,7 @@
     let bonus = getAccessoryEffect(state, "sanMaxBonus");
     const armor = getEquipRef(state, state.equipment && state.equipment.armor);
     if (armor && armor.prefix && armor.prefix.effect && armor.prefix.effect.sanMaxBonus) bonus += armor.prefix.effect.sanMaxBonus;
+    bonus += getFactionResonanceBonus(state, "sanMaxBonus"); // 雙修共鳴：ocean+mind「靜水映象」
     return state.sanMax + bonus;
   }
 
@@ -969,6 +1009,7 @@
     let ratio = factionTier(state, "mind") >= 4 ? 0.25 : 0;
     const armor = getEquipRef(state, state.equipment && state.equipment.armor);
     if (armor && armor.effects && armor.effects.battleDamageReductionBonus) ratio += armor.effects.battleDamageReductionBonus;
+    ratio += getFactionResonanceBonus(state, "battleDamageReductionBonus"); // 雙修共鳴：gaia+mind「痛覺鈍化」
     return ratio;
   }
 
@@ -1130,6 +1171,7 @@
     chance += getCompanionTaskEffect(state, "raidChanceDelta"); // 雷恩(guard)-0.3、阿卡(blast)-0.1，見COMPANIONS_REGISTRY
     chance += getFurnitureRaidChanceDelta(state); // 27.2：重力晶簇掛鏡(家具)-5%
     chance += getAccessoryEffect(state, "raidChanceDelta"); // 27.1：重力晶簇掛鏡(飾品)-5%
+    chance += getFactionResonanceBonus(state, "raidChanceDelta"); // 雙修共鳴：cyber+aero「電磁裝甲」
     return Math.max(0.02, chance);
   }
 
@@ -2223,6 +2265,7 @@
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
     getLifestealRatio, getDodgeChance, getIgnoreDefRatio, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
+    FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,
     getAccessoryEffect, getEffectiveSanMax, getEffectiveHpMax, getResourceCap, PREFIX_POOL,
     ATTRIBUTE_KEYS, getEffectiveAttribute, skillRoll,
