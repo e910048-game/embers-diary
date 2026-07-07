@@ -755,9 +755,15 @@
     { tier: 1, name: "工業自動化區", flag: "tier1_liberated", bossEnemyId: "enemy_cyborg_nemesis", extraTier: 1, reward: { equipment_pool: ["mind_mirror"] }, psychicNote: "地脈活化使廢棄產線詭異地自行運轉，金屬摩擦聲混著低頻嗡鳴" },
     { tier: 2, name: "地下中繼指揮所", flag: "tier2_liberated", bossEnemyId: "enemy_cyborg_nemesis", extraTier: 2, reward: { equipment_pool: ["mind_greatsword"] }, psychicNote: "石英粉塵在通風管道裡低聲呢喃，彷彿在訴說無人聽懂的指令" },
     { tier: 3, name: "母體核心", flag: "tier3_liberated", bossEnemyId: "enemy_cyborg_nemesis", extraTier: 3, reward: { equipment_pool: ["cyber_suit"] }, psychicNote: "靈能暴動的源頭就在眼前——空氣本身彷彿都在脈動" },
+    // 30小時內容量審視(2026-07-06)：再加2個Tier區域，把「深淵擴散」無限迴圈的起點往後推——
+    // bossEnemyId沿用tier1~3的既有做法(重用enemy_cyborg_nemesis、只調extraTier)，不新增敵人資料；
+    // reward改用兩件現有但從未被任何reward pool用過的legendary/epic裝備(cyber_drone_arm/aero_dagger)，
+    // 不新增裝備資料。敘事上定位成「母體核心之下還有更深的結構」，銜接後續深淵擴散的世界觀
+    { tier: 4, name: "深層意識核心", flag: "tier4_liberated", bossEnemyId: "enemy_cyborg_nemesis", extraTier: 4, reward: { equipment_pool: ["cyber_drone_arm"] }, psychicNote: "你以為母體核心就是終點，但地脈深處還有更古老的震動——彷彿有什麼東西，一直藏在更深的地方" },
+    { tier: 5, name: "起源裂隙", flag: "tier5_liberated", bossEnemyId: "enemy_cyborg_nemesis", extraTier: 5, reward: { equipment_pool: ["aero_dagger"] }, psychicNote: "空間本身開始扭曲，理智在這裡幾乎失去意義——這裡，才是一切靈能暴動真正的起源" },
   ];
 
-  // 依bloodMoonWins回傳本次應插旗的Tier區（若該Tier已插旗或bloodMoonWins>4則回傳null）
+  // 依bloodMoonWins回傳本次應插旗的Tier區（若該Tier已插旗或bloodMoonWins>TIER_ZONES.length則回傳null）
   function getTierZoneForBloodMoonWin(state) {
     const idx = (state.bloodMoonWins || 0) - 1;
     if (idx < 0 || idx >= TIER_ZONES.length) return null;
@@ -766,15 +772,19 @@
     return zone;
   }
 
-  // 無限模式後期內容(2026-07-05，見規格文件/無限模式後期內容_設計規格.md)：4個TIER_ZONES全數插旗後，
-  // 血月狂潮的Tier戰內容原本就此打住(getTierZoneForBloodMoonWin永遠回傳null)——「深淵擴散」讓第5次起
-  // 的每次血月勝利改觸發可重複的加碼戰，避免無限模式後期只剩數值放大的血月夜
-  const ABYSS_SURGE_EQUIPMENT_POOL = ["gaia_skin", "mind_mirror", "mind_greatsword", "cyber_suit"];
+  // 無限模式後期內容(2026-07-05，見規格文件/無限模式後期內容_設計規格.md)：TIER_ZONES全數插旗後，
+  // 血月狂潮的Tier戰內容原本就此打住(getTierZoneForBloodMoonWin永遠回傳null)——「深淵擴散」讓最後一區
+  // 插旗後的每次血月勝利改觸發可重複的加碼戰，避免無限模式後期只剩數值放大的血月夜。
+  // 2026-07-06：改用TIER_ZONES最後一筆(而非寫死tier3_liberated)判斷「是否已全數插旗」，
+  // 這樣之後TIER_ZONES再延伸也不用回頭改這裡的判斷式
+  const ABYSS_SURGE_EQUIPMENT_POOL = ["gaia_skin", "mind_mirror", "mind_greatsword", "cyber_suit", "cyber_drone_arm", "aero_dagger"];
   function getAbyssSurgeBattle(state) {
-    if (!(state.flags && state.flags.tier3_liberated)) return null;
+    const lastZone = TIER_ZONES[TIER_ZONES.length - 1];
+    if (!(state.flags && state.flags[lastZone.flag])) return null;
     const surgeCount = (state.bloodMoonWins || 0) - TIER_ZONES.length;
     if (surgeCount < 1) return null;
-    const extraTier = Math.min(8, 3 + surgeCount); // 沿用母體核心的extraTier:3為基準往上疊，上限+8避免數值失控
+    // 沿用最後一區的extraTier為基準往上疊，上限比最後一區extraTier多5，避免數值失控
+    const extraTier = Math.min(lastZone.extraTier + 5, lastZone.extraTier + surgeCount);
     return { bossEnemyId: "enemy_abyss_herald", extraTier, surgeCount, reward: { equipment_pool: ABYSS_SURGE_EQUIPMENT_POOL } };
   }
 

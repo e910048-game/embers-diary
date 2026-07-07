@@ -602,7 +602,7 @@ test("LOCATIONS: loc_sunken_subway具備unlockFlag=bloodmoon_breach_1（V2.0提�
   assert.strictEqual(loc.unlockFlag, "bloodmoon_breach_1");
 });
 
-test("getTierZoneForBloodMoonWin: 依bloodMoonWins依序回傳Tier0~3，已插旗者不重複，超過4次回傳null", () => {
+test("getTierZoneForBloodMoonWin: 依bloodMoonWins依序回傳Tier0~5，已插旗者不重複，超過TIER_ZONES.length次回傳null", () => {
   const s = L.defaultState();
   assert.strictEqual(L.getTierZoneForBloodMoonWin(s), null); // bloodMoonWins=0
 
@@ -614,12 +614,12 @@ test("getTierZoneForBloodMoonWin: 依bloodMoonWins依序回傳Tier0~3，已插�
   s.flags[zone.flag] = true;
   assert.strictEqual(L.getTierZoneForBloodMoonWin(s), null); // 已插旗
 
-  s.bloodMoonWins = 4;
+  s.bloodMoonWins = L.TIER_ZONES.length; // 最後一區(2026-07-06延伸後為6)
   zone = L.getTierZoneForBloodMoonWin(s);
-  assert.strictEqual(zone.tier, 3);
-  assert.strictEqual(zone.flag, "tier3_liberated");
+  assert.strictEqual(zone.tier, L.TIER_ZONES.length - 1);
+  assert.strictEqual(zone.flag, `tier${L.TIER_ZONES.length - 1}_liberated`);
 
-  s.bloodMoonWins = 5;
+  s.bloodMoonWins = L.TIER_ZONES.length + 1;
   assert.strictEqual(L.getTierZoneForBloodMoonWin(s), null);
 });
 
@@ -653,8 +653,8 @@ test("withdrawFromFridge: 冰箱空時回傳ok=false", () => {
   assert.strictEqual(result.ok, false);
 });
 
-test("TIER_ZONES: 4個Tier區皆具備bossEnemyId(存在於ENEMIES)與equipment_pool獎勵(存在於ITEMS)", () => {
-  assert.strictEqual(L.TIER_ZONES.length, 4);
+test("TIER_ZONES: 全部Tier區皆具備bossEnemyId(存在於ENEMIES)與equipment_pool獎勵(存在於ITEMS)", () => {
+  assert.strictEqual(L.TIER_ZONES.length, 6); // 2026-07-06：30小時內容量審視延伸tier4/5
   L.TIER_ZONES.forEach(zone => {
     assert.ok(L.ENEMIES[zone.bossEnemyId], `${zone.bossEnemyId}應存在於ENEMIES`);
     zone.reward.equipment_pool.forEach(itemId => {
@@ -1431,25 +1431,27 @@ test("getYardDecorEffect/getCropStage：蓋亞靈能圖騰的cropGrowthBonusPhas
   assert.ok(withTotem.stageIdx >= withoutTotem.stageIdx); // 圖騰讓成長進度至少一樣快，通常更快
 });
 
-test("getAbyssSurgeBattle：4個TIER_ZONES全數插旗前不會觸發，插旗後第5次血月起才開始且extraTier隨次數遞增至上限8", () => {
+test("getAbyssSurgeBattle：全部TIER_ZONES插旗前不會觸發，插旗後才開始且extraTier隨次數遞增至上限(最後一區extraTier+5)", () => {
   const s = L.defaultState();
-  s.bloodMoonWins = 10; // 即使血月贏很多次，沒插旗tier3_liberated就不該觸發
+  const lastZone = L.TIER_ZONES[L.TIER_ZONES.length - 1];
+  const n = L.TIER_ZONES.length;
+  s.bloodMoonWins = 10; // 即使血月贏很多次，最後一區沒插旗就不該觸發
   assert.strictEqual(L.getAbyssSurgeBattle(s), null);
 
-  s.flags.tier3_liberated = true;
-  s.bloodMoonWins = 4; // 第4次(=TIER_ZONES.length)還不算深淵擴散，第5次才開始
+  s.flags[lastZone.flag] = true;
+  s.bloodMoonWins = n; // 第n次(=TIER_ZONES.length)還不算深淵擴散，第n+1次才開始
   assert.strictEqual(L.getAbyssSurgeBattle(s), null);
 
-  s.bloodMoonWins = 5; // 第1次深淵擴散
+  s.bloodMoonWins = n + 1; // 第1次深淵擴散
   let surge = L.getAbyssSurgeBattle(s);
   assert.strictEqual(surge.surgeCount, 1);
-  assert.strictEqual(surge.extraTier, 4); // min(8, 3+1)
+  assert.strictEqual(surge.extraTier, lastZone.extraTier + 1);
   assert.strictEqual(surge.bossEnemyId, "enemy_abyss_herald");
   assert.deepStrictEqual(surge.reward, { equipment_pool: L.ABYSS_SURGE_EQUIPMENT_POOL });
 
-  s.bloodMoonWins = 20; // surgeCount=16，extraTier應封頂在8
+  s.bloodMoonWins = n + 20; // surgeCount遠超上限，extraTier應封頂在lastZone.extraTier+5
   surge = L.getAbyssSurgeBattle(s);
-  assert.strictEqual(surge.extraTier, 8);
+  assert.strictEqual(surge.extraTier, lastZone.extraTier + 5);
 });
 
 test("覺醒鏈：nextAwakeningAvailable/chooseNextFaction/allUnlockedFactionsMaxed——主流派封頂+day門檻才能解鎖下一個流派，最終5個都能解鎖", () => {
