@@ -1804,5 +1804,66 @@ test("同伴後日談6事件：只有「已招募」+「劇情線已完成(arc_d
   });
 });
 
+// 2026-07-06 地點探索模組化：比照血月模組化，讓探索也有「今日探索條件」的變化
+test("LOCATION_MODIFIERS：資料完整性(5筆、weight加總100、皆有id/name/weight)", () => {
+  const mods = require("../js/data.js").LOCATION_MODIFIERS;
+  assert.strictEqual(mods.length, 5);
+  const totalWeight = mods.reduce((s, m) => s + m.weight, 0);
+  assert.strictEqual(totalWeight, 100);
+  mods.forEach(m => assert.ok(typeof m.id === "string" && typeof m.name === "string" && typeof m.weight === "number"));
+});
+
+test("pickLocationModifier：依權重抽選，涵蓋standard跟至少一種變異", () => {
+  assert.strictEqual(L.pickLocationModifier(() => 0.01).id, "standard"); // 落在最前面
+  assert.strictEqual(L.pickLocationModifier(() => 0.99).id, "psychic_residue"); // 落在權重表尾端
+});
+
+test("resolveLocation：modifier的encounterChanceDelta/qtyBonus正確疊加進既有計算", () => {
+  const loc = { encounterChance: 0.3, encounterEnemyIds: ["enemy_walker_weak"], lootTable: [{ itemId: "scrap", qty: 2, weight: 1 }] };
+  const raiders = { encounterChanceDelta: 0.15 };
+  // rng落在0.3~0.45之間：一般狀態不會觸發battle，raiders(+0.15)則會觸發
+  const normal = L.resolveLocation(loc, () => 0.35, null, null);
+  const withRaiders = L.resolveLocation(loc, () => 0.35, null, raiders);
+  assert.strictEqual(normal.type, "loot");
+  assert.strictEqual(withRaiders.type, "battle");
+
+  const resourceRich = { qtyBonus: 1 };
+  const lootNormal = L.resolveLocation(loc, () => 0.99, null, null); // rng接近1必定loot
+  const lootBonus = L.resolveLocation(loc, () => 0.99, null, resourceRich);
+  assert.strictEqual(lootNormal.qty, 2);
+  assert.strictEqual(lootBonus.qty, 3);
+});
+
+// 2026-07-06 程序化支線目標：4個repeatable:"manual"+targetRange的循環委託，完成後歸零+重抽下一輪目標
+test("程序化支線目標：4個side_repeat_*皆存在，counterField與totalKills等成就計數器各自獨立", () => {
+  const ids = ["side_repeat_kills", "side_repeat_bloodmoon", "side_repeat_gather", "side_repeat_pen"];
+  const sharedFields = new Set(["totalKills", "bloodMoonSurvivedCount", "bloodMoonWinStreak", "gatherTodayCount", "careCompletedCount"]);
+  ids.forEach(id => {
+    const q = L.QUESTS[id];
+    assert.ok(q, `${id}應該存在`);
+    assert.strictEqual(q.repeatable, "manual");
+    assert.ok(Array.isArray(q.targetRange) && q.targetRange.length === 2);
+    assert.ok(!sharedFields.has(q.counterField), `${id}的counterField(${q.counterField})不該跟既有成就/任務共用計數器`);
+  });
+});
+
+test("side_repeat_kills：達標後counterField歸零、重抽下一輪target(落在targetRange內)，可無限重複完成", () => {
+  const s = L.defaultState();
+  const q = L.QUESTS.side_repeat_kills;
+  s.questFlags.repeatKillCount = q.targetRange[0]; // 剛好達到預設初始目標(還沒重抽過時fallback到targetRange[0])
+  assert.strictEqual(q.condition(s), true);
+
+  const r1 = L.checkQuestsAndAchievements(s);
+  assert.strictEqual(r1.completedSide.length >= 1 && r1.completedSide.some(x => x.id === "side_repeat_kills"), true);
+  assert.strictEqual(s.questFlags.repeatKillCount, 0); // 歸零
+  const newTarget = s.questFlags.side_repeat_kills_target;
+  assert.ok(newTarget >= q.targetRange[0] && newTarget <= q.targetRange[1]); // 重抽的下一輪目標落在範圍內
+
+  // 模擬再打滿一輪，應該能再次完成(不是一次性)
+  s.questFlags.repeatKillCount = newTarget;
+  const r2 = L.checkQuestsAndAchievements(s);
+  assert.strictEqual(r2.completedSide.some(x => x.id === "side_repeat_kills"), true);
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

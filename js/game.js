@@ -1158,7 +1158,10 @@ function showPenActionsPanel(penId) {
     disabled: fedTodayDone || (state.resources.food || 0) < FEED_COST,
     onClick: () => {
       const result = feedAnimal(state, penId);
-      if (result.ok) saveGame();
+      if (result.ok) {
+        state.questFlags.repeatPenCareCount = (state.questFlags.repeatPenCareCount || 0) + 1; // 任務系統：side_repeat_pen計數(2026-07-06)
+        saveGame();
+      }
       renderStatusBar();
       renderPenScene();
       if (result.ok) spawnFloatParticle(`pen_${penId}`, "🍖");
@@ -1169,7 +1172,10 @@ function showPenActionsPanel(penId) {
     disabled: petTodayDone,
     onClick: () => {
       const result = petAnimal(state, penId);
-      if (result.ok) saveGame();
+      if (result.ok) {
+        state.questFlags.repeatPenCareCount = (state.questFlags.repeatPenCareCount || 0) + 1; // 任務系統：side_repeat_pen計數(2026-07-06)
+        saveGame();
+      }
       renderPenScene();
       if (result.ok) spawnFloatParticle(`pen_${penId}`, "💖");
     }
@@ -2533,13 +2539,16 @@ function visitLocation(loc) {
 🚗 遠行消耗：${formatEffect({ resources: { food: -FAR_TRAVEL_COST.food, water: -FAR_TRAVEL_COST.water } })}`;
   }
 
-  const result = resolveLocation(loc, Math.random, state);
+  // 地點探索模組化(2026-07-06)：每次前往地點都抽一種「今日探索條件」，比照血月模組化的做法
+  const locModifier = pickLocationModifier();
+  const locModifierFlavor = locModifier.flavor ? `\n\n${locModifier.flavor}` : "";
+  const result = resolveLocation(loc, Math.random, state, locModifier);
   renderExploreProgress(result.type === "battle", () => {
     if (result.type === "battle") {
       renderStatusBar();
       const encounterPool = ENCOUNTER_TEXTS[loc.id];
       const encounterLine = encounterPool ? encounterPool[Math.floor(Math.random() * encounterPool.length)] : "未知的威脅突然出現，你被迫戰鬥！";
-      renderText(`${encounterLine}${travelText}`, { kind: "battle" });
+      renderText(`${encounterLine}${locModifierFlavor}${travelText}`, { kind: "battle" });
           renderOptions([{ label: "⚔️ 應戰", variant: "danger", onClick: () => startBattle(result.enemyId, () => finishAction(), false, { loc }) }]);
       return;
     }
@@ -2555,7 +2564,7 @@ function visitLocation(loc) {
     const flavor = lootFlavorPool[Math.floor(Math.random() * lootFlavorPool.length)];
     renderText(`你在${loc.icon}${loc.name}：${beat}
 
-${flavor}${effectText}${travelText}`, { kind: "event" });
+${flavor}${effectText}${travelText}${locModifierFlavor}`, { kind: "event" });
     renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
   });
 }
@@ -2571,18 +2580,20 @@ function delegateExplore() {
   const stResult = spendStamina(state, "explore_near", loc);
   if (state.hp <= 0) { renderGameOver(); return; }
   const travelText = stResult.overdraw ? overdrawFlavor(stResult.streak) : "";
-  const result = resolveLocation(loc, Math.random, state);
+  const locModifier = pickLocationModifier();
+  const locModifierFlavor = locModifier.flavor ? `\n\n${locModifier.flavor}` : "";
+  const result = resolveLocation(loc, Math.random, state, locModifier);
   if (result.type === "battle") {
     renderStatusBar();
     const encounterPool = ENCOUNTER_TEXTS[loc.id];
     const encounterLine = encounterPool ? encounterPool[Math.floor(Math.random() * encounterPool.length)] : "未知的威脅突然出現，你被迫戰鬥！";
-    renderText(`📋 委派隊員前往${loc.icon}${loc.name}，卻半路撞上了麻煩——${encounterLine}${travelText}`, { kind: "battle" });
+    renderText(`📋 委派隊員前往${loc.icon}${loc.name}，卻半路撞上了麻煩——${encounterLine}${locModifierFlavor}${travelText}`, { kind: "battle" });
     renderOptions([{ label: "⚔️ 應戰", variant: "danger", onClick: () => startBattle(result.enemyId, () => finishAction(), false, { loc }) }]);
     return;
   }
   const { effectText } = applyLootResult(result, stResult);
   renderStatusBar();
-  renderText(`📋 委派隊員快速前往${loc.icon}${loc.name}探了一趟，帶回了一些收穫。${effectText}${travelText}`, { kind: "event" });
+  renderText(`📋 委派隊員快速前往${loc.icon}${loc.name}探了一趟，帶回了一些收穫。${effectText}${travelText}${locModifierFlavor}`, { kind: "event" });
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
 }
 
@@ -2610,6 +2621,7 @@ function doGather() {
   const result = spendStamina(state, "gather");
   if (state.hp <= 0) { renderGameOver(); return; }
   state.questFlags.gatherTodayCount = (state.questFlags.gatherTodayCount || 0) + 1; // 任務系統：side_explore_daily_gather計數
+  state.questFlags.repeatGatherCount = (state.questFlags.repeatGatherCount || 0) + 1; // 任務系統：side_repeat_gather計數(2026-07-06)
   const gain = gatherYield(Math.random, state);
   if (result.overdraw) {
     for (const k in gain) gain[k] = Math.floor(gain[k] * result.resourceMultiplier);
@@ -2747,6 +2759,7 @@ function runBloodMoonWave(waves, idx, modifier) {
     // 任務系統：main_05/ach_blood_moon_streak3計數（戰敗=死亡=新局重開，questFlags隨defaultState()重置，不需要額外的「戰敗歸零」邏輯）
     state.questFlags.bloodMoonSurvivedCount = (state.questFlags.bloodMoonSurvivedCount || 0) + 1;
     state.questFlags.bloodMoonWinStreak = (state.questFlags.bloodMoonWinStreak || 0) + 1;
+    state.questFlags.repeatBloodMoonCount = (state.questFlags.repeatBloodMoonCount || 0) + 1; // 任務系統：side_repeat_bloodmoon計數(2026-07-06)
     state.noiseLevel = 0; // 噪音系統：血月狂潮過後動靜歸零，重新開始累積
     const reward = bloodMoonRewards(state, modifier && modifier.rewardBonus);
     document.body.classList.remove("blood-moon");
@@ -3139,6 +3152,7 @@ function battleAttack() {
 
   if (b.enemy.hpLeft <= 0) {
     state.questFlags.totalKills = (state.questFlags.totalKills || 0) + 1; // 任務系統：ach_kills_50計數
+    state.questFlags.repeatKillCount = (state.questFlags.repeatKillCount || 0) + 1; // 任務系統：side_repeat_kills計數(2026-07-06)
 let lootText = "";
     const drop = pickWeighted(b.enemy.dropTable);
     if (drop) {
@@ -3400,8 +3414,11 @@ function showQuestPanel() {
       const done = !q.repeatable && state.questProgress.completedSide.includes(q.id);
       let progressText = "";
       if (q.counterField) {
-        const cur = Math.min(q.counterTarget, state.questFlags[q.counterField] || 0);
-        progressText = ` <span class="qty">${cur}/${q.counterTarget}</span>`;
+        // 程序化支線目標(2026-07-06)：有targetRange的話，目標次數是重抽出來的動態值(state.questFlags[id+"_target"])，
+        // 不是q.counterTarget那個固定初始值(那只是還沒重抽過的預設)
+        const target = q.targetRange ? (state.questFlags[q.id + "_target"] || q.targetRange[0]) : q.counterTarget;
+        const cur = Math.min(target, state.questFlags[q.counterField] || 0);
+        progressText = ` <span class="qty">${cur}/${target}</span>`;
       }
       html += `<div class="invRow${done ? " furn-used" : ""}"><span>${done ? "✅" : q.repeatable ? "🔁" : "⬜"} ${q.title}</span>${progressText}</div>`;
       if (!done) html += `<div class="hint" style="padding:0 0 6px 0">${q.desc}</div>`;

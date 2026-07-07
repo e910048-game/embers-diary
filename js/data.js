@@ -2603,6 +2603,39 @@ const QUESTS = {
     condition: (state) => !!(state.flags && state.flags.radio_journey_done),
     reward: { scrap: 15 },
   },
+
+  // ===== 支線·🔁循環委託（程序化支線目標，2026-07-06）=====
+  // 比照既有side_companion_care的repeatable:"manual"模式，額外加targetRange讓每輪目標次數也隨機，
+  // 不是每次都固定同一個數字——搭配獨立的counterField(不跟totalKills等成就用的累計計數共用)，
+  // 完成後counterField歸零+重抽下一輪targetRange，理論上可以無限重複，讓「支線做完就沒了」不再成立
+  side_repeat_kills: {
+    id: "side_repeat_kills", type: "side", category: "explore", repeatable: "manual",
+    resetField: "repeatKillCount", counterField: "repeatKillCount", counterTarget: 3, targetRange: [3, 8],
+    title: "清剿委託", desc: "擊敗一定數量的敵人（每輪目標次數不固定）。",
+    condition: (state) => (state.questFlags.repeatKillCount || 0) >= (state.questFlags.side_repeat_kills_target || 3),
+    reward: { exp: 20 },
+  },
+  side_repeat_bloodmoon: {
+    id: "side_repeat_bloodmoon", type: "side", category: "explore", repeatable: "manual",
+    resetField: "repeatBloodMoonCount", counterField: "repeatBloodMoonCount", counterTarget: 1, targetRange: [1, 3],
+    title: "血月志願兵", desc: "撐過一定次數的血月狂潮（每輪目標次數不固定）。",
+    condition: (state) => (state.questFlags.repeatBloodMoonCount || 0) >= (state.questFlags.side_repeat_bloodmoon_target || 1),
+    reward: { embers: 15 },
+  },
+  side_repeat_gather: {
+    id: "side_repeat_gather", type: "side", category: "collect", repeatable: "manual",
+    resetField: "repeatGatherCount", counterField: "repeatGatherCount", counterTarget: 4, targetRange: [4, 10],
+    title: "囤積循環", desc: "累積完成一定次數的採集（每輪目標次數不固定）。",
+    condition: (state) => (state.questFlags.repeatGatherCount || 0) >= (state.questFlags.side_repeat_gather_target || 4),
+    reward: { scrap: 6 },
+  },
+  side_repeat_pen: {
+    id: "side_repeat_pen", type: "side", category: "collect", repeatable: "manual",
+    resetField: "repeatPenCareCount", counterField: "repeatPenCareCount", counterTarget: 4, targetRange: [4, 10],
+    title: "牲畜的陪伴", desc: "累積餵食或互動一定次數（每輪目標次數不固定）。",
+    condition: (state) => (state.questFlags.repeatPenCareCount || 0) >= (state.questFlags.side_repeat_pen_target || 4),
+    reward: { exp: 15 },
+  },
 };
 
 // 成就：4類「存活/戰鬥/收集/探索意外」，永久記錄(state.unlockedAchievements)，不因任務重置而消失
@@ -2776,6 +2809,33 @@ const BLOOD_MOON_MODIFIERS = [
   }
 ];
 
+// 地點探索模組化(2026-07-06)：比照血月模組化同一套手法，讓每次前往地點(近距離/遠距離皆適用)從這個
+// 小型模板池抽一種「今日探索條件」，避免探索永遠是同一種節奏。只調整2個既有數值(encounterChanceDelta/qtyBonus)，
+// 不新增機制——resolveLocation()直接吃這兩個欄位疊加進既有計算
+const LOCATION_MODIFIERS = [
+  { id: "standard", name: "如常的一趟", weight: 55 },
+  {
+    id: "raiders_nearby", name: "掠奪者出沒", weight: 15,
+    flavor: "附近似乎有不只怪物在活動的跡象——某種更有目的性的威脅感，讓你不自覺提高警覺。",
+    encounterChanceDelta: 0.15
+  },
+  {
+    id: "resource_rich", name: "資源豐富的角落", weight: 15,
+    flavor: "這一帶意外地被清理得比想像中乾淨，可用的物資似乎比平常更多。",
+    qtyBonus: 1
+  },
+  {
+    id: "unusually_quiet", name: "異常寧靜", weight: 10,
+    flavor: "四周異常安靜，連平常盤據在附近的怪物都不見蹤影。",
+    encounterChanceDelta: -0.1
+  },
+  {
+    id: "psychic_residue", name: "螢光殘留波動", weight: 5,
+    flavor: "空氣裡飄著細碎的螢光殘留，隱約帶著危險的氣息，卻也讓你的直覺格外敏銳。",
+    encounterChanceDelta: 0.05, qtyBonus: 1
+  }
+];
+
 // 無限模式後期內容(2026-07-05)：「深淵擴散」戰的開場/勝利文案，呼應「四大行政區收復後，
 // 母體核心的殘餘勢力仍持續反撲」的世界觀延續，見規格文件/無限模式後期內容_設計規格.md
 const ABYSS_SURGE_INTRO_TEXTS = [
@@ -2791,7 +2851,7 @@ const ABYSS_SURGE_VICTORY_TEXTS = [
 ];
 
 if (typeof module !== "undefined") {
-  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
+  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
   window.ITEMS = ITEMS;
@@ -2809,6 +2869,7 @@ if (typeof module !== "undefined") {
   window.BLOOD_MOON_INTRO_TEXTS = BLOOD_MOON_INTRO_TEXTS;
   window.BLOOD_MOON_VICTORY_TEXTS = BLOOD_MOON_VICTORY_TEXTS;
   window.BLOOD_MOON_MODIFIERS = BLOOD_MOON_MODIFIERS;
+  window.LOCATION_MODIFIERS = LOCATION_MODIFIERS;
   window.ABYSS_SURGE_INTRO_TEXTS = ABYSS_SURGE_INTRO_TEXTS;
   window.ABYSS_SURGE_VICTORY_TEXTS = ABYSS_SURGE_VICTORY_TEXTS;
   window.COMPANIONS_REGISTRY = COMPANIONS_REGISTRY;

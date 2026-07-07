@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS } = data;
+  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -1125,12 +1125,21 @@
     return picked;
   }
 
+  // 地點探索模組化(2026-07-06)：從LOCATION_MODIFIERS抽一種「今日探索條件」，比照pickBloodMoonModifier
+  // 同一套手法，只是這裡不需要「第一次保留standard」的新手保護(探索從day1就是核心玩法，沒有需要
+  // 先熟悉基準流程的問題)
+  function pickLocationModifier(rng = Math.random) {
+    return pickWeighted(LOCATION_MODIFIERS, rng);
+  }
+
   // 解析地點探索結果：可能遭遇敵人，也可能拾獲戰利品
   // state可選：第15天起，威脅升級，較高機率遇到清單中較強的敵人（陣列尾端）
-  function resolveLocation(location, rng = Math.random, state = null) {
+  // modifier可選：地點探索模組化(2026-07-06)的模板，只調整encounterChanceDelta/qtyBonus兩個既有數值
+  function resolveLocation(location, rng = Math.random, state = null, modifier = null) {
     // 2026-07-05：序章「帶傷生還(weak)」結局的生態變數——傷勢未癒導致行動不夠俐落，探索時驚動怪物的機率永久+5%
     const encounterBonus = (state && state.flags && state.flags.weak) ? 0.05 : 0;
-    if (rng() < location.encounterChance + encounterBonus) {
+    const modifierEncounterDelta = (modifier && modifier.encounterChanceDelta) || 0;
+    if (rng() < location.encounterChance + encounterBonus + modifierEncounterDelta) {
       const ids = location.encounterEnemyIds;
       let enemyId;
       if (state && state.day >= 15 && ids.length > 1 && rng() < 0.5) {
@@ -1142,7 +1151,8 @@
     }
     const drop = pickWeighted(location.lootTable, rng);
     if (state) addNoise(state, NOISE_AMOUNTS.explore); // 戰鬥的噪音由game.js的startBattle統一計算，這裡只算搜刮本身
-    return { type: "loot", itemId: drop.itemId, qty: drop.qty };
+    const qty = Math.max(1, drop.qty + ((modifier && modifier.qtyBonus) || 0));
+    return { type: "loot", itemId: drop.itemId, qty };
   }
 
   // 套用短篇序章結局效果到state（MVP4，沙盒模式開局加成/懲罰；4篇序章共用同一套companion/alone/weak/dead結局代碼，
@@ -2257,6 +2267,12 @@
         if (q.condition(state)) {
           applyQuestReward(state, q.reward);
           if (q.resetField) state.questFlags[q.resetField] = 0; // 達標後扣回計數器，讓玩家可以重新累積
+          // 程序化支線目標(2026-07-06)：有targetRange的話，每次重置順便重新抽一個目標值，
+          // 讓「這輪要做幾次」本身也帶點隨機，不是每次都完全一樣的固定次數
+          if (q.targetRange) {
+            const [min, max] = q.targetRange;
+            state.questFlags[q.id + "_target"] = min + Math.floor(Math.random() * (max - min + 1));
+          }
           result.completedSide.push(q);
         }
         return;
@@ -2287,7 +2303,7 @@
     staminaMaxForLevel, staminaMax, staminaBonusFromSources, STAMINA_BONUS_CAP,
     actionStaminaCost, spendStamina, ACTION_STAMINA_COSTS, overdrawHpPenalty, restHealAmount,
     OVERDRAW_HP_PENALTY, OVERDRAW_RESOURCE_MULTIPLIER, OVERDRAW_ENCOUNTER_BONUS,
-    resolveLocation, pickLocations, FAR_TRAVEL_COST,
+    resolveLocation, pickLocations, FAR_TRAVEL_COST, pickLocationModifier,
     getDurability, decayEquippedDurability, repairCost, repairEquipment, DURABILITY_MAX, DURABILITY_LOSS_PER_BATTLE,
     reforgePrefixCost, reforgePrefix,
     rollGacha, gachaCost, GACHA_COST,
