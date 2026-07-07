@@ -2678,6 +2678,40 @@ const BLOOD_MOON_VICTORY_TEXTS = [
   "血月的紅光徹底消散，取而代之的是熟悉的夜色，你終於敢放鬆緊繃了一整晚的肩膀。"
 ];
 
+// 血月模組化(2026-07-06)：讓每次血月從這個小型模板池抽一種變化，避免day250+後血月夜永遠是同一套流程。
+// standard權重50%維持血月的經典既定印象是常態，其餘4種瓜分50%——不新增戰鬥機制，
+// 只是換敵人組成(swapEnemyId)/加重指揮官(bossExtraTier)/換文案(introFlavor/victoryFlavor)/換獎勵(rewardBonus)，
+// 詳見規格文件/血月模組化的討論(TODO_待辦事項.md「內容量審視」章節)
+const BLOOD_MOON_MODIFIERS = [
+  { id: "standard", name: "標準夜", weight: 50 },
+  {
+    id: "raiders", name: "掠奪者血月", weight: 15,
+    introFlavor: "這次不是漫無目的的怪物——一群眼神瘋狂的掠奪者，正直撲你的糧倉而去。",
+    victoryFlavor: "擊退了那群掠奪者後，你從他們留下的行囊裡翻出不少現成的補給。",
+    swapEnemyId: "enemy_walker_armed",
+    rewardBonus: { resources: { scrap: 8 } }
+  },
+  {
+    id: "silent", name: "靜默血月", weight: 15,
+    introFlavor: "今晚出奇地安靜，沒有雜亂的嘶吼——但那陣腳步聲，卻異常沉重而清晰。",
+    victoryFlavor: "在死寂中撐過了這場硬仗，你精疲力盡地癱坐下來。",
+    bossExtraTier: 1,
+    rewardBonus: { skillPoint: 1 }
+  },
+  {
+    id: "psychic_surge", name: "靈能亂流之夜", weight: 12,
+    introFlavor: "空氣中瀰漫著一股躁動的靈能雜訊，讓人心浮氣躁卻又莫名亢奮。",
+    victoryFlavor: "亂流散去的瞬間，你感覺到一股清晰的頓悟湧上心頭。",
+    rewardBonus: { embers: 20 }
+  },
+  {
+    id: "spore_haze", name: "孢子瀰漫之夜", weight: 8,
+    introFlavor: "空氣中瀰漫著淡淡的孢子粉塵，吸入後隱約有種昏沉的錯覺感。",
+    victoryFlavor: "撐過了這場孢子瀰漫的血月，你的肺裡似乎還殘留著一絲說不清的異樣感。",
+    rewardBonus: { san: -5, resources: { medicine: 2 } }
+  }
+];
+
 // 無限模式後期內容(2026-07-05)：「深淵擴散」戰的開場/勝利文案，呼應「四大行政區收復後，
 // 母體核心的殘餘勢力仍持續反撲」的世界觀延續，見規格文件/無限模式後期內容_設計規格.md
 const ABYSS_SURGE_INTRO_TEXTS = [
@@ -2693,7 +2727,7 @@ const ABYSS_SURGE_VICTORY_TEXTS = [
 ];
 
 if (typeof module !== "undefined") {
-  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
+  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
   window.ITEMS = ITEMS;
@@ -2710,6 +2744,7 @@ if (typeof module !== "undefined") {
   window.SPECIES = SPECIES;
   window.BLOOD_MOON_INTRO_TEXTS = BLOOD_MOON_INTRO_TEXTS;
   window.BLOOD_MOON_VICTORY_TEXTS = BLOOD_MOON_VICTORY_TEXTS;
+  window.BLOOD_MOON_MODIFIERS = BLOOD_MOON_MODIFIERS;
   window.ABYSS_SURGE_INTRO_TEXTS = ABYSS_SURGE_INTRO_TEXTS;
   window.ABYSS_SURGE_VICTORY_TEXTS = ABYSS_SURGE_VICTORY_TEXTS;
   window.COMPANIONS_REGISTRY = COMPANIONS_REGISTRY;

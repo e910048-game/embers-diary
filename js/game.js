@@ -2698,9 +2698,16 @@ function startBloodMoonNight() {
     const noiseWaveCount = Math.floor((state.noiseLevel || 0) / 20);
     const noiseText = noiseWaveCount > 0 ? `\n📢 你累積的噪音招來了額外${noiseWaveCount}波敵人！` : "";
 
+    // 血月模組化(2026-07-06)：從BLOOD_MOON_MODIFIERS抽一種變化(換敵人/加重指揮官/換文案/換獎勵)，
+    // 避免day250+後血月夜永遠是同一套流程；第一次血月固定standard，見pickBloodMoonModifier
+    const modifier = pickBloodMoonModifier(state);
+    const modifierFlavor = modifier.introFlavor ? `\n\n${modifier.introFlavor}` : "";
+
     const waves = [];
-    if (defense.wavesBlocked === 0) waves.push({ enemyId: "enemy_walker_brute", extraTier: 1 });
-    waves.push({ enemyId: "enemy_cyborg_nemesis", extraTier: 1 });
+    if (defense.wavesBlocked === 0) {
+      waves.push({ enemyId: modifier.swapEnemyId || "enemy_walker_brute", extraTier: 1 });
+    }
+    waves.push({ enemyId: "enemy_cyborg_nemesis", extraTier: 1 + (modifier.bossExtraTier || 0) });
     for (let i = 0; i < noiseWaveCount; i++) waves.push({ enemyId: "enemy_walker_weak", extraTier: 0 });
 
     // 氛圍細節(2026-07-05)：防禦被突破且獸欄有動物時，額外插入「死守 vs 撤退」抉擇——
@@ -2708,7 +2715,7 @@ function startBloodMoonNight() {
     // 死守則是拿玩家HP換取獸欄毫髮無傷，兩條路都要繼續打完同一組waves，抉擇只影響獸欄/HP，不影響戰鬥本身
     if (defense.wavesBlocked === 0 && hasAnyPenAnimal(state)) {
       renderText(`🌙 ${introText}
-${blockText}${noiseText}
+${blockText}${noiseText}${modifierFlavor}
 
 外圍的怪物已經突破防線，獸欄方向傳來動物驚慌的叫聲——你要死守獸欄，還是放棄獸欄、集中兵力退守安全屋？`, { kind: "battle" });
       renderOptions([
@@ -2717,31 +2724,31 @@ ${blockText}${noiseText}
           if (state.hp <= 0) { renderGameOver(); return; }
           renderStatusBar();
           renderText("你們死守在獸欄前，狠狠打退了撲上來的怪物——代價是身上又添了幾道傷。（HP-10）", { kind: "battle" });
-          renderOptions([{ label: "⚔️ 迎戰", variant: "danger", onClick: () => runBloodMoonWave(waves, 0) }]);
+          renderOptions([{ label: "⚔️ 迎戰", variant: "danger", onClick: () => runBloodMoonWave(waves, 0, modifier) }]);
         } },
         { label: "🚪 放棄獸欄，退守安全屋", variant: "ghost", onClick: () => {
           resetPensAfterRetreat(state);
           renderStatusBar();
           renderText("你們放棄了獸欄，集中兵力退回安全屋。驚慌的動物在圍欄裡亂竄了一整夜，好感度跌回谷底，產出也得重新開始累積——但至少，牠們都還活著。", { kind: "battle" });
-          renderOptions([{ label: "⚔️ 迎戰", variant: "danger", onClick: () => runBloodMoonWave(waves, 0) }]);
+          renderOptions([{ label: "⚔️ 迎戰", variant: "danger", onClick: () => runBloodMoonWave(waves, 0, modifier) }]);
         } }
       ]);
       return;
     }
 
     renderText(`🌙 ${introText}
-${blockText}${noiseText}`, { kind: "battle" });
-        renderOptions([{ label: "⚔️ 迎戰", variant: "danger", onClick: () => runBloodMoonWave(waves, 0) }]);
+${blockText}${noiseText}${modifierFlavor}`, { kind: "battle" });
+        renderOptions([{ label: "⚔️ 迎戰", variant: "danger", onClick: () => runBloodMoonWave(waves, 0, modifier) }]);
   });
 }
 
-function runBloodMoonWave(waves, idx) {
+function runBloodMoonWave(waves, idx, modifier) {
   if (idx >= waves.length) {
     // 任務系統：main_05/ach_blood_moon_streak3計數（戰敗=死亡=新局重開，questFlags隨defaultState()重置，不需要額外的「戰敗歸零」邏輯）
     state.questFlags.bloodMoonSurvivedCount = (state.questFlags.bloodMoonSurvivedCount || 0) + 1;
     state.questFlags.bloodMoonWinStreak = (state.questFlags.bloodMoonWinStreak || 0) + 1;
     state.noiseLevel = 0; // 噪音系統：血月狂潮過後動靜歸零，重新開始累積
-    const reward = bloodMoonRewards(state);
+    const reward = bloodMoonRewards(state, modifier && modifier.rewardBonus);
     document.body.classList.remove("blood-moon");
     renderStatusBar();
     let unlockText = "";
@@ -2752,7 +2759,8 @@ function runBloodMoonWave(waves, idx) {
 🔓 你在血月之夜的勝利解鎖了新的地點：${loc ? loc.icon + " " + loc.name : reward.unlockedLocation}，可以前往探索了！`;
     }
     const victoryText = BLOOD_MOON_VICTORY_TEXTS[Math.floor(Math.random() * BLOOD_MOON_VICTORY_TEXTS.length)];
-    renderText(`🎉 ${victoryText}${formatEffect(reward)}${unlockText}`, { kind: "event" });
+    const victoryModifierFlavor = modifier && modifier.victoryFlavor ? `\n\n${modifier.victoryFlavor}` : "";
+    renderText(`🎉 ${victoryText}${victoryModifierFlavor}${formatEffect(reward)}${unlockText}`, { kind: "event" });
 
     const zone = getTierZoneForBloodMoonWin(state);
     if (zone) {
@@ -2770,7 +2778,7 @@ function runBloodMoonWave(waves, idx) {
     return;
   }
   const w = waves[idx];
-  startBattle(w.enemyId, () => runBloodMoonWave(waves, idx + 1), false, { extraTier: w.extraTier, bloodMoon: true });
+  startBattle(w.enemyId, () => runBloodMoonWave(waves, idx + 1, modifier), false, { extraTier: w.extraTier, bloodMoon: true });
 }
 
 function startTierZoneBattle(zone) {

@@ -1691,5 +1691,53 @@ test("雙修共鳴實際效果：gaia+cyber「荊棘裝甲」+5%吸血、gaia+mi
   assert.ok(Math.abs(L.getBattleDamageReductionRatio(s2) - 0.05) < 1e-9); // mind本身要T4才有基礎減傷，這裡只吃共鳴的+5%
 });
 
+// 2026-07-06 血月模組化：從模板池抽變異，避免day250+後血月夜永遠是同一套流程
+test("BLOOD_MOON_MODIFIERS：資料完整性(5筆、weight加總100、皆有id/name/weight)", () => {
+  const mods = require("../js/data.js").BLOOD_MOON_MODIFIERS;
+  assert.strictEqual(mods.length, 5);
+  const totalWeight = mods.reduce((s, m) => s + m.weight, 0);
+  assert.strictEqual(totalWeight, 100);
+  mods.forEach(m => {
+    assert.ok(typeof m.id === "string" && typeof m.name === "string" && typeof m.weight === "number");
+  });
+});
+
+test("pickBloodMoonModifier：第一次血月(bloodMoonWins=0)固定standard，之後才會抽到變異", () => {
+  const s = L.defaultState();
+  assert.strictEqual(s.bloodMoonWins, undefined);
+  assert.strictEqual(L.pickBloodMoonModifier(s, () => 0.99).id, "standard"); // 不管rng多少，第一次都是standard
+
+  s.bloodMoonWins = 1;
+  // rng=0.99落在權重表尾端(standard50+raiders15+silent15+psychic12=92，剩8是spore_haze)
+  assert.strictEqual(L.pickBloodMoonModifier(s, () => 0.99).id, "spore_haze");
+  // rng=0.01落在最前面，是standard
+  assert.strictEqual(L.pickBloodMoonModifier(s, () => 0.01).id, "standard");
+});
+
+test("bloodMoonRewards：帶rewardBonus時正確合併套用，formatEffect顯示的reward物件也包含bonus欄位", () => {
+  const s = L.defaultState();
+  s.day = 1; // mult=1，方便算基準值
+  const scrapBefore = s.resources.scrap;
+  const embersBefore = s.currency.embers;
+  const reward = L.bloodMoonRewards(s, { resources: { scrap: 8 } });
+  assert.strictEqual(reward.embers, 40);
+  assert.deepStrictEqual(reward.resources, { scrap: 8 });
+  assert.strictEqual(s.resources.scrap, scrapBefore + 8);
+  assert.strictEqual(s.currency.embers, embersBefore + 40);
+
+  const s2 = L.defaultState();
+  const rewardNoBonus = L.bloodMoonRewards(s2);
+  assert.strictEqual(rewardNoBonus.resources, undefined); // 沒有bonus時不會憑空多出資源欄位
+
+  // 「silent」模板的skillPoint bonus會跟基礎值重疊，必須是相加而不是覆蓋
+  // （曾經用簡單spread合併導致這裡算成1而不是2，已修正）
+  const s3 = L.defaultState();
+  s3.day = 1;
+  const skillPointsBefore = s3.skillPoints;
+  const rewardSilent = L.bloodMoonRewards(s3, { skillPoint: 1 });
+  assert.strictEqual(rewardSilent.skillPoint, 2); // 基礎1 + bonus1 = 2，不是被bonus覆蓋成1
+  assert.strictEqual(s3.skillPoints, skillPointsBefore + 2);
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

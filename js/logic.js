@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY } = data;
+  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -577,6 +577,13 @@
     return list[list.length - 1];
   }
 
+  // 血月模組化(2026-07-06)：第一次血月(bloodMoonWins尚為0)固定標準夜，讓玩家先熟悉基準流程，
+  // 第二次起才開始抽變異，避免新手第一場血月就遇到不熟悉的敵人組成/文案
+  function pickBloodMoonModifier(state, rng = Math.random) {
+    if ((state.bloodMoonWins || 0) === 0) return BLOOD_MOON_MODIFIERS.find(m => m.id === "standard");
+    return pickWeighted(BLOOD_MOON_MODIFIERS, rng);
+  }
+
   function pickEvent(state, rng = Math.random) {
     const pool = EVENTS.filter(e =>
       e.minDay <= state.day &&
@@ -711,9 +718,18 @@
 
   // ---------- 血月狂潮：戰後狂歡結算（V2.0 §2.3） ----------
   // 首次擊退血月狂潮時，插旗flags.bloodmoon_breach_1，解鎖淹沒的靈能地鐵站(loc_sunken_subway)等提前遠征點
-  function bloodMoonRewards(state) {
+  // bonusEffect：血月模組化(2026-07-06)的模板`rewardBonus`(例如{resources:{scrap:8}}或{skillPoint:1})，
+  // 跟基礎reward「相加」後一起套用/回傳(不是覆蓋)——embers/skillPoint兩者都可能跟基礎值重疊，
+  // 若用簡單spread合併會讓bonus覆蓋掉基礎值而不是疊加，故逐欄位相加
+  function bloodMoonRewards(state, bonusEffect) {
     const mult = bloodMoonRewardMultiplier(state);
     const reward = { embers: Math.round(40 * mult), skillPoint: Math.max(1, Math.round(1 * mult)) };
+    if (bonusEffect) {
+      if (typeof bonusEffect.embers === "number") reward.embers += bonusEffect.embers;
+      if (typeof bonusEffect.skillPoint === "number") reward.skillPoint += bonusEffect.skillPoint;
+      if (typeof bonusEffect.san === "number") reward.san = (reward.san || 0) + bonusEffect.san;
+      if (bonusEffect.resources) reward.resources = { ...(reward.resources || {}), ...bonusEffect.resources };
+    }
     applyEffect(state, reward);
     state.bloodMoonWins = (state.bloodMoonWins || 0) + 1;
     let unlockedLocation = null;
@@ -2285,7 +2301,7 @@
     triggerAwakening, chooseFaction, AWAKENING_DAY_THRESHOLDS, nextAwakeningAvailable, chooseNextFaction, allUnlockedFactionsMaxed,
     spendSkillPoint, convertSkillPointToEmbers, SKILL_POINT_EMBERS_VALUE, enemyTier, getScaledEnemy, TIER_PREFIXES, getLocationOverpower,
     checkUpcomingThreat, isThreatDue, clearUpcomingThreat, THREAT_LEAD_DAYS, BLOOD_MOON_CYCLE_MIN, BLOOD_MOON_CYCLE_MAX,
-    resolveBloodMoonDefense, bloodMoonRewards, bloodMoonRewardMultiplier, TIER_ZONES, getTierZoneForBloodMoonWin,
+    resolveBloodMoonDefense, bloodMoonRewards, bloodMoonRewardMultiplier, pickBloodMoonModifier, TIER_ZONES, getTierZoneForBloodMoonWin,
     getAbyssSurgeBattle, ABYSS_SURGE_EQUIPMENT_POOL,
     ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS,
     replacePlayerNameTag, dailyMoodCheckin, depositToFridge, withdrawFromFridge, generateSyncCode, applySyncCode,
