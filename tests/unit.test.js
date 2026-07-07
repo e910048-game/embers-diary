@@ -1758,5 +1758,29 @@ test("MILESTONE_EVENTS：day300/350/400/450四個新里程碑存在且day值/id�
   assert.strictEqual(L.getMilestoneEvent(s), null); // 觸發過就不再重複出現
 });
 
+// 2026-07-06 30小時內容量審視：同伴劇情線後日談——劇情線完結後的低頻率循環事件，不是新的一次性連鎖
+test("同伴後日談6事件：只有「已招募」+「劇情線已完成(arc_done)」同時成立才會出現在事件池", () => {
+  const names = ["老周", "雷恩", "艾莉", "阿卡", "小雨", "阿海"];
+  const epilogueIds = ["evt_epilogue_laozhou", "evt_epilogue_leien", "evt_epilogue_aili", "evt_epilogue_aka", "evt_epilogue_xiaoyu", "evt_epilogue_ahai"];
+  epilogueIds.forEach((id, i) => {
+    const evt = L.EVENTS.find(e => e.id === id);
+    assert.ok(evt, `${id}應該存在`);
+    const name = names[i];
+
+    const s = L.defaultState();
+    assert.strictEqual(evt.condition(s), false); // 未招募
+
+    s.flags.laozhou_recruited = s.flags.xiaoyu_recruited = s.flags.ahai_recruited = true;
+    s.facilities.greenhouse = 3; // 艾莉解鎖門檻
+    s.facilities.command = 3; // 阿卡解鎖門檻
+    L.refreshCompanionUnlocks(s);
+    if (name === "雷恩") L.recruitCompanion(s, "雷恩"); // 雷恩走劇情事件解鎖，不吃facilities/flags門檻
+    assert.strictEqual(evt.condition(s), false); // 已招募但劇情線尚未完成
+
+    s.flags[name + "_arc_done"] = s.day;
+    assert.strictEqual(evt.condition(s), true); // 招募+劇情線完成，事件才會出現
+  });
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

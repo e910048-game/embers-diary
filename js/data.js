@@ -1783,6 +1783,70 @@ const EVENTS = [
       { label: "陪他走這一趟", effect: { setFlag: "阿海_arc_done" }, resultText: "你們並肩走進那座塵封已久的地下避難所。斷裂的管線、鏽蝕的門，一如阿海記憶中那樣沉重——但這一次，他不是一個人面對。走出來時，他罕見地舒了一口氣：「往後帶你去哪，我都能更放心一點。」" }
     ]
   },
+  // ---------- 2026-07-06 同伴劇情線後日談：6同伴各1則，30小時內容量審視延伸——劇情線本身正常節奏
+  // day100內就會全部完結(見TODO「30小時內容量審視」)，這裡不是新劇情線，是低頻率的關係加溫小品，
+  // 讓劇情線完成後的同伴不會就此在敘事上銷聲匿跡。跟劇情線三階段不同，這裡是「循環事件」不是「一次性連鎖」，
+  // 只要條件成立就會持續留在事件池被抽到，weight:5比照其他低頻率flavor事件的量級
+  {
+    id: "evt_epilogue_laozhou", title: "工作台旁的哼唱",
+    minDay: 1, maxDay: null, phase: ["day", "night"], weight: 5,
+    condition: (state) => !!(state.companions && state.companions["老周"] && state.companions["老周"] !== "locked"
+      && state.flags && state.flags["老周_arc_done"]),
+    text: "你路過老周的工作台，他一邊修理著手裡的裝備，一邊跟著收音機裡放的老歌哼唱，聲音沙啞卻放鬆。見你經過，他也不覺得不好意思，反而笑著多哼了兩句。",
+    options: [
+      { label: "陪他聽完這段旋律", effect: { san: 5 }, resultText: "你在一旁多站了一會兒，聽著那段熟悉的旋律，心裡也跟著鬆快了些。" }
+    ]
+  },
+  {
+    id: "evt_epilogue_leien", title: "難得放鬆的哨位",
+    minDay: 1, maxDay: null, phase: ["night"], weight: 5,
+    condition: (state) => !!(state.companions && state.companions["雷恩"] && state.companions["雷恩"] !== "locked"
+      && state.flags && state.flags["雷恩_arc_done"]),
+    text: "輪到雷恩守夜時，你發現他難得地卸下了一貫的緊繃神情，靠著牆隨口跟你聊起最近據點的瑣事，語氣裡少了過去的警戒感。",
+    options: [
+      { label: "陪他聊了幾句", effect: { san: 5 }, resultText: "簡單的閒聊沒有什麼重點，但這份輕鬆的氣氛，本身就是一種難得的安穩。" }
+    ]
+  },
+  {
+    id: "evt_epilogue_aili", title: "多開了幾朵花",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 5,
+    condition: (state) => !!(state.companions && state.companions["艾莉"] && state.companions["艾莉"] !== "locked"
+      && state.flags && state.flags["艾莉_arc_done"]),
+    text: "溫室角落，那株曾經只有一朵花的小盆栽，如今已經開得更加茂盛。艾莉蹲在一旁仔細照料著，看見你過來，笑著指了指其中一朵：「這朵最漂亮，你看。」",
+    options: [
+      { label: "認真欣賞了一下", effect: { san: 5 }, resultText: "你順著她指的方向看去，那朵花確實開得格外精神——像是這段日子裡，某種說不清的東西也跟著慢慢長回來了。" }
+    ]
+  },
+  {
+    id: "evt_epilogue_aka", title: "血月後的沉默陪伴",
+    minDay: 1, maxDay: null, phase: ["night"], weight: 5,
+    condition: (state) => !!(state.companions && state.companions["阿卡"] && state.companions["阿卡"] !== "locked"
+      && state.flags && state.flags["阿卡_arc_done"]),
+    text: "又一次血月夜過去，阿卡沒有像過去那樣獨自沉默地離開，而是在你身邊坐了下來，兩人誰都沒說話，只是靜靜看著天色一點一點亮起來。",
+    options: [
+      { label: "陪他一起看著天亮", effect: { san: 5 }, resultText: "不需要言語，這份並肩撐過血月夜的沉默，本身就已經足夠。" }
+    ]
+  },
+  {
+    id: "evt_epilogue_xiaoyu", title: "帳本上多了一頁",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 5,
+    condition: (state) => !!(state.companions && state.companions["小雨"] && state.companions["小雨"] !== "locked"
+      && state.flags && state.flags["小雨_arc_done"]),
+    text: "小雨的帳本裡，那頁反覆塗改的紀錄旁，如今多了一頁工整的新內容——不再是尋人的線索，而是普通的據點瑣事。她注意到你在看，只是笑了笑，沒多解釋。",
+    options: [
+      { label: "沒有多問", effect: { san: 5 }, resultText: "有些事情不需要說破，你看得出來，她已經把那份牽掛，好好地放在心裡的一個角落了。" }
+    ]
+  },
+  {
+    id: "evt_epilogue_ahai", title: "主動規劃的路線",
+    minDay: 1, maxDay: null, phase: ["day"], weight: 5,
+    condition: (state) => !!(state.companions && state.companions["阿海"] && state.companions["阿海"] !== "locked"
+      && state.flags && state.flags["阿海_arc_done"]),
+    text: "規劃遠征路線時，阿海主動提起想去一趟以前刻意避開的區域——不是逃避，而是想確認那裡現在的樣子。他攤開地圖，語氣比以前更加從容。",
+    options: [
+      { label: "跟他一起研究路線", effect: { san: 5 }, resultText: "地圖上那片曾經空白的區域，如今已經被仔細標注——阿海翻過了那一頁，也帶著你一起往前走。" }
+    ]
+  },
   // ---------- 27.5 連鎖事件擴充：黑膠唱片 ----------
   {
     id: "evt_vinyl_found", title: "舊時代的黑膠唱片",
