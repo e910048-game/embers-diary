@@ -1739,5 +1739,24 @@ test("bloodMoonRewards：帶rewardBonus時正確合併套用，formatEffect顯�
   assert.strictEqual(s3.skillPoints, skillPointsBefore + 2);
 });
 
+// 2026-07-06 30小時內容量審視：MILESTONE_EVENTS延伸到day450，銜接既有day120~250批次
+test("MILESTONE_EVENTS：day300/350/400/450四個新里程碑存在且day值/id正確、getMilestoneEvent能正確查到", () => {
+  const days = [300, 350, 400, 450];
+  const ids = ["milestone_day300", "milestone_day350", "milestone_day400", "milestone_day450"];
+  days.forEach((day, i) => {
+    const evt = L.MILESTONE_EVENTS.find(e => e.day === day);
+    assert.ok(evt, `day${day}應該要有里程碑事件`);
+    assert.strictEqual(evt.id, ids[i]);
+    assert.ok(evt.options && evt.options.length > 0);
+  });
+
+  const s = L.defaultState();
+  s.day = 400;
+  const m400 = L.getMilestoneEvent(s);
+  assert.strictEqual(m400.id, "milestone_day400");
+  s.milestonesShown.push(m400.id);
+  assert.strictEqual(L.getMilestoneEvent(s), null); // 觸發過就不再重複出現
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
