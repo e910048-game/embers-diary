@@ -1663,9 +1663,10 @@ test("hasAnyPenAnimal/resetPensAfterRetreat：撤退後動物仍在，只有好�
 });
 
 // 2026-07-05 雙修流派共鳴：兩流派T3同時解鎖才生效，涵蓋10組全部組合的資料完整性+至少3組實際效果驗證
-test("FACTION_RESONANCE：10組共鳴涵蓋C(5,2)全部組合，且只有雙方都T3才生效", () => {
-  assert.strictEqual(L.FACTION_RESONANCE.length, 10);
-  const pairKeys = new Set(L.FACTION_RESONANCE.map(r => r.pair.slice().sort().join("+")));
+test("FACTION_RESONANCE：T3共鳴10組涵蓋C(5,2)全部組合，且只有雙方都T3才生效", () => {
+  const t3 = L.FACTION_RESONANCE.filter(r => (r.minTier || 3) === 3);
+  assert.strictEqual(t3.length, 10);
+  const pairKeys = new Set(t3.map(r => r.pair.slice().sort().join("+")));
   assert.strictEqual(pairKeys.size, 10); // 沒有重複組合
 
   const s = L.defaultState();
@@ -1678,6 +1679,25 @@ test("FACTION_RESONANCE：10組共鳴涵蓋C(5,2)全部組合，且只有雙方�
   s.skills.tiers.cyber = 3;
   assert.strictEqual(L.factionResonanceActive(s, ["gaia", "cyber"]), true); // 兩者皆T3，共鳴生效
   assert.strictEqual(L.getActiveFactionResonances(s).length, 1);
+});
+
+// 2026-07-06 30小時內容量審視：3組T4進階共鳴，疊加在同名T3版本之上而不是取代
+test("FACTION_RESONANCE：T4進階共鳴3組，雙方都T4才生效，且效果疊加在T3版本之上", () => {
+  const t4 = L.FACTION_RESONANCE.filter(r => r.minTier === 4);
+  assert.strictEqual(t4.length, 3);
+  t4.forEach(r => {
+    const t3Match = L.FACTION_RESONANCE.find(x => (x.minTier || 3) === 3
+      && x.pair.slice().sort().join("+") === r.pair.slice().sort().join("+"));
+    assert.ok(t3Match, `T4共鳴${r.name}應該有對應的T3版本(${r.pair.join("+")})`);
+  });
+
+  const s = L.defaultState();
+  s.skills = { faction: "cyber", tiers: { cyber: 3, ocean: 3 }, unlockOrder: ["cyber", "ocean"] };
+  const dodgeAtT3 = L.getDodgeChance(s); // cyber+ocean「液態金屬」T3已生效(+5%)，T4尚未
+  s.skills.tiers.cyber = 4;
+  assert.ok(Math.abs(L.getDodgeChance(s) - dodgeAtT3) < 1e-9); // 只有cyber到T4，ocean還是T3，T4共鳴不生效
+  s.skills.tiers.ocean = 4;
+  assert.ok(Math.abs(L.getDodgeChance(s) - (dodgeAtT3 + 0.05)) < 1e-9); // 雙方都T4，「深淵鋼流」額外+5%疊加上去
 });
 
 test("雙修共鳴實際效果：gaia+cyber「荊棘裝甲」+5%吸血、gaia+mind「痛覺鈍化」+5%減傷", () => {

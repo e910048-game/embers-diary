@@ -76,20 +76,26 @@
     { pair: ["ocean", "aero"], name: "風暴亂流", desc: "暴擊率額外+5%", effect: { critBonus: 0.05 } },
     { pair: ["ocean", "mind"], name: "靜水映象", desc: "SAN上限額外+15", effect: { sanMaxBonus: 15 } },
     { pair: ["aero", "mind"], name: "風之思緒", desc: "流派比例加成額外放大+5%", effect: { skillBonusRatio: 0.05 } },
+    // 30小時內容量審視(2026-07-06)：全部5流派點滿T4後，10組T3共鳴就沒有更高的目標了。
+    // 挑3組最具代表性的組合加「兩流派都T4」的進階版，效果疊加在同名T3版本之上(同一個effectKey再加一次)，
+    // 不是取代——給頂級玩家一個比T3更遠的靶，複用同一套minTier機制，沒有新增任何獨立的效果種類
+    { pair: ["cyber", "ocean"], minTier: 4, name: "深淵鋼流", desc: "「液態金屬」進階：物理閃避率再額外+5%", effect: { dodgeBonus: 0.05 } },
+    { pair: ["gaia", "mind"], minTier: 4, name: "血肉之壁", desc: "「痛覺鈍化」進階：戰鬥受到傷害再額外-5%", effect: { battleDamageReductionBonus: 0.05 } },
+    { pair: ["aero", "mind"], minTier: 4, name: "群星共鳴", desc: "「風之思緒」進階：流派比例加成再額外放大+5%", effect: { skillBonusRatio: 0.05 } },
   ];
 
-  function factionResonanceActive(state, pair) {
-    return factionTier(state, pair[0]) >= 3 && factionTier(state, pair[1]) >= 3;
+  function factionResonanceActive(state, pair, minTier = 3) {
+    return factionTier(state, pair[0]) >= minTier && factionTier(state, pair[1]) >= minTier;
   }
 
   function getActiveFactionResonances(state) {
-    return FACTION_RESONANCE.filter(r => factionResonanceActive(state, r.pair));
+    return FACTION_RESONANCE.filter(r => factionResonanceActive(state, r.pair, r.minTier || 3));
   }
 
   function getFactionResonanceBonus(state, effectKey) {
     let total = 0;
     FACTION_RESONANCE.forEach(r => {
-      if (factionResonanceActive(state, r.pair) && typeof r.effect[effectKey] === "number") total += r.effect[effectKey];
+      if (factionResonanceActive(state, r.pair, r.minTier || 3) && typeof r.effect[effectKey] === "number") total += r.effect[effectKey];
     });
     return total;
   }

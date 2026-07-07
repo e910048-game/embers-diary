@@ -3475,12 +3475,19 @@ function showSkillPanel() {
     });
     html += `</div>`;
   });
-  // 雙修流派共鳴(2026-07-05)：只要有2個以上流派已解鎖，就列出全部10組共鳴被動的解鎖狀態，
-  // 讓玩家提前知道「點滿哪兩個流派的T3」有隱藏獎勵可以瞄準，而不是解鎖了才第一次看到
+  // 雙修流派共鳴(2026-07-05)：只要有2個以上流派已解鎖，就列出全部共鳴被動的解鎖狀態，
+  // 讓玩家提前知道「點滿哪兩個流派的T3/T4」有隱藏獎勵可以瞄準，而不是解鎖了才第一次看到。
+  // 2026-07-06：加了3組T4進階版共鳴後，分成兩個小節顯示，避免T3/T4門檻混在一起看不清楚
   if (unlockOrder.length >= 2) {
     html += `<div class="subtitle" style="margin-top:8px">雙修流派共鳴（兩流派同時T3解鎖）</div>`;
-    FACTION_RESONANCE.forEach(r => {
-      const active = factionResonanceActive(state, r.pair);
+    FACTION_RESONANCE.filter(r => (r.minTier || 3) === 3).forEach(r => {
+      const active = factionResonanceActive(state, r.pair, 3);
+      const names = r.pair.map(f => SKILLS_TREE[f].name).join(" + ");
+      html += `<div class="hint" style="padding:0 0 4px 0">${active ? "🔓" : "🔒"} ${names}→【${r.name}】${r.desc}</div>`;
+    });
+    html += `<div class="subtitle" style="margin-top:8px">雙修流派共鳴・進階（兩流派同時T4解鎖）</div>`;
+    FACTION_RESONANCE.filter(r => r.minTier === 4).forEach(r => {
+      const active = factionResonanceActive(state, r.pair, 4);
       const names = r.pair.map(f => SKILLS_TREE[f].name).join(" + ");
       html += `<div class="hint" style="padding:0 0 4px 0">${active ? "🔓" : "🔒"} ${names}→【${r.name}】${r.desc}</div>`;
     });
