@@ -391,6 +391,32 @@ const COMPANION_CHAT_LINES = {
   "小雨": ["（在筆記本上記著什麼）", "「這個月的物資消耗，我都算好了。」", "「省著點用，日子才能過得久。」"],
   "阿海": ["（對著地圖比劃著）", "「那個方向我去過，有點東西。」", "「跟緊點，我帶路。」"],
 };
+// 2026-07-06：同伴遠征台詞，比照COMPANION_CHAT_LINES同一種資料結構，但用途不同——
+// 只在遠距離(far)地點探索時，有機率從「目前已招募」的同伴裡隨機挑一位插入一句專屬提醒，
+// 不要求該同伴當下指派的任務是expedition，當成「臨行前同伴叮嚀過的話」處理，跟COMPANION_CHAT_LINES
+// 的聊天氣泡一樣不強求物理上「人在現場」
+const COMPANION_LOCATION_LINES = {
+  "雷恩": ["雷恩提醒過你：「這裡的鋼筋鏽蝕速度快得不正常，注意腳下。」", "雷恩的叮嚀還留在耳邊：「有什麼風吹草動，先躲再說。」"],
+  "艾莉": ["你想起艾莉說過：「空氣裡的味道有點不對勁，像是什麼東西在腐爛。」", "艾莉出發前提醒你：「如果看到還能用的種子，記得帶一點回來。」"],
+  "阿卡": ["阿卡曾經說過：「這種結構，一顆炸藥就能讓它整個塌下來，小心別站在下面。」", "阿卡的話浮現腦海：「遇到麻煩別猶豫，先確保自己沒事。」"],
+  "老周": ["老周叮囑過：「這種地方的零件通常還能拆，撿回來給我瞧瞧。」", "你想起老周的提醒：「腳下那些生鏽的邊角小心點，會割傷人。」"],
+  "小雨": ["小雨交代過：「值得帶的東西記得清點好，別浪費一趟。」", "你想起小雨的叮嚀：「別扛太多，體力要留著回程用。」"],
+  "阿海": ["阿海說過：「這條路我熟，跟緊標記走，別走岔了。」", "你想起阿海的話：「那個方向我去過，沒什麼好東西，別浪費時間。」"],
+};
+// 同伴遠征台詞觸發機率：不要每次遠征都插一句，保留一點「不是每次都有」的自然感
+const COMPANION_LOCATION_LINE_CHANCE = 0.35;
+function pickCompanionLocationLine(state) {
+  if (!state.companions) return "";
+  const active = Object.keys(state.companions).filter(name => {
+    const status = state.companions[name];
+    return status && status !== "locked" && status !== "standby";
+  });
+  if (!active.length || Math.random() >= COMPANION_LOCATION_LINE_CHANCE) return "";
+  const name = active[Math.floor(Math.random() * active.length)];
+  const lines = COMPANION_LOCATION_LINES[name];
+  if (!lines || !lines.length) return "";
+  return lines[Math.floor(Math.random() * lines.length)];
+}
 // 2026-07-04：艾莉/阿卡以外的解鎖提示，供showCompanionPanel()顯示——COMPANIONS_REGISTRY的
 // unlockCondition是純函式判斷式，這裡只是給玩家看的人類可讀提示文字，兩者需對應但各自維護
 const COMPANION_UNLOCK_HINTS = {
@@ -2562,9 +2588,12 @@ function visitLocation(loc) {
     const anomalyPool = (useLatePool ? loc.anomalyTextPoolLate : loc.anomalyTextPool) || (loc.anomalyText ? [loc.anomalyText] : null);
     const beat = anomalyPool ? anomalyPool[Math.floor(Math.random() * anomalyPool.length)] : beats[Math.floor(Math.random() * beats.length)];
     const flavor = lootFlavorPool[Math.floor(Math.random() * lootFlavorPool.length)];
+    // 2026-07-06：遠距離(far)地點才會插入同伴遠征台詞，呼應「遠征高Tier地點」的原始需求
+    const companionLine = loc.distance === "far" ? pickCompanionLocationLine(state) : "";
+    const companionLineText = companionLine ? `\n\n${companionLine}` : "";
     renderText(`你在${loc.icon}${loc.name}：${beat}
 
-${flavor}${effectText}${travelText}${locModifierFlavor}`, { kind: "event" });
+${flavor}${effectText}${travelText}${locModifierFlavor}${companionLineText}`, { kind: "event" });
     renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
   });
 }
