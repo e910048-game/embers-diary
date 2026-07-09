@@ -763,13 +763,16 @@
     { tier: 5, name: "起源裂隙", flag: "tier5_liberated", bossEnemyId: "enemy_cyborg_nemesis", extraTier: 5, reward: { equipment_pool: ["aero_dagger"] }, psychicNote: "空間本身開始扭曲，理智在這裡幾乎失去意義——這裡，才是一切靈能暴動真正的起源" },
   ];
 
-  // 依bloodMoonWins回傳本次應插旗的Tier區（若該Tier已插旗或bloodMoonWins>TIER_ZONES.length則回傳null）
+  // 回傳TIER_ZONES裡「第一個還沒插旗」的區（全部插旗過則回傳null）。
+  // 2026-07-06修正：原本用bloodMoonWins-1當位置索引直接查表，TIER_ZONES從4個延伸到6個後，
+  // 任何bloodMoonWins已經超過舊長度(4)的存檔會直接跳過tier4、或整個超出範圍變成null，永久卡死
+  // (詳見code review)。改成「掃過TIER_ZONES找第一個未插旗的」，不管實際血月贏過幾次、不管
+  // TIER_ZONES之後又延伸幾次，都會自動接上正確的下一區，不需要另外寫存檔搬遷程式碼。
+  // 附帶修正一個沒人發現過的舊bug：如果玩家在Tier區戰鬥裡選擇逃跑而沒有插旗成功，舊寫法會在
+  // 下次血月勝利時直接跳到下一區(永久錯過這區)，新寫法則會重新提供這個還沒完成的區。
   function getTierZoneForBloodMoonWin(state) {
-    const idx = (state.bloodMoonWins || 0) - 1;
-    if (idx < 0 || idx >= TIER_ZONES.length) return null;
-    const zone = TIER_ZONES[idx];
-    if (state.flags[zone.flag]) return null;
-    return zone;
+    if ((state.bloodMoonWins || 0) < 1) return null;
+    return TIER_ZONES.find(z => !state.flags[z.flag]) || null;
   }
 
   // 無限模式後期內容(2026-07-05，見規格文件/無限模式後期內容_設計規格.md)：TIER_ZONES全數插旗後，

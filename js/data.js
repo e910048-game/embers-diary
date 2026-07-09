@@ -16,6 +16,21 @@ function countPlacedFurnitureInData(state) {
   }
   return count;
 }
+// 同上理由就地複製：判斷某裝備欄位目前是否裝著指定baseItemId的道具。
+// state.equipment.X存的可能是原始itemId(一般品質)，也可能是"inst_xxxx"實例參考(稀有以上，
+// 鍛造/詞綴會產生實例)，不能直接用state.equipment.X === itemId比對，否則稀有版裝備會被誤判成
+// 「沒裝備」(見code review)。這裡只需要「是否裝著這個底板道具」，不需要logic.js的getEquipRef()
+// 回傳的完整屬性/詞綴，故用state.weaponInstances直接查baseItemId即可
+function isEquippedInData(state, slot, itemId) {
+  const ref = state.equipment && state.equipment[slot];
+  if (!ref) return false;
+  if (ref === itemId) return true;
+  if (typeof ref === "string" && ref.startsWith("inst_") && state.weaponInstances) {
+    const inst = state.weaponInstances.find(i => i.id === ref);
+    return !!(inst && inst.baseItemId === itemId);
+  }
+  return false;
+}
 
 const ITEMS = {
   // 武器
@@ -1498,7 +1513,7 @@ const EVENTS = [
       },
       {
         label: "裝備澄澈石英眼眸",
-        condition: (state) => state.equipment && state.equipment.accessory === "mind_eye",
+        condition: (state) => isEquippedInData(state, "accessory", "mind_eye"),
         effect: { embers: 20 },
         resultText: "透過石英眼眸，你看穿了幻覺的本質——只是粉塵與回憶的殘影。你在廢墟中順手撿到一些晶燼。"
       }
@@ -2171,7 +2186,7 @@ const EVENTS = [
         }
       },
       { label: "假裝沒看見，蒙頭睡覺", effect: { san: -2 }, resultText: "你把毯子一路拉到頭頂，告訴自己那只是錯覺，但那道影子的殘像卻在腦海裡揮之不去。" },
-      { label: "透過石英眼眸看穿真相", condition: (state) => state.equipment && state.equipment.accessory === "mind_eye", resultText: "透過石英眼眸，那道影子瞬間顯出原形——只是掛鉤上舊外套投下的普通輪廓。你毫無波瀾地翻身睡去。" }
+      { label: "透過石英眼眸看穿真相", condition: (state) => isEquippedInData(state, "accessory", "mind_eye"), resultText: "透過石英眼眸，那道影子瞬間顯出原形——只是掛鉤上舊外套投下的普通輪廓。你毫無波瀾地翻身睡去。" }
     ]
   },
   {

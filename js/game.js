@@ -273,7 +273,7 @@ function formatEffect(effect) {
   }
   if (effect.embers) parts.push(`🔥${effect.embers > 0 ? "+" : ""}${effect.embers}`);
   if (effect.skillPoint) parts.push(`⭐+${effect.skillPoint}`);
-    if (effect.san) parts.push(`🧠SAN已恢復滿值`);
+  if (effect.san) parts.push(effect.san >= 900 ? `🧠SAN已恢復滿值` : `🧠SAN${effect.san > 0 ? "+" : ""}${effect.san}`);
   if (effect.exp) parts.push(`✨經驗+${effect.exp}`);
   if (effect.furniture) {
     for (const itemId of effect.furniture) {
@@ -1186,6 +1186,7 @@ function showPenActionsPanel(penId) {
       const result = feedAnimal(state, penId);
       if (result.ok) {
         state.questFlags.repeatPenCareCount = (state.questFlags.repeatPenCareCount || 0) + 1; // 任務系統：side_repeat_pen計數(2026-07-06)
+        runQuestCheck();
         saveGame();
       }
       renderStatusBar();
@@ -1200,6 +1201,7 @@ function showPenActionsPanel(penId) {
       const result = petAnimal(state, penId);
       if (result.ok) {
         state.questFlags.repeatPenCareCount = (state.questFlags.repeatPenCareCount || 0) + 1; // 任務系統：side_repeat_pen計數(2026-07-06)
+        runQuestCheck();
         saveGame();
       }
       renderPenScene();

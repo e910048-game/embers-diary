@@ -602,7 +602,7 @@ test("LOCATIONS: loc_sunken_subway具備unlockFlag=bloodmoon_breach_1（V2.0提�
   assert.strictEqual(loc.unlockFlag, "bloodmoon_breach_1");
 });
 
-test("getTierZoneForBloodMoonWin: 依bloodMoonWins依序回傳Tier0~5，已插旗者不重複，超過TIER_ZONES.length次回傳null", () => {
+test("getTierZoneForBloodMoonWin: 掃描TIER_ZONES回傳第一個未插旗的區，bloodMoonWins=0時回傳null，全部插旗後回傳null", () => {
   const s = L.defaultState();
   assert.strictEqual(L.getTierZoneForBloodMoonWin(s), null); // bloodMoonWins=0
 
@@ -611,16 +611,26 @@ test("getTierZoneForBloodMoonWin: 依bloodMoonWins依序回傳Tier0~5，已插�
   assert.strictEqual(zone.tier, 0);
   assert.strictEqual(zone.flag, "tier0_liberated");
 
+  // 插旗後，即使bloodMoonWins沒有增加，下一次呼叫也會拿到下一個未插旗的區(而非null)——
+  // 這是2026-07-06修正後的新語意：只看「哪個區還沒插旗」，不看bloodMoonWins本身的數值
   s.flags[zone.flag] = true;
-  assert.strictEqual(L.getTierZoneForBloodMoonWin(s), null); // 已插旗
-
-  s.bloodMoonWins = L.TIER_ZONES.length; // 最後一區(2026-07-06延伸後為6)
   zone = L.getTierZoneForBloodMoonWin(s);
-  assert.strictEqual(zone.tier, L.TIER_ZONES.length - 1);
-  assert.strictEqual(zone.flag, `tier${L.TIER_ZONES.length - 1}_liberated`);
+  assert.strictEqual(zone.tier, 1);
+  assert.strictEqual(zone.flag, "tier1_liberated");
 
-  s.bloodMoonWins = L.TIER_ZONES.length + 1;
+  // 把所有區都插旗後，不論bloodMoonWins多大都回傳null
+  for (const z of L.TIER_ZONES) s.flags[z.flag] = true;
+  s.bloodMoonWins = L.TIER_ZONES.length + 5;
   assert.strictEqual(L.getTierZoneForBloodMoonWin(s), null);
+});
+
+test("getTierZoneForBloodMoonWin: 舊存檔回歸測試——TIER_ZONES從4區延伸到6區後，bloodMoonWins=6且僅tier0~3插旗的舊存檔應接上tier4而非被跳過或永久卡死(code review發現的bug)", () => {
+  const s = L.defaultState();
+  s.bloodMoonWins = 6; // 模擬延伸前就已經打到第6次血月的舊存檔
+  for (let i = 0; i < 4; i++) s.flags[`tier${i}_liberated`] = true; // 延伸前僅有的4區都已插旗
+  const zone = L.getTierZoneForBloodMoonWin(s);
+  assert.strictEqual(zone.tier, 4);
+  assert.strictEqual(zone.flag, "tier4_liberated");
 });
 
 test("depositToFridge: 可附帶note便條，withdrawFromFridge取走全部物資並回復SAN+30且清空便條", () => {
