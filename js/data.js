@@ -16,20 +16,24 @@ function countPlacedFurnitureInData(state) {
   }
   return count;
 }
-// 同上理由就地複製：判斷某裝備欄位目前是否裝著指定baseItemId的道具。
-// state.equipment.X存的可能是原始itemId(一般品質)，也可能是"inst_xxxx"實例參考(稀有以上，
-// 鍛造/詞綴會產生實例)，不能直接用state.equipment.X === itemId比對，否則稀有版裝備會被誤判成
-// 「沒裝備」(見code review)。這裡只需要「是否裝著這個底板道具」，不需要logic.js的getEquipRef()
-// 回傳的完整屬性/詞綴，故用state.weaponInstances直接查baseItemId即可
-function isEquippedInData(state, slot, itemId) {
+// 同上理由就地複製：解析裝備欄位目前裝著的ITEMS定義(含rarity/factionTag等完整屬性)。
+// state.equipment.X存的可能是原始itemId(一般/不常見品質)，也可能是"inst_xxxx"實例參考(稀有以上，
+// 鍛造/詞綴會產生實例)，不能直接用ITEMS[state.equipment.X]查表，否則稀有以上裝備會查到undefined
+// (見code review：ach_legendary_equip/ach_full_factions都曾經因此誤判)。不需要logic.js的getEquipRef()
+// 回傳的完整屬性/詞綴細節，只需要底板道具的ITEMS定義即可
+function resolveEquippedItemInData(state, slot) {
   const ref = state.equipment && state.equipment[slot];
-  if (!ref) return false;
-  if (ref === itemId) return true;
+  if (!ref) return null;
   if (typeof ref === "string" && ref.startsWith("inst_") && state.weaponInstances) {
     const inst = state.weaponInstances.find(i => i.id === ref);
-    return !!(inst && inst.baseItemId === itemId);
+    return inst ? ITEMS[inst.baseItemId] : null;
   }
-  return false;
+  return ITEMS[ref] || null;
+}
+// 判斷某裝備欄位目前是否裝著指定baseItemId的道具，基於resolveEquippedItemInData
+function isEquippedInData(state, slot, itemId) {
+  const item = resolveEquippedItemInData(state, slot);
+  return !!(item && item.id === itemId);
 }
 // 同伴劇情線共用判斷：18個evt_arc_*(6位同伴各3階)+6個evt_epilogue_*事件的condition都要判斷
 // 「該同伴是否已招募」跟「距上一階完成flag是否已過N天」，原本18處各自重複同一段boilerplate，
@@ -2684,9 +2688,12 @@ const ACHIEVEMENTS = {
   ach_legendary_equip: {
     id: "ach_legendary_equip", category: "combat",
     title: "傳說在身", desc: "裝備過一件傳說（legendary）等級裝備。",
+    // 2026-07-06修正：legendary裝備必定被實例化成inst_xxxx(見instantiateEquipment)，原本直接
+    // ITEMS[state.equipment[slot]]查表永遠查到undefined，導致這個成就在正常遊戲流程下完全無法達成
+    // (見code review)。改用resolveEquippedItemInData()正確解析實例參考
     condition: (state) => ["weapon", "armor", "accessory"].some(slot => {
-      const id = state.equipment[slot];
-      return id && ITEMS[id] && ITEMS[id].rarity === "legendary";
+      const item = resolveEquippedItemInData(state, slot);
+      return item && item.rarity === "legendary";
     }),
     reward: { exp: 25 }, hidden: false,
   },
@@ -2719,15 +2726,21 @@ const ACHIEVEMENTS = {
   ach_wedding_ring: {
     id: "ach_wedding_ring", category: "collect",
     title: "至死不渝", desc: "取得並裝備婚戒。",
-    condition: (state) => !!(state.equipment.accessory === "wedding_ring"),
+    // 2026-07-06修正：wedding_ring是epic稀有度，會被實例化成inst_xxxx，原本字面比對
+    // state.equipment.accessory === "wedding_ring"永遠是false，這個成就在正常遊戲流程下
+    // 完全無法達成(見code review)。改用isEquippedInData()正確解析實例參考
+    condition: (state) => isEquippedInData(state, "accessory", "wedding_ring"),
     reward: { embers: 20 }, hidden: false,
   },
   ach_full_factions: {
     id: "ach_full_factions", category: "collect",
     title: "五行宗師", desc: "同時裝備5大派系裝備中的3個不同派系（武器/護甲/飾品三槽位）。",
+    // 2026-07-06修正：原本ITEMS[state.equipment[slot]]查表對稀有以上裝備(inst_xxxx)永遠查到
+    // undefined，玩家只要三槽位裡有任一件非common/uncommon裝備，就可能被低估派系數量甚至誤判
+    // 未達成(見code review)。改用resolveEquippedItemInData()正確解析實例參考
     condition: (state) => new Set(["weapon", "armor", "accessory"].map(slot => {
-      const id = state.equipment[slot];
-      return id && ITEMS[id] && ITEMS[id].factionTag;
+      const item = resolveEquippedItemInData(state, slot);
+      return item && item.factionTag;
     }).filter(Boolean)).size >= 3,
     reward: { exp: 20 }, hidden: false,
   },

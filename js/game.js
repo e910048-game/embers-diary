@@ -48,7 +48,10 @@ function sysLogHtml() {
 function saveGame() {
   localStorage.setItem(SAVE_KEY, JSON.stringify(state));
 }
-const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "attributes", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress", "farm", "pens", "processing", "yardDecorSlots"];
+// 2026-07-06補上currency(見code review)：defaultState()裡currency:{embers:150}目前只有單一子欄位，
+// 漏列在這裡暫時無害，但只要之後currency比照resources/resourceCaps那樣新增第二個子欄位，
+// 舊存檔讀進來就會被saved.currency整包覆蓋掉新欄位——先補進清單防患未然
+const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "attributes", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress", "farm", "pens", "processing", "yardDecorSlots", "currency"];
 // v167相容：v166以前的存檔把table/floor/rug類家具放在baseSlots的這些鍵裡，free-form改版後這些鍵已不再被
 // 任何程式碼讀取——若不搬移，舊存檔讀進來的家具會「卡在baseSlots裡但形同消失」（不在room顯示、不算舒適度、
 // 也回不去背包）。讀檔時偵測到就搬進placedFurniture，搬完即從baseSlots刪除，只需做這一次
@@ -3350,6 +3353,7 @@ function showInventory() {
         disabled: limitReached,
         onClick: () => {
           useItem(state, i.itemId);
+          runQuestCheck();
           saveGame();
           showInventory();
         }
@@ -3362,6 +3366,7 @@ function showInventory() {
         variant: "primary",
         onClick: () => {
           state.equipment.weapon = i.itemId;
+          runQuestCheck();
           saveGame();
           showInventory();
         }
@@ -3374,6 +3379,7 @@ function showInventory() {
         variant: "primary",
         onClick: () => {
           const result = placeFurniture(state, i.itemId);
+          runQuestCheck();
           saveGame();
 const replacedName = result.replaced && ITEMS[result.replaced] ? ITEMS[result.replaced].name : null;
                     renderText(`你裝備了${item.name}`, { kind: "event" });
@@ -3391,6 +3397,7 @@ const replacedName = result.replaced && ITEMS[result.replaced] ? ITEMS[result.re
         variant: "primary",
         onClick: () => {
           state.equipment.armor = i.itemId;
+          runQuestCheck();
           saveGame();
           showInventory();
         }
@@ -3403,6 +3410,7 @@ const replacedName = result.replaced && ITEMS[result.replaced] ? ITEMS[result.re
         variant: "primary",
         onClick: () => {
           state.equipment.accessory = i.itemId;
+          runQuestCheck();
           saveGame();
           showInventory();
         }
@@ -3419,6 +3427,7 @@ const replacedName = result.replaced && ITEMS[result.replaced] ? ITEMS[result.re
       variant: "primary",
       onClick: () => {
         state.equipment[slotKey] = inst.id;
+        runQuestCheck();
         saveGame();
         showInventory();
       }

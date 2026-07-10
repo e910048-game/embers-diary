@@ -1254,6 +1254,47 @@ test("任務/成就的家具數量門檻條件：擺放table/floor/rug類家具�
   assert.strictEqual(furnishFull.condition(s2), false); // 僅2件，未達4件
 });
 
+// 2026-07-06回歸測試：ach_wedding_ring/ach_legendary_equip/ach_full_factions原本用字面比對或
+// ITEMS[state.equipment[slot]]直接查表，稀有以上裝備(wedding_ring=epic、全部4件legendary裝備)
+// 實際存的是inst_xxxx實例參考，查不到對應ITEMS定義，導致這3個成就在正常遊戲流程下完全無法達成
+// 或被低估(見code review)。已改用isEquippedInData()/resolveEquippedItemInData()正確解析
+test("ach_wedding_ring/ach_legendary_equip/ach_full_factions：裝備稀有以上道具(inst_xxxx實例參考)時條件仍能正確判斷", () => {
+  const s = L.defaultState();
+  const weddingRing = L.ACHIEVEMENTS.ach_wedding_ring;
+  const legendaryEquip = L.ACHIEVEMENTS.ach_legendary_equip;
+  const fullFactions = L.ACHIEVEMENTS.ach_full_factions;
+
+  assert.strictEqual(weddingRing.condition(s), false);
+  assert.strictEqual(legendaryEquip.condition(s), false);
+  assert.strictEqual(fullFactions.condition(s), false);
+
+  // wedding_ring是epic稀有度，一定會被實例化
+  const ringInstId = L.instantiateEquipment(s, "wedding_ring", () => 0.99);
+  s.equipment.accessory = ringInstId;
+  assert.ok(ringInstId.startsWith("inst_")); // 確認測試前提：真的被實例化了
+  assert.strictEqual(weddingRing.condition(s), true);
+
+  // mind_greatsword是legendary武器，一定會被實例化
+  const swordInstId = L.instantiateEquipment(s, "mind_greatsword", () => 0.5);
+  s.equipment.weapon = swordInstId;
+  assert.ok(swordInstId.startsWith("inst_"));
+  assert.strictEqual(legendaryEquip.condition(s), true);
+
+  // 三槽位分別裝mind(accessory,wedding_ring其實factionTag是none，換一件有factionTag的)/mind(weapon)/gaia(armor)
+  // 湊出3個不同派系，且weapon/armor都是稀有以上會被實例化
+  const armorInstId = L.instantiateEquipment(s, "gaia_skin", () => 0.5); // gaia, legendary
+  s.equipment.armor = armorInstId;
+  const eyeInstId = L.instantiateEquipment(s, "mind_eye", () => 0.99); // mind, rare
+  s.equipment.accessory = eyeInstId;
+  assert.ok(armorInstId.startsWith("inst_") && eyeInstId.startsWith("inst_"));
+  // weapon=mind, armor=gaia, accessory=mind -> 只有2個不同派系，尚未達標
+  assert.strictEqual(fullFactions.condition(s), false);
+  const cyberInstId = L.instantiateEquipment(s, "cyber_drone_arm", () => 0.5); // cyber, legendary，換掉weapon
+  s.equipment.weapon = cyberInstId;
+  // weapon=cyber, armor=gaia, accessory=mind -> 3個不同派系
+  assert.strictEqual(fullFactions.condition(s), true);
+});
+
 test("getEffectiveAttribute: 基礎值+等級成長(每4級+1)+飾品加成，上限10", () => {
   const s = L.defaultState();
   assert.strictEqual(L.getEffectiveAttribute(s, "strength"), 3);

@@ -2111,7 +2111,6 @@
   }
   function gachaCost(state) {
     let cost = GACHA_COST.embers;
-    if (state.merchantDiscount) cost = Math.round(cost * (1 - state.merchantDiscount));
     const discount = getAccessoryEffect(state, "merchantDiscount"); // 27.1：黑市VIP徽章-10%
     if (discount) cost = Math.round(cost * (1 - discount));
     return cost;

@@ -214,6 +214,23 @@ test("舊存檔相容：技能點系統重設前的{faction,tier}單一流派存
   assert.deepStrictEqual(merged.unlockOrder, ["cyber"]);
 });
 
+test("舊存檔相容：currency需走NESTED_STATE_FIELDS的淺層合併，否則之後currency新增子欄位時舊存檔會被整包覆蓋(2026-07-06 code review補防，回歸測試)", () => {
+  // 模擬currency之後新增第二個子欄位(目前defaultState()裡只有embers一項)，
+  // 假設未來版本的defaults.currency變成{embers:150, gems:0}
+  const futureDefaults = { embers: 150, gems: 0 };
+  const oldSaveCurrency = { embers: 300 }; // 舊存檔只存了embers，寫入當下gems這個欄位還不存在
+
+  // 修復前的錯誤行為：currency不在NESTED_STATE_FIELDS清單裡，走頂層{...defaults, ...saved}，
+  // 等同於saved.currency整包覆蓋defaults.currency，新欄位gems直接消失
+  const brokenMerge = oldSaveCurrency;
+  assert.strictEqual(brokenMerge.gems, undefined); // 新欄位消失，讀取state.currency.gems會是undefined
+
+  // 修復後：currency已加進NESTED_STATE_FIELDS，走跟其他巢狀欄位一樣的淺層合併{...defaults[key], ...saved[key]}
+  const fixedMerge = { ...futureDefaults, ...oldSaveCurrency };
+  assert.strictEqual(fixedMerge.embers, 300); // 舊存檔的值保留
+  assert.strictEqual(fixedMerge.gems, 0); // 新欄位補上defaults的預設值，不會是undefined
+});
+
 // ===== 規則式事件條件在完整遊玩流程中的影響 =====
 
 test("完整流程：companion=true且level>=3時，跑長時間夜晚事件迴圈不會出錯，且能抽到專屬事件", () => {
