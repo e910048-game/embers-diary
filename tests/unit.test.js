@@ -1496,6 +1496,18 @@ test("覺醒鏈：nextAwakeningAvailable/chooseNextFaction/allUnlockedFactionsMa
   assert.strictEqual(L.spendSkillPoint(s, "gaia"), false); // 全部封頂，花點失敗
 });
 
+test("getBossFactionCounterMult：主流派已解鎖任一階(tier>=1)時對enemy_cyborg_nemesis傷害乘數0.8，回歸測試——技能點系統重設(2026-07-05)後這裡忘記同步改，state.skills.tier(單數)舊欄位讀不到值，導致此效果曾經永久失效(code review期間發現)", () => {
+  const s = L.defaultState();
+  const boss = { id: "enemy_cyborg_nemesis" };
+  const notBoss = { id: "enemy_walker_brute" };
+  assert.strictEqual(L.getBossFactionCounterMult(s, boss), 1); // 尚未選主流派
+  L.chooseFaction(s, "gaia");
+  assert.strictEqual(L.getBossFactionCounterMult(s, boss), 1); // 已選主流派但tier仍是0
+  s.skills.tiers.gaia = 1;
+  assert.strictEqual(L.getBossFactionCounterMult(s, boss), 0.8); // 主流派T1已解鎖
+  assert.strictEqual(L.getBossFactionCounterMult(s, notBoss), 1); // 非指揮官不受影響
+});
+
 // #21-1：CI剛性斷言 - 所有ITEMS effects與PREFIX_POOL effect中的比例型數值須介於0~1
 test("CI斷言：ITEMS/PREFIX_POOL中的比例型加成(dodgeBonus/lifestealBonus/skillBonusRatio等)須介於0~1", () => {
   const ratioKeys = ["dodgeBonus", "lifestealBonus", "lifestealRatio", "critBonus", "skillBonusRatio", "ignoreDefRatio", "noiseDampRatio", "noiseGenRatio"];

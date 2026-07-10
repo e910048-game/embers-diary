@@ -1042,9 +1042,12 @@
   }
 
   // #20-6：終局Boss流派對沖——enemy_cyborg_nemesis對玩家已鎖定的主流派(tier>=1)傷害抵抗20%（與其他傷害乘數採乘法疊加，35.4）
+  // 2026-07-06修正：技能點系統重設(2026-07-05)把單一{faction,tier}改成{faction,tiers,unlockOrder}後，
+  // 這裡忘記同步改，state.skills.tier(單數)舊欄位永遠是undefined，導致這個減傷效果自2026-07-05後
+  // 實際上一直失效(見code review期間順手發現、已用spawn_task記錄)。改用factionTier()讀state.skills.tiers[faction]
   function getBossFactionCounterMult(state, enemy) {
     if (!enemy || enemy.id !== "enemy_cyborg_nemesis") return 1;
-    return (state.skills && state.skills.faction && state.skills.tier >= 1) ? 0.8 : 1;
+    return (state.skills && state.skills.faction && factionTier(state, state.skills.faction) >= 1) ? 0.8 : 1;
   }
 
   // 25.3 心靈晶格T4：戰鬥受到傷害-25%；27.1：深淵黑血外皮+15%（兩者加總）
