@@ -3702,6 +3702,7 @@ function showShopGacha() {
       const itemId = rollGacha();
       addItemToInventory(itemId, 1);
       const item = ITEMS[itemId];
+      runQuestCheck(); // 2026-07-06：side_collect_factions等直接讀state.inventory的支線，抽到派系裝備當下就該判定
       saveGame();
       renderText(`<div class="subtitle">🧪 A.消耗品｜晶燼：${state.currency.embers}</div>恭喜獲得：${item.icon}${item.name}（${item.rarity}）`);
       renderOptions([...shopTabOptions("A"), { label: "返回", variant: "ghost", onClick: renderMain }]);

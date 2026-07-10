@@ -1295,6 +1295,26 @@ test("ach_wedding_ring/ach_legendary_equip/ach_full_factions：裝備稀有以�
   assert.strictEqual(fullFactions.condition(s), true);
 });
 
+// 2026-07-06回歸測試：side_collect_factions直接讀state.inventory(不像ach_full_factions只看三個裝備欄位)，
+// 只要「曾經擁有過」即可，不需要裝備上身。抽卡(rollGacha)是唯一會把裝備直接塞進inventory而不強制裝備的
+// 途徑，原本showShopGacha()的抽卡onClick沒呼叫runQuestCheck()，導致抽到湊滿5派系的當下不會立刻判定
+// 完成，要等玩家離開商店做了其他動作才會補判(見code review)——這裡驗證的是condition本身邏輯正確，
+// UI層呼叫runQuestCheck()的時機已在game.js補上，不在此檔案的測試範圍內(DOM依賴)
+test("side_collect_factions：只需inventory裡曾經擁有過5大派系裝備各一件(不需裝備上身)，模擬抽卡直接塞進背包也能判定", () => {
+  const s = L.defaultState();
+  const collectFactions = L.QUESTS.side_collect_factions;
+  assert.strictEqual(collectFactions.condition(s), false);
+
+  const gachaDrops = ["gaia_whip", "cyber_hammer", "ocean_pistol", "aero_crossbow"]; // 先湊4個派系
+  gachaDrops.forEach(id => {
+    s.inventory.push({ itemId: id, qty: 1 }); // 模擬addItemToInventory：原始itemId直接進背包，不強制裝備
+  });
+  assert.strictEqual(collectFactions.condition(s), false); // 還差mind
+
+  s.inventory.push({ itemId: "mind_fork", qty: 1 });
+  assert.strictEqual(collectFactions.condition(s), true); // 5派系全湊齊，完全沒有任何一件裝備上身
+});
+
 test("getEffectiveAttribute: 基礎值+等級成長(每4級+1)+飾品加成，上限10", () => {
   const s = L.defaultState();
   assert.strictEqual(L.getEffectiveAttribute(s, "strength"), 3);
