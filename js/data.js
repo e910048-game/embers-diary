@@ -31,6 +31,20 @@ function isEquippedInData(state, slot, itemId) {
   }
   return false;
 }
+// 同伴劇情線共用判斷：18個evt_arc_*(6位同伴各3階)+6個evt_epilogue_*事件的condition都要判斷
+// 「該同伴是否已招募」跟「距上一階完成flag是否已過N天」，原本18處各自重複同一段boilerplate，
+// 收斂成共用函式(見code review)
+function companionRecruited(state, name) {
+  return !!(state.companions && state.companions[name] && state.companions[name] !== "locked");
+}
+function daysSinceFlagAtLeast(state, flag, days) {
+  return !!(state.flags && state.flags[flag] && state.day - state.flags[flag] >= days);
+}
+// repeatable:"manual"+targetRange的程序化支線委託共用判斷：q.counterField目前累計值是否達到
+// q.id+"_target"(每輪重抽的動態目標，見checkQuestsAndAchievements)，尚未重抽過(第一輪)時退回q.counterTarget
+function repeatQuestReady(state, q) {
+  return (state.questFlags[q.counterField] || 0) >= (state.questFlags[q.id + "_target"] || q.counterTarget);
+}
 
 const ITEMS = {
   // 武器
@@ -144,7 +158,7 @@ const ITEMS = {
   ocean_jacket: { id: "ocean_jacket", name: "重水防護夾克", type: "armor", icon: "🧥", stats: { def: 2 }, rarity: "rare", factionTag: "ocean", desc: "閃避率+5%", effects: { dodgeBonus: 0.05 } },
   aero_cloak: { id: "aero_cloak", name: "氣流避彈防風衣", type: "armor", icon: "🧥", stats: { def: 1 }, rarity: "rare", factionTag: "aero", desc: "遠程/爆炸傷害-20%（未接入傷害類型判定，文案保留）" },
   cyber_suit: { id: "cyber_suit", name: "金屬活化液壓甲", type: "armor", icon: "🦾", stats: { def: 5 }, rarity: "epic", factionTag: "cyber", desc: "20%機率將受傷轉為護盾（27.4 shield）" },
-  mind_robe: { id: "mind_robe", name: "晶格折射風衣", type: "armor", icon: "👘", stats: { def: 4 }, rarity: "epic", factionTag: "mind", desc: "SAN損失-30%（任何來源，不限戰鬥）" },
+  mind_robe: { id: "mind_robe", name: "晶格折射風衣", type: "armor", icon: "👘", stats: { def: 4 }, rarity: "epic", factionTag: "mind", desc: "SAN損失-30%（任何來源，不限戰鬥）", effects: { sanLossReductionBonus: 0.3 } },
   gaia_skin: { id: "gaia_skin", name: "深淵黑血外皮", type: "armor", icon: "🩸", stats: { def: 7 }, rarity: "legendary", factionTag: "gaia", desc: "物理傷害減免+15%，但探索每回合-1SAN", effects: { battleDamageReductionBonus: 0.15 } },
   // 飾品(8，不加攻防，僅effects/文案)
   aero_pouch: { id: "aero_pouch", name: "大氣隨身風向儀", type: "accessory", icon: "🎒", rarity: "common", factionTag: "aero", desc: "陷阱事件觸發機率-30%" },
@@ -1621,8 +1635,7 @@ const EVENTS = [
   {
     id: "evt_arc_laozhou_1", title: "深夜的工作台",
     minDay: 20, maxDay: null, phase: ["night"], weight: 6,
-    condition: (state) => !!(state.companions && state.companions["老周"] && state.companions["老周"] !== "locked"
-      && !(state.flags && state.flags["老周_arc1"])),
+    condition: (state) => companionRecruited(state, "老周") && !(state.flags && state.flags["老周_arc1"]),
     text: "深夜，你路過老周的工作台，發現他還沒睡——正低頭擺弄著一台老舊的收音機，工具散了一桌。見你靠近，他手忙腳亂地想把東西藏起來，隨口說著「隨便修修，打發時間」，語氣卻有些不自然。",
     options: [
       { label: "沒有多問，先回去休息", effect: { setFlag: "老周_arc1" }, resultText: "你識趣地沒有追問，只是那台缺了個零件的收音機，看起來莫名眼熟——你一時想不起在哪見過。" }
@@ -1631,8 +1644,7 @@ const EVENTS = [
   {
     id: "evt_arc_laozhou_2", title: "缺角的收音機",
     minDay: 1, maxDay: null, phase: ["night"], weight: 6,
-    condition: (state) => !!(state.flags && state.flags["老周_arc1"] && state.day - state.flags["老周_arc1"] >= 10
-      && !state.flags["老周_arc2"]),
+    condition: (state) => daysSinceFlagAtLeast(state, "老周_arc1", 10) && !(state.flags && state.flags["老周_arc2"]),
     text: "你終於想起來——那台老周深夜偷偷修的收音機，跟他當初蹲在巷口修理、最後被你邀請入伙的那台報廢收音機，是同一台。你趁著他去打水，多看了兩眼，才發現機身內側刻著一行褪色的名字縮寫，不是老周自己的。",
     options: [
       { label: "問他這台收音機的來歷", effect: { setFlag: "老周_arc2" }, resultText: "老周沉默了很久，才低聲說那是他女兒的。訊號塔倒下那晚，她說要出去找爸爸最後留的頻率，就再也沒回來——這台收音機，是她留給老周唯一的東西。" }
@@ -1641,8 +1653,7 @@ const EVENTS = [
   {
     id: "evt_arc_laozhou_3", title: "沙啞的老歌",
     minDay: 1, maxDay: null, phase: ["night"], weight: 6,
-    condition: (state) => !!(state.flags && state.flags["老周_arc2"] && state.day - state.flags["老周_arc2"] >= 10
-      && !state.flags["老周_arc_done"]),
+    condition: (state) => daysSinceFlagAtLeast(state, "老周_arc2", 10) && !(state.flags && state.flags["老周_arc_done"]),
     text: "老周喊住你，說收音機終於修好了。他把它擺在工作台正中央，轉開開關——先是一陣刺耳的雜訊，接著，一段沙啞卻辨得出旋律的老歌斷斷續續地流洩出來。他的眼眶有些發紅，卻笑著說「她以前最愛聽這首」。",
     options: [
       { label: "陪他把這首歌聽完", effect: { setFlag: "老周_arc_done" }, resultText: "你在他身邊坐下，什麼都沒說，只是陪他把這首斷續的老歌聽到最後。老周輕輕拍了拍收音機，像是道別，又像是終於放下。「往後裝備維修，算你優惠一點。」他嗓音有些啞，卻少了平時的滄桑。" }
@@ -1651,8 +1662,7 @@ const EVENTS = [
   {
     id: "evt_arc_leien_1", title: "異常緊繃的守夜",
     minDay: 20, maxDay: null, phase: ["night"], weight: 6,
-    condition: (state) => !!(state.companions && state.companions["雷恩"] && state.companions["雷恩"] !== "locked"
-      && !(state.flags && state.flags["雷恩_arc1"])),
+    condition: (state) => companionRecruited(state, "雷恩") && !(state.flags && state.flags["雷恩_arc1"]),
     text: "輪到雷恩守夜的那晚，你發現他比平常更加緊繃——聽到一點風吹草動就猛地轉身，握著武器的手指節發白。你問他怎麼了，他只是搖搖頭，說「習慣了，多留意總沒有壞處」，語氣裡卻藏著一絲你從沒見過的不安。",
     options: [
       { label: "不勉強追問，先讓他休息", effect: { setFlag: "雷恩_arc1" }, resultText: "你沒有繼續追問，只是那份反常的警覺，讓你開始留意起雷恩過去甚少提起的事。" }
@@ -1661,8 +1671,7 @@ const EVENTS = [
   {
     id: "evt_arc_leien_2", title: "沒能守住的那次",
     minDay: 1, maxDay: null, phase: ["night"], weight: 6,
-    condition: (state) => !!(state.flags && state.flags["雷恩_arc1"] && state.day - state.flags["雷恩_arc1"] >= 10
-      && !state.flags["雷恩_arc2"]),
+    condition: (state) => daysSinceFlagAtLeast(state, "雷恩_arc1", 10) && !(state.flags && state.flags["雷恩_arc2"]),
     text: "一次閒聊時，雷恩難得鬆口，說起自己曾經也是某個小據點的守衛——直到一個平靜的夜裡，他判斷失誤，讓一群掠奪者摸了進來。「我沒能守住任何人。」他盯著手裡的武器，聲音很輕，「從那之後，我不敢再掉以輕心。」",
     options: [
       { label: "告訴他，這裡不一樣", effect: { setFlag: "雷恩_arc2" }, resultText: "雷恩沒有回應，只是深深看了你一眼，像是把這句話收進了心裡某個角落。" }
@@ -1671,8 +1680,7 @@ const EVENTS = [
   {
     id: "evt_arc_leien_3", title: "卸下防備的血月夜",
     minDay: 1, maxDay: null, phase: ["night"], weight: 6,
-    condition: (state) => !!(state.flags && state.flags["雷恩_arc2"] && state.day - state.flags["雷恩_arc2"] >= 10
-      && !state.flags["雷恩_arc_done"]),
+    condition: (state) => daysSinceFlagAtLeast(state, "雷恩_arc2", 10) && !(state.flags && state.flags["雷恩_arc_done"]),
     text: "又一個血月夜過去，據點的圍欄依然完好無損。雷恩坐在哨位上，罕見地卸下了一貫的緊繃，任由武器靠在腳邊。「這次，總算守住了。」他輕聲說，像是說給自己聽，也像是說給那個他沒能守住的人聽。",
     options: [
       { label: "在他身邊坐下", effect: { setFlag: "雷恩_arc_done" }, resultText: "你在他身邊坐下，一起望著漸漸亮起的天色。雷恩難得露出一絲近乎輕鬆的神情：「有你在，這次守住的機率，好像又更高了一點。」" }
@@ -1681,8 +1689,7 @@ const EVENTS = [
   {
     id: "evt_arc_aili_1", title: "溫室角落的小盆栽",
     minDay: 20, maxDay: null, phase: ["day"], weight: 6,
-    condition: (state) => !!(state.companions && state.companions["艾莉"] && state.companions["艾莉"] !== "locked"
-      && !(state.flags && state.flags["艾莉_arc1"])),
+    condition: (state) => companionRecruited(state, "艾莉") && !(state.flags && state.flags["艾莉_arc1"]),
     text: "整理溫室時，你注意到角落擺著一株跟作物完全無關的小盆栽，明顯被細心呵護過——葉片修剪得整整齊齊，土壤濕度也控制得剛剛好。艾莉看見你在看，臉上閃過一絲慌張，隨口說「順手種的，別在意」。",
     options: [
       { label: "沒有追問，繼續手邊的事", effect: { setFlag: "艾莉_arc1" }, resultText: "你沒有多問，只是那盆植物明顯不屬於溫室原本的作物清單，讓你多留了個心眼。" }
@@ -1691,8 +1698,7 @@ const EVENTS = [
   {
     id: "evt_arc_aili_2", title: "帶著思念的種子",
     minDay: 1, maxDay: null, phase: ["day"], weight: 6,
-    condition: (state) => !!(state.flags && state.flags["艾莉_arc1"] && state.day - state.flags["艾莉_arc1"] >= 10
-      && !state.flags["艾莉_arc2"]),
+    condition: (state) => daysSinceFlagAtLeast(state, "艾莉_arc1", 10) && !(state.flags && state.flags["艾莉_arc2"]),
     text: "你找了個機會，隨口問起那株小盆栽的來歷。艾莉沉默了一下，才輕聲說，那是她從家裡帶出來的最後一點東西——「城市淪陷那天，我只來得及抓一把種子。種下的每一株，都像是還留著一點『家』的樣子。」",
     options: [
       { label: "靜靜聽她說完", effect: { setFlag: "艾莉_arc2" }, resultText: "你沒有說什麼安慰的話，只是靜靜聽她把話說完。艾莉抹了抹眼角，笑了笑，繼續回頭照料她的溫室。" }
@@ -1701,8 +1707,7 @@ const EVENTS = [
   {
     id: "evt_arc_aili_3", title: "終於開花",
     minDay: 1, maxDay: null, phase: ["day"], weight: 6,
-    condition: (state) => !!(state.flags && state.flags["艾莉_arc2"] && state.day - state.flags["艾莉_arc2"] >= 10
-      && !state.flags["艾莉_arc_done"]),
+    condition: (state) => daysSinceFlagAtLeast(state, "艾莉_arc2", 10) && !(state.flags && state.flags["艾莉_arc_done"]),
     text: "那株小盆栽，終於開出一朵不起眼卻鮮豔的小花。艾莉蹲在花前看了很久，才小心翼翼摘下幾顆種子，走過來遞到你手上。「分你一點——也許你的庭院，也能有個地方留住點什麼。」",
     options: [
       { label: "收下這份心意", effect: { setFlag: "艾莉_arc_done" }, resultText: "你鄭重地收下那幾顆種子。艾莉的笑容裡少了幾分小心翼翼，多了一份久違的踏實。「往後你們的休息，我會顧得更仔細一點。」" }
@@ -1711,8 +1716,7 @@ const EVENTS = [
   {
     id: "evt_arc_aka_1", title: "血月夜前的沉默",
     minDay: 20, maxDay: null, phase: ["day"], weight: 6,
-    condition: (state) => !!(state.companions && state.companions["阿卡"] && state.companions["阿卡"] !== "locked"
-      && !(state.flags && state.flags["阿卡_arc1"])),
+    condition: (state) => companionRecruited(state, "阿卡") && !(state.flags && state.flags["阿卡_arc1"]),
     text: "又一次血月將至，阿卡卻反常地異常沉默，一個人站在防禦工事前檢查了一遍又一遍，眼神飄向很遠的地方，像是想起了什麼不願觸碰的事。",
     options: [
       { label: "先不打擾他", effect: { setFlag: "阿卡_arc1" }, resultText: "你沒有出聲，只是那種近乎執著的沉默，讓你隱約察覺阿卡跟血月之間，或許藏著比你以為的更深的過去。" }
@@ -1721,8 +1725,7 @@ const EVENTS = [
   {
     id: "evt_arc_aka_2", title: "親手了結的那次",
     minDay: 1, maxDay: null, phase: ["day"], weight: 6,
-    condition: (state) => !!(state.flags && state.flags["阿卡_arc1"] && state.day - state.flags["阿卡_arc1"] >= 10
-      && !state.flags["阿卡_arc2"]),
+    condition: (state) => daysSinceFlagAtLeast(state, "阿卡_arc1", 10) && !(state.flags && state.flags["阿卡_arc2"]),
     text: "撐過那場血月後，阿卡難得主動開口，說起自己曾經有個親近的人被感染——「變成那樣之後，能做的只剩一件事。」他頓了頓，聲音很平靜，卻透著壓抑許久的沉重，「是我親手了結的。」",
     options: [
       { label: "沒有評判，只是陪著他", effect: { setFlag: "阿卡_arc2" }, resultText: "你沒有說任何評判的話，只是安靜地陪在他身邊。阿卡看了你一眼，像是鬆了口氣——這件事，他已經一個人扛了很久。" }
@@ -1731,8 +1734,7 @@ const EVENTS = [
   {
     id: "evt_arc_aka_3", title: "無需言語的理解",
     minDay: 1, maxDay: null, phase: ["night"], weight: 6,
-    condition: (state) => !!(state.flags && state.flags["阿卡_arc2"] && state.day - state.flags["阿卡_arc2"] >= 10
-      && !state.flags["阿卡_arc_done"]),
+    condition: (state) => daysSinceFlagAtLeast(state, "阿卡_arc2", 10) && !(state.flags && state.flags["阿卡_arc_done"]),
     text: "又一場血月狂潮過去，據點再次撐了下來。阿卡站在硝煙未散的防禦工事前，罕見地卸下了慣有的緊繃神情，朝你點了點頭——那個動作裡，有種無需言語就能懂的東西。",
     options: [
       { label: "回以同樣的點頭", effect: { setFlag: "阿卡_arc_done" }, resultText: "你回以同樣的點頭。從這天起，阿卡在血月夜裡的防禦部署，似乎又更沉穩了幾分。" }
@@ -1741,8 +1743,7 @@ const EVENTS = [
   {
     id: "evt_arc_xiaoyu_1", title: "帳本裡的另一頁",
     minDay: 20, maxDay: null, phase: ["day"], weight: 6,
-    condition: (state) => !!(state.companions && state.companions["小雨"] && state.companions["小雨"] !== "locked"
-      && !(state.flags && state.flags["小雨_arc1"])),
+    condition: (state) => companionRecruited(state, "小雨") && !(state.flags && state.flags["小雨_arc1"]),
     text: "你無意間瞄到小雨的帳本，除了密密麻麻的物資紀錄，角落還有一頁反覆塗改、寫著日期跟一個名字的筆跡。她發現你在看，迅速把帳本闔上，只說了句「習慣，別在意」。",
     options: [
       { label: "沒有追問", effect: { setFlag: "小雨_arc1" }, resultText: "你沒有多問，只是那個反覆出現的名字，跟其他頁面工整的物資紀錄格格不入，讓你有些好奇。" }
@@ -1751,8 +1752,7 @@ const EVENTS = [
   {
     id: "evt_arc_xiaoyu_2", title: "失散的人",
     minDay: 1, maxDay: null, phase: ["day"], weight: 6,
-    condition: (state) => !!(state.flags && state.flags["小雨_arc1"] && state.day - state.flags["小雨_arc1"] >= 10
-      && !state.flags["小雨_arc2"]),
+    condition: (state) => daysSinceFlagAtLeast(state, "小雨_arc1", 10) && !(state.flags && state.flags["小雨_arc2"]),
     text: "聊起帳本裡那個名字，小雨終於鬆口——那是她失散的家人，城市淪陷那天走散，再也沒能聯繫上。「我一直在記著各地傳回來的消息，哪怕只是隻字片語。」她的聲音很輕，「說不定哪天，能拼湊出他的下落。」",
     options: [
       { label: "答應幫她留意消息", effect: { setFlag: "小雨_arc2" }, resultText: "小雨愣了一下，隨即露出一個有些勉強卻真心的笑容。「謝謝你。」她把帳本重新收好，像是把這份牽掛，暫時交給了你一起扛。" }
@@ -1761,8 +1761,7 @@ const EVENTS = [
   {
     id: "evt_arc_xiaoyu_3", title: "得到消息",
     minDay: 1, maxDay: null, phase: ["day"], weight: 6,
-    condition: (state) => !!(state.flags && state.flags["小雨_arc2"] && state.day - state.flags["小雨_arc2"] >= 10
-      && !state.flags["小雨_arc_done"]),
+    condition: (state) => daysSinceFlagAtLeast(state, "小雨_arc2", 10) && !(state.flags && state.flags["小雨_arc_done"]),
     text: "一次探索歸來，你帶回了一則輾轉聽來的消息——關於小雨一直在找的那個人。你把消息告訴她，她盯著那張字條看了很久很久，眼眶泛紅，卻先深深吸了一口氣。",
     options: [
       { label: "把消息完整地告訴她", effect: { setFlag: "小雨_arc_done" }, resultText: "無論消息是好是壞，小雨最終還是輕輕點了頭，把那頁反覆塗改的紀錄，仔細地闔上收好。「謝謝你，陪我把這件事，做了個了結。」她的眼神，似乎也因此篤定了一些。" }
@@ -1771,8 +1770,7 @@ const EVENTS = [
   {
     id: "evt_arc_ahai_1", title: "刻意繞開的路線",
     minDay: 20, maxDay: null, phase: ["day"], weight: 6,
-    condition: (state) => !!(state.companions && state.companions["阿海"] && state.companions["阿海"] !== "locked"
-      && !(state.flags && state.flags["阿海_arc1"])),
+    condition: (state) => companionRecruited(state, "阿海") && !(state.flags && state.flags["阿海_arc1"]),
     text: "規劃遠征路線時，你發現阿海那張畫滿符號的地圖上，有一塊區域被刻意留白——沒有任何標記，甚至連危險提示都沒有。你隨口提起，他立刻收起地圖，語氣少見地生硬：「那裡，不用去。」",
     options: [
       { label: "沒有勉強他", effect: { setFlag: "阿海_arc1" }, resultText: "你沒有再多說什麼，只是那片刻意留白的地圖角落，跟阿海平時鉅細靡遺的標註方式截然不同，讓你隱約猜到那裡藏著什麼。" }
@@ -1781,8 +1779,7 @@ const EVENTS = [
   {
     id: "evt_arc_ahai_2", title: "他無法承受的事",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 6,
-    condition: (state) => !!(state.flags && state.flags["阿海_arc1"] && state.day - state.flags["阿海_arc1"] >= 10
-      && !state.flags["阿海_arc2"]),
+    condition: (state) => daysSinceFlagAtLeast(state, "阿海_arc1", 10) && !(state.flags && state.flags["阿海_arc2"]),
     text: "一次夜談，阿海終於說起那片留白的地方——深埋地下避難所，曾經是他帶隊撤離的地點。「我以為那裡最安全。」他的聲音很低，「結果，是我這輩子帶過最多人進去，卻帶最少人出來的一次。」",
     options: [
       { label: "沒有催促，只是聽他說完", effect: { setFlag: "阿海_arc2" }, resultText: "你沒有催促，只是靜靜聽他把那段記憶說完。阿海苦笑了一下，把地圖上那片留白，第一次補上了一個小小的記號。" }
@@ -1791,8 +1788,7 @@ const EVENTS = [
   {
     id: "evt_arc_ahai_3", title: "一起去面對",
     minDay: 1, maxDay: null, phase: ["day"], weight: 6,
-    condition: (state) => !!(state.flags && state.flags["阿海_arc2"] && state.day - state.flags["阿海_arc2"] >= 10
-      && !state.flags["阿海_arc_done"]),
+    condition: (state) => daysSinceFlagAtLeast(state, "阿海_arc2", 10) && !(state.flags && state.flags["阿海_arc_done"]),
     text: "阿海主動提起，想再去一次那座深埋地下避難所——不是為了忘記，而是想親眼確認，那裡如今變成了什麼樣子。「這次，陪我一起去嗎？」",
     options: [
       { label: "陪他走這一趟", effect: { setFlag: "阿海_arc_done" }, resultText: "你們並肩走進那座塵封已久的地下避難所。斷裂的管線、鏽蝕的門，一如阿海記憶中那樣沉重——但這一次，他不是一個人面對。走出來時，他罕見地舒了一口氣：「往後帶你去哪，我都能更放心一點。」" }
@@ -1805,8 +1801,7 @@ const EVENTS = [
   {
     id: "evt_epilogue_laozhou", title: "工作台旁的哼唱",
     minDay: 1, maxDay: null, phase: ["day", "night"], weight: 5,
-    condition: (state) => !!(state.companions && state.companions["老周"] && state.companions["老周"] !== "locked"
-      && state.flags && state.flags["老周_arc_done"]),
+    condition: (state) => companionRecruited(state, "老周") && !!(state.flags && state.flags["老周_arc_done"]),
     text: "你路過老周的工作台，他一邊修理著手裡的裝備，一邊跟著收音機裡放的老歌哼唱，聲音沙啞卻放鬆。見你經過，他也不覺得不好意思，反而笑著多哼了兩句。",
     options: [
       { label: "陪他聽完這段旋律", effect: { san: 5 }, resultText: "你在一旁多站了一會兒，聽著那段熟悉的旋律，心裡也跟著鬆快了些。" }
@@ -1815,8 +1810,7 @@ const EVENTS = [
   {
     id: "evt_epilogue_leien", title: "難得放鬆的哨位",
     minDay: 1, maxDay: null, phase: ["night"], weight: 5,
-    condition: (state) => !!(state.companions && state.companions["雷恩"] && state.companions["雷恩"] !== "locked"
-      && state.flags && state.flags["雷恩_arc_done"]),
+    condition: (state) => companionRecruited(state, "雷恩") && !!(state.flags && state.flags["雷恩_arc_done"]),
     text: "輪到雷恩守夜時，你發現他難得地卸下了一貫的緊繃神情，靠著牆隨口跟你聊起最近據點的瑣事，語氣裡少了過去的警戒感。",
     options: [
       { label: "陪他聊了幾句", effect: { san: 5 }, resultText: "簡單的閒聊沒有什麼重點，但這份輕鬆的氣氛，本身就是一種難得的安穩。" }
@@ -1825,8 +1819,7 @@ const EVENTS = [
   {
     id: "evt_epilogue_aili", title: "多開了幾朵花",
     minDay: 1, maxDay: null, phase: ["day"], weight: 5,
-    condition: (state) => !!(state.companions && state.companions["艾莉"] && state.companions["艾莉"] !== "locked"
-      && state.flags && state.flags["艾莉_arc_done"]),
+    condition: (state) => companionRecruited(state, "艾莉") && !!(state.flags && state.flags["艾莉_arc_done"]),
     text: "溫室角落，那株曾經只有一朵花的小盆栽，如今已經開得更加茂盛。艾莉蹲在一旁仔細照料著，看見你過來，笑著指了指其中一朵：「這朵最漂亮，你看。」",
     options: [
       { label: "認真欣賞了一下", effect: { san: 5 }, resultText: "你順著她指的方向看去，那朵花確實開得格外精神——像是這段日子裡，某種說不清的東西也跟著慢慢長回來了。" }
@@ -1835,8 +1828,7 @@ const EVENTS = [
   {
     id: "evt_epilogue_aka", title: "血月後的沉默陪伴",
     minDay: 1, maxDay: null, phase: ["night"], weight: 5,
-    condition: (state) => !!(state.companions && state.companions["阿卡"] && state.companions["阿卡"] !== "locked"
-      && state.flags && state.flags["阿卡_arc_done"]),
+    condition: (state) => companionRecruited(state, "阿卡") && !!(state.flags && state.flags["阿卡_arc_done"]),
     text: "又一次血月夜過去，阿卡沒有像過去那樣獨自沉默地離開，而是在你身邊坐了下來，兩人誰都沒說話，只是靜靜看著天色一點一點亮起來。",
     options: [
       { label: "陪他一起看著天亮", effect: { san: 5 }, resultText: "不需要言語，這份並肩撐過血月夜的沉默，本身就已經足夠。" }
@@ -1845,8 +1837,7 @@ const EVENTS = [
   {
     id: "evt_epilogue_xiaoyu", title: "帳本上多了一頁",
     minDay: 1, maxDay: null, phase: ["day"], weight: 5,
-    condition: (state) => !!(state.companions && state.companions["小雨"] && state.companions["小雨"] !== "locked"
-      && state.flags && state.flags["小雨_arc_done"]),
+    condition: (state) => companionRecruited(state, "小雨") && !!(state.flags && state.flags["小雨_arc_done"]),
     text: "小雨的帳本裡，那頁反覆塗改的紀錄旁，如今多了一頁工整的新內容——不再是尋人的線索，而是普通的據點瑣事。她注意到你在看，只是笑了笑，沒多解釋。",
     options: [
       { label: "沒有多問", effect: { san: 5 }, resultText: "有些事情不需要說破，你看得出來，她已經把那份牽掛，好好地放在心裡的一個角落了。" }
@@ -1855,8 +1846,7 @@ const EVENTS = [
   {
     id: "evt_epilogue_ahai", title: "主動規劃的路線",
     minDay: 1, maxDay: null, phase: ["day"], weight: 5,
-    condition: (state) => !!(state.companions && state.companions["阿海"] && state.companions["阿海"] !== "locked"
-      && state.flags && state.flags["阿海_arc_done"]),
+    condition: (state) => companionRecruited(state, "阿海") && !!(state.flags && state.flags["阿海_arc_done"]),
     text: "規劃遠征路線時，阿海主動提起想去一趟以前刻意避開的區域——不是逃避，而是想確認那裡現在的樣子。他攤開地圖，語氣比以前更加從容。",
     options: [
       { label: "跟他一起研究路線", effect: { san: 5 }, resultText: "地圖上那片曾經空白的區域，如今已經被仔細標注——阿海翻過了那一頁，也帶著你一起往前走。" }
@@ -2622,33 +2612,36 @@ const QUESTS = {
   // ===== 支線·🔁循環委託（程序化支線目標，2026-07-06）=====
   // 比照既有side_companion_care的repeatable:"manual"模式，額外加targetRange讓每輪目標次數也隨機，
   // 不是每次都固定同一個數字——搭配獨立的counterField(不跟totalKills等成就用的累計計數共用)，
-  // 完成後counterField歸零+重抽下一輪targetRange，理論上可以無限重複，讓「支線做完就沒了」不再成立
+  // 完成後counterField歸零+重抽下一輪targetRange，理論上可以無限重複，讓「支線做完就沒了」不再成立。
+  // condition用一般function而非箭頭函式：checkQuestsAndAchievements統一以q.condition(state)呼叫，
+  // this會自動綁定成該quest物件本身，故能從this.id/this.counterField/this.counterTarget直接讀取，
+  // 不用像原本那樣把"side_repeat_kills_target"這種目標key字面重複寫死一次(id改名時容易忘記同步改，見code review)
   side_repeat_kills: {
     id: "side_repeat_kills", type: "side", category: "explore", repeatable: "manual",
     resetField: "repeatKillCount", counterField: "repeatKillCount", counterTarget: 3, targetRange: [3, 8],
     title: "清剿委託", desc: "擊敗一定數量的敵人（每輪目標次數不固定）。",
-    condition: (state) => (state.questFlags.repeatKillCount || 0) >= (state.questFlags.side_repeat_kills_target || 3),
+    condition: function (state) { return repeatQuestReady(state, this); },
     reward: { exp: 20 },
   },
   side_repeat_bloodmoon: {
     id: "side_repeat_bloodmoon", type: "side", category: "explore", repeatable: "manual",
     resetField: "repeatBloodMoonCount", counterField: "repeatBloodMoonCount", counterTarget: 1, targetRange: [1, 3],
     title: "血月志願兵", desc: "撐過一定次數的血月狂潮（每輪目標次數不固定）。",
-    condition: (state) => (state.questFlags.repeatBloodMoonCount || 0) >= (state.questFlags.side_repeat_bloodmoon_target || 1),
+    condition: function (state) { return repeatQuestReady(state, this); },
     reward: { embers: 15 },
   },
   side_repeat_gather: {
     id: "side_repeat_gather", type: "side", category: "collect", repeatable: "manual",
     resetField: "repeatGatherCount", counterField: "repeatGatherCount", counterTarget: 4, targetRange: [4, 10],
     title: "囤積循環", desc: "累積完成一定次數的採集（每輪目標次數不固定）。",
-    condition: (state) => (state.questFlags.repeatGatherCount || 0) >= (state.questFlags.side_repeat_gather_target || 4),
+    condition: function (state) { return repeatQuestReady(state, this); },
     reward: { scrap: 6 },
   },
   side_repeat_pen: {
     id: "side_repeat_pen", type: "side", category: "collect", repeatable: "manual",
     resetField: "repeatPenCareCount", counterField: "repeatPenCareCount", counterTarget: 4, targetRange: [4, 10],
     title: "牲畜的陪伴", desc: "累積餵食或互動一定次數（每輪目標次數不固定）。",
-    condition: (state) => (state.questFlags.repeatPenCareCount || 0) >= (state.questFlags.side_repeat_pen_target || 4),
+    condition: function (state) { return repeatQuestReady(state, this); },
     reward: { exp: 15 },
   },
 };

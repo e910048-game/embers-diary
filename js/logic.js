@@ -494,9 +494,12 @@
     if (effect.san) {
       let sanDelta = effect.san;
       if (sanDelta < 0) {
-        // mind_robe(晶格折射風衣)：SAN損失-30%，不限來源(事件/戰鬥皆算)，故直接掛在這個統一入口而非個別扣血點
+        // SAN損失減免比照armor.effects.xxx的既有加成登錄慣例(dodgeBonus/battleDamageReductionBonus等)，
+        // 不限來源(事件/戰鬥皆算)，故直接掛在這個統一入口而非個別扣血點。目前只有mind_robe(晶格折射風衣)
+        // 提供sanLossReductionBonus，改成讀effects欄位而非寫死比對item.id，往後其他裝備要疊加同效果不用再開特例(見code review)
         const armor = getEquipRef(state, state.equipment && state.equipment.armor);
-        if (armor && armor.item && armor.item.id === "mind_robe") sanDelta = Math.round(sanDelta * 0.7);
+        const reduction = (armor && armor.effects && armor.effects.sanLossReductionBonus) || 0;
+        if (reduction > 0) sanDelta = Math.round(sanDelta * (1 - reduction));
       }
       state.san = clamp(state.san + sanDelta, 0, getEffectiveSanMax(state));
     }
@@ -891,7 +894,17 @@
     return !!(weapon && weapon.item && weapon.item.id === "ocean_mace" && rng() < 0.25);
   }
 
-  // corrosive前綴/ocean_pistol(27.1)：每次攻擊使敵方防禦-1，疊加上限-5（由呼叫端記錄在enemy物件的_defShred上）
+  // 削弱疊加共用機制：corrosive前綴/ocean_pistol(27.1)每擊使敵防-1，mind_fork(神經干擾音叉)每擊使敵攻-1，
+  // 皆疊加上限-5、記錄在enemy物件的_XShred欄位上。兩者只有「觸發條件」跟「削的是def還是atk」不同，
+  // 疊加/上限/讀取的計算邏輯完全一樣，故收斂成共用的_shredStat/_getShredded私有函式（見code review）
+  function _shredStat(enemyObj, field, amount) {
+    if (amount <= 0) return;
+    enemyObj[field] = Math.min(5, (enemyObj[field] || 0) + amount);
+  }
+  function _getShredded(enemyObj, field, baseStat) {
+    return Math.max(0, (baseStat || 0) - (enemyObj[field] || 0));
+  }
+
   function getDefShredPerHit(state) {
     const weapon = getEquipRef(state, state.equipment && state.equipment.weapon);
     if (!weapon) return 0;
@@ -901,17 +914,14 @@
   }
 
   function applyDefShred(enemyObj, state) {
-    const shred = getDefShredPerHit(state);
-    if (shred <= 0) return;
-    enemyObj._defShred = Math.min(5, (enemyObj._defShred || 0) + shred);
+    _shredStat(enemyObj, "_defShred", getDefShredPerHit(state));
   }
 
   function getShreddedDef(enemyObj) {
-    return Math.max(0, (enemyObj.def || 0) - (enemyObj._defShred || 0));
+    return _getShredded(enemyObj, "_defShred", enemyObj.def);
   }
 
-  // mind_fork(神經干擾音叉)：每擊使敵方攻擊力-1，疊加上限-5（由呼叫端記錄在enemy物件的_atkShred上）
-  // 沿用defShred同一套寫法，把原設計「扣目標1AP」重新詮釋成「削弱敵方攻擊力」，不需要另建敵方AP機制
+  // 把原設計「扣目標1AP」重新詮釋成「削弱敵方攻擊力」，不需要另建敵方AP機制
   function getAtkShredPerHit(state) {
     const weapon = getEquipRef(state, state.equipment && state.equipment.weapon);
     if (weapon && weapon.item && weapon.item.id === "mind_fork") return 1;
@@ -919,13 +929,11 @@
   }
 
   function applyAtkShred(enemyObj, state) {
-    const shred = getAtkShredPerHit(state);
-    if (shred <= 0) return;
-    enemyObj._atkShred = Math.min(5, (enemyObj._atkShred || 0) + shred);
+    _shredStat(enemyObj, "_atkShred", getAtkShredPerHit(state));
   }
 
   function getShreddedAtk(enemyObj) {
-    return Math.max(0, (enemyObj.atk || 0) - (enemyObj._atkShred || 0));
+    return _getShredded(enemyObj, "_atkShred", enemyObj.atk);
   }
 
   const CRIT_MULTIPLIER = 1.5;

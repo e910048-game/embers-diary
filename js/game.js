@@ -2557,20 +2557,30 @@ function applyLootResult(result, stResult) {
   return { effectText, qty, lootFlavorPool };
 }
 
-function visitLocation(loc) {
+// 探索地點的共用核心步驟：消耗體力/檢查死亡/遠行額外消耗/抽今日探索條件(modifier)/resolveLocation。
+// visitLocation(親自探索，含走路動畫)跟delegateExplore(委派探索，跳過動畫直接結算)在真正觸發戰鬥/
+// 取得戰利品之前的流程完全一樣，只有「要不要動畫」跟收尾的文案語氣不同，故收斂成共用函式，
+// 兩邊呼叫端各自只保留自己的渲染/文案部分(見code review)。回傳null代表玩家已死亡、呼叫端應直接return
+function resolveLocationCore(loc) {
   const stResult = spendStamina(state, loc.distance === "far" ? "explore_far" : "explore_near", loc);
-  if (state.hp <= 0) { renderGameOver(); return; }
+  if (state.hp <= 0) { renderGameOver(); return null; }
   let travelText = stResult.overdraw ? overdrawFlavor(stResult.streak) : "";
   if (loc.distance === "far") {
     applyEffect({ resources: { food: -FAR_TRAVEL_COST.food, water: -FAR_TRAVEL_COST.water } });
     travelText += `
 🚗 遠行消耗：${formatEffect({ resources: { food: -FAR_TRAVEL_COST.food, water: -FAR_TRAVEL_COST.water } })}`;
   }
-
   // 地點探索模組化(2026-07-06)：每次前往地點都抽一種「今日探索條件」，比照血月模組化的做法
   const locModifier = pickLocationModifier();
   const locModifierFlavor = locModifier.flavor ? `\n\n${locModifier.flavor}` : "";
   const result = resolveLocation(loc, Math.random, state, locModifier);
+  return { stResult, travelText, locModifier, locModifierFlavor, result };
+}
+
+function visitLocation(loc) {
+  const core = resolveLocationCore(loc);
+  if (!core) return;
+  const { stResult, travelText, locModifierFlavor, result } = core;
   renderExploreProgress(result.type === "battle", () => {
     if (result.type === "battle") {
       renderStatusBar();
@@ -2608,12 +2618,9 @@ function delegateExplore() {
   const available = LOCATIONS.filter(l => l.distance === "near"
     && (state.day >= (l.unlockDay || 1) || (l.unlockFlag && state.flags && state.flags[l.unlockFlag])));
   const loc = pickLocations(available, 1, Math.random)[0];
-  const stResult = spendStamina(state, "explore_near", loc);
-  if (state.hp <= 0) { renderGameOver(); return; }
-  const travelText = stResult.overdraw ? overdrawFlavor(stResult.streak) : "";
-  const locModifier = pickLocationModifier();
-  const locModifierFlavor = locModifier.flavor ? `\n\n${locModifier.flavor}` : "";
-  const result = resolveLocation(loc, Math.random, state, locModifier);
+  const core = resolveLocationCore(loc);
+  if (!core) return;
+  const { stResult, travelText, locModifierFlavor, result } = core;
   if (result.type === "battle") {
     renderStatusBar();
     const encounterPool = ENCOUNTER_TEXTS[loc.id];
