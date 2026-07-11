@@ -3926,5 +3926,11 @@ function finishPrologue(endingId) {
   renderOptions([{ label: "繼續冒險", variant: "primary", onClick: renderMain }]);
 }
 
-renderTitle();
+try {
+  renderTitle();
+  if (window.__markBootDone) window.__markBootDone();
+} catch (e) {
+  if (window.__reportBootError) window.__reportBootError("❌ 啟動時發生錯誤：" + e.message + "\n" + (e.stack || ""));
+  else throw e;
+}
 

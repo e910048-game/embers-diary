@@ -12,10 +12,57 @@
   <div id="statusExtra" class="statusExtra hidden"></div>
   <div id="screen"></div>
 </div>
-<script src="js/data.js?v=242"></script>
-<script src="js/story.js?v=242"></script>
-<script src="js/logic.js?v=242"></script>
-<script src="js/game.js?v=242"></script>
+<div id="bootError" style="display:none;position:fixed;inset:0;background:#1a0000;color:#ffb3b3;font-family:monospace;font-size:13px;padding:16px;z-index:99999;overflow:auto;white-space:pre-wrap;line-height:1.6;"></div>
+<script>
+// 開機診斷：file://底下(尤其手機瀏覽器)常見「某個js檔案載入被安全限制擋住，但畫面沒有任何提示，
+// 只看到一片空白」的狀況，沒有開發者工具就完全無從排查。這段在#app之外掛一層診斷面板，
+// 只要開機過程中出現載入失敗/程式錯誤/或逾時仍未渲染任何畫面，就把訊息直接印在畫面上。
+// 一旦renderTitle()成功執行過一次(見game.js最後一行)就視為開機完成，之後的錯誤不再攔截
+// (避免正常遊玩中的example runtime錯誤被誤判成開機失敗，那是另一個層級的問題)
+(function () {
+  var bootDone = false;
+  var errors = [];
+  function render() {
+    var el = document.getElementById("bootError");
+    if (!el) return;
+    el.style.display = "block";
+    el.textContent = "⚠️ 遊戲開機失敗，請把這段訊息截圖回報\n\n" + errors.join("\n\n") +
+      "\n\n---\n常見原因：瀏覽器的file://安全限制擋住了本地檔案之間的載入(較新版本的手機瀏覽器常見)。\n" +
+      "如果是這個原因，建議改用本機小型伺服器打開(例如手機上的HTTP Server類App)。";
+  }
+  window.__reportBootError = function (msg) {
+    if (bootDone) return;
+    errors.push(msg);
+    render();
+  };
+  window.__markBootDone = function () { bootDone = true; };
+  window.addEventListener("error", function (e) {
+    if (bootDone) return;
+    var src = e.target && (e.target.src || e.target.href);
+    if (src) {
+      window.__reportBootError("❌ 檔案載入失敗：" + src);
+    } else {
+      window.__reportBootError("❌ 程式錯誤：" + e.message + "\n   位置：" + (e.filename || "未知") + ":" + (e.lineno || "?"));
+    }
+  }, true); // capture階段才能收到script/link的載入失敗事件(不會冒泡)
+  window.addEventListener("unhandledrejection", function (e) {
+    if (bootDone) return;
+    window.__reportBootError("❌ Promise錯誤：" + (e.reason && e.reason.message || e.reason));
+  });
+  window.addEventListener("load", function () {
+    setTimeout(function () {
+      var screen = document.getElementById("screen");
+      if (!bootDone && screen && screen.innerHTML.trim() === "" && errors.length === 0) {
+        window.__reportBootError("❌ 遊戲逾時未啟動，但沒有捕捉到任何錯誤訊息(靜默失敗)");
+      }
+    }, 3000);
+  });
+})();
+</script>
+<script src="js/data.js?v=243"></script>
+<script src="js/story.js?v=243"></script>
+<script src="js/logic.js?v=243"></script>
+<script src="js/game.js?v=243"></script>
 </body>
 </html>
 
