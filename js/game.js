@@ -2183,6 +2183,20 @@ function doExplore() {
   showEvent(evt, () => finishAction(), result);
 }
 
+// 事件選項(或roll/skillCheck的結果)標endsPhase:true代表「這個選擇會讓時間過去」：繼續後走endPhase(日夜推進)，
+// restless:true=熬夜/沒睡好，體力只恢復一半。回傳{done,chips}供結果畫面使用
+function phaseEndLabel(node) {
+  const until = state.phase === "day" ? "入夜" : "天亮"; // 白天事件過的是「這個白天」，夜間事件才是「到天亮」
+  return node.restless ? { icon: "🌙", label: `熬到${until}` } : { icon: "😴", label: `睡到${until}` };
+}
+function phaseEndingFor(node, onDone) {
+  if (!node || !node.endsPhase) return { done: onDone, chips: [] };
+  const l = phaseEndLabel(node);
+  return node.restless
+    ? { done: () => endPhase({ restless: true }), chips: [{ ...l, text: "體力只恢復一半", kind: "info" }] }
+    : { done: () => endPhase(), chips: [{ ...l, text: "體力回滿", kind: "info" }] };
+}
+
 function showEvent(evt, onDone, staminaResult) {
   renderStatusBar();
   const text = evt.textFn
@@ -2226,7 +2240,7 @@ function showEvent(evt, onDone, staminaResult) {
     // 2026-09-20玩家回饋：睡覺劇情選了之後既沒回體力也沒過夜——體力只在endPhase(推進日夜)時回滿，
     // 這類事件是從「附近搜刮」觸發的，結束後只回主畫面。opt.endsPhase=true代表這個選項「睡到天亮」，
     // 結束後走正常的endPhase流程(體力回滿+日夜推進)，選項提示先講清楚後果
-    if (opt.endsPhase) hint = `😴 睡到天亮${hint ? " " + hint : ""}`;
+    if (opt.endsPhase) { const l = phaseEndLabel(opt); hint = `${l.icon} ${l.label}${hint ? " " + hint : ""}`; }
     return {
     label: opt.label,
     variant: opt.battle ? "danger" : undefined,
@@ -2251,8 +2265,9 @@ function showEvent(evt, onDone, staminaResult) {
           return;
         }
         const eff = applyEventEffect(outcome.effect);
-        renderResult(outcome.resultText || "...", eff);
-        renderOptions([{ label: "繼續", variant: "ghost", onClick: onDone }]);
+        const pe = phaseEndingFor(outcome, onDone);
+        renderResult(outcome.resultText || "...", eff, pe.chips);
+        renderOptions([{ label: "繼續", variant: "ghost", onClick: pe.done }]);
         return;
       }
       if (opt.skillCheck) {
@@ -2268,8 +2283,9 @@ function showEvent(evt, onDone, staminaResult) {
           return;
         }
         const eff = applyEventEffect(outcome.effect);
-        renderResult(rollLine + (outcome.resultText || "..."), eff);
-        renderOptions([{ label: "繼續", variant: "ghost", onClick: onDone }]);
+        const pe = phaseEndingFor(outcome, onDone);
+        renderResult(rollLine + (outcome.resultText || "..."), eff, pe.chips);
+        renderOptions([{ label: "繼續", variant: "ghost", onClick: pe.done }]);
         return;
       }
       if (opt.battle) {
@@ -2277,8 +2293,9 @@ function showEvent(evt, onDone, staminaResult) {
         return;
       }
       const eff = applyEventEffect(opt.effect);
-      renderResult(opt.resultText || "...", eff, opt.endsPhase ? [{ icon: "😴", label: "睡到天亮", text: "體力回滿", kind: "info" }] : []);
-      renderOptions([{ label: "繼續", variant: "ghost", onClick: opt.endsPhase ? () => endPhase() : onDone }]);
+      const pe = phaseEndingFor(opt, onDone);
+      renderResult(opt.resultText || "...", eff, pe.chips);
+      renderOptions([{ label: "繼續", variant: "ghost", onClick: pe.done }]);
     }
   };});
   renderOptions(opts);
@@ -3033,7 +3050,8 @@ function finishAction() {
   renderMain();
 }
 
-function endPhase() {
+// opts.restless：熬夜/沒睡好(事件選項標restless:true)——照常推進日夜，但體力只恢復一半，不是睡飽的滿體力
+function endPhase(opts = {}) {
   const died = applyPhaseDecay(state);
   if (died) {
     renderGameOver();
@@ -3042,6 +3060,7 @@ function endPhase() {
   const prevDay = state.day;
   const prevPhase = state.phase;
   advancePhase(state);
+  if (opts.restless === true) state.stamina = Math.max(1, Math.ceil(state.staminaMax / 2));
   if (state.day !== prevDay) {
     addDiaryEntry();
     state.questFlags.gatherTodayCount = 0; // 任務系統：每日重置型支線計數器，跨日清零

@@ -1315,25 +1315,33 @@ test("side_collect_factions：只需inventory裡曾經擁有過5大派系裝備�
   assert.strictEqual(collectFactions.condition(s), true); // 5派系全湊齊，完全沒有任何一件裝備上身
 });
 
-// 2026-09-20玩家實測回饋：睡覺劇情(如evt_companion_watch「你沉沉睡去，醒來時...」)選了之後既沒回體力也沒過夜——
-// 體力只在endPhase(advancePhase)時回滿，而這類事件是從「附近搜刮」觸發、結束後只回主畫面。
-// 修法是選項加endsPhase:true(game.js的showEvent改走endPhase)。這裡鎖定：①那幾個睡覺劇情確實標了endsPhase
-// ②endsPhase只能出現在夜間事件(睡到天亮只有夜晚有意義)③這類選項都要附帶恢復類效果(hp/san至少一項為正，
-// 或明確是「硬撐」型的負面效果，不能只給廢料/經驗這種跟睡覺無關的獎勵)
-test("睡覺劇情選項：標記endsPhase(睡到天亮)且只出現在夜間事件，並附帶跟睡眠相符的效果", () => {
+// 2026-09-20玩家實測回饋：睡覺/熬夜劇情(如evt_companion_watch「你沉沉睡去，醒來時...」、evt_cold_night_wind「一夜無眠」)
+// 選了之後時間完全沒動、體力也沒回——體力只在endPhase(advancePhase)時回滿，而這類事件是從「附近搜刮」觸發、
+// 結束後只走finishAction回主畫面。修法是選項(或roll/skillCheck結果)標endsPhase:true，showEvent改走endPhase。
+// restless:true=熬夜/沒睡好(體力只回一半)。鎖定：①至少要有這批睡覺/熬夜節點 ②「真的睡覺」(非restless)只能是夜間事件
+// 且要有hp/san恢復 ③「熬夜」(restless)一定要付出代價(hp或san為負)，不能白拿體力
+test("睡覺/熬夜劇情選項：標記endsPhase讓時間真的過去，睡覺要有恢復、熬夜要有代價", () => {
   const events = require("../js/data.js").EVENTS;
-  const sleepOpts = [];
-  events.forEach(e => (e.options || []).forEach(o => { if (o.endsPhase) sleepOpts.push({ evt: e, opt: o }); }));
-  assert.ok(sleepOpts.length >= 5, "應至少有5個睡到天亮的選項(companion_watch/streetlight/shadow x2/insomnia)");
-  sleepOpts.forEach(({ evt, opt }) => {
-    assert.ok(evt.phase.includes("night"), `${evt.id}的endsPhase選項所屬事件必須包含night階段`);
-    assert.ok(!evt.phase.includes("day"), `${evt.id}是睡到天亮的事件，不該出現在白天`);
-    const eff = opt.effect || {};
-    assert.ok(eff.hp > 0 || eff.san !== undefined, `${evt.id}「${opt.label}」睡覺選項要有hp/san效果，不能只有無關的獎勵`);
+  const nodes = [];
+  events.forEach(e => (e.options || []).forEach(o => {
+    if (o.endsPhase) nodes.push({ evt: e, node: o, label: o.label });
+    if (o.roll) ["success", "fail"].forEach(k => { if (o.roll[k] && o.roll[k].endsPhase) nodes.push({ evt: e, node: o.roll[k], label: o.label + "[" + k + "]" }); });
+  }));
+  assert.ok(nodes.length >= 8, "應至少有8個睡覺/熬夜節點，實際：" + nodes.length);
+  nodes.forEach(({ evt, node, label }) => {
+    const eff = node.effect || {};
+    if (node.restless) {
+      assert.ok(eff.hp < 0 || eff.san < 0, `${evt.id}「${label}」是熬夜/硬撐，必須付出hp或san代價`);
+    } else {
+      assert.ok(evt.phase.includes("night") && !evt.phase.includes("day"), `${evt.id}「${label}」睡到天亮只能是夜間事件`);
+      assert.ok(eff.hp > 0 || eff.san > 0, `${evt.id}「${label}」睡覺選項要有hp/san恢復，不能只有無關的獎勵`);
+    }
   });
   const watch = events.find(e => e.id === "evt_companion_watch").options[0];
   assert.strictEqual(watch.endsPhase, true);
-  assert.ok(watch.effect.hp > 0 && watch.effect.san > 0, "夥伴守夜安心睡下應同時回血跟回SAN");
+  assert.ok(!watch.restless && watch.effect.hp > 0 && watch.effect.san > 0, "夥伴守夜安心睡下是真的睡飽，應同時回血跟回SAN");
+  const cold = events.find(e => e.id === "evt_cold_night_wind").options[1];
+  assert.ok(cold.endsPhase && cold.restless, "刺骨夜風硬撐是一夜無眠，要過夜但只回一半體力");
 });
 
 test("getEffectiveAttribute: 基礎值+等級成長(每4級+1)+飾品加成，上限10", () => {
