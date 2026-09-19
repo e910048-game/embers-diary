@@ -313,6 +313,21 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 .storyCard.battle { box-shadow: 0 4px 24px rgba(192,71,63,0.22); }
 @keyframes cardFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .storyCard.gameover { text-align: center; }
+/* 2026-09-20玩家回饋「拿到什麼/花掉什麼看不清楚」：行動結算改成獨立的醒目標籤列，不再藏在敘事段落尾巴的一行小字 */
+.resultSummary {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin: 10px 2px 2px;
+}
+.rsChip {
+  padding: 6px 12px; border-radius: 999px;
+  font-size: 15px; font-weight: 600; line-height: 1.2;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14);
+  animation: rsPop 0.4s ease-out both;
+}
+.rsChip.gain { color: #8fe38f; background: rgba(111,200,111,0.14); border-color: rgba(111,200,111,0.55); }
+.rsChip.loss { color: #ff9f92; background: rgba(255,120,100,0.14); border-color: rgba(255,120,100,0.55); }
+.rsChip.info { color: #ffd75e; background: rgba(255,215,94,0.12); border-color: rgba(255,215,94,0.5); }
+@keyframes rsPop { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: none; } }
 .storyCard h1 {
   margin: 4px 0 10px; font-size: 26px; letter-spacing: 2px;
   color: #ffd479; text-align: center;
@@ -471,7 +486,6 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 /* v129：家具今日已用——半透明灰色蒙版 */
 .roomCell.furn-used { opacity: 0.55; }
 .roomCell.furn-used .homeLabel { color: #8a9099; }
-/* v129：門格 armed 狀態——標籤改為提示文字 */
 /* 2026-07-02：門改用跟.homeWindow完全同一套「純CSS矩形」手法繪製，不再用等角透視PNG貼進平面牆帶。
    之前door_explore.png/door_gather.png是等角小圖示規格（四周留大片透明邊界、立體透視角），
    塞進這個正面平視的牆帶框裡，圖片透明邊距 + 容器底色兩者對不齊，就會在門周圍看到明顯黑邊，
@@ -496,8 +510,6 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 }
 .roomCell.doorCell.doorExplore .doorSeam::after { background: #5fd97a; box-shadow: 0 0 4px 1px rgba(95,217,122,0.7); }
 .roomCell.doorCell.doorGather .doorSeam::after { background: #f0b429; box-shadow: 0 0 4px 1px rgba(240,180,41,0.7); }
-.roomCell.doorCell.armed { outline: 2px solid rgba(111,200,111,0.8); border-radius: 6px; }
-.roomCell.doorCell.armed .homeLabel::after { content: " 再點一次"; color: #7fd47f; font-size: 10px; }
 /* 農場區/養殖區 V3（2026-07-04，依Gemini規格+使用者確認「維持等角、緊貼呈菱形交錯」）：
    地塊/欄位本身改成邊長等於gridPos()每1單位跨距的菱形(寬=2*ISO_STEP_X%=14%，高=2*ISO_STEP_Y=34px)，
    並用置中transform(而非只有原本.roomCell的translateX)，這樣FARM_PLOT_LAYOUT/PEN_LAYOUT用緊鄰1格
@@ -844,12 +856,6 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 .roomCell:hover .homeLabel, .roomCell.labelShow .homeLabel {
   opacity: 1;
 }
-/* v93：門/睡袋等「點擊即發動」的格子，第一次點擊先進入待確認狀態(armed)，
-   再點一次才真正執行，避免誤觸 */
-.roomCell.armed {
-  outline: 2px solid #ffd75e; border-radius: 8px;
-}
-.roomCell.armed .homeLabel { opacity: 1; }
 .homeLabel.lbl-above {
   top: auto; bottom: 100%; margin-top: 0; margin-bottom: 2px;
 }

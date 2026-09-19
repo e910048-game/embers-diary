@@ -256,6 +256,7 @@ function formatEffect(effect) {
   if (!effect) return "";
   const parts = [];
   if (effect.hp) parts.push(`❤️${effect.hp > 0 ? "+" : ""}${effect.hp}`);
+  if (effect.stamina) parts.push(`⚡體力${effect.stamina > 0 ? "+" : ""}${effect.stamina}`);
   if (effect.resources) {
     for (const k in effect.resources) {
       const v = effect.resources[k];
@@ -291,6 +292,44 @@ function formatEffect(effect) {
     parts.push(state.lastUnlockedFloor ? `🏠 解鎖新地板樣式！` : `🏠 樣式已擁有，轉換為廢料`);
   }
   return parts.length ? `\n${parts.join(" ")}` : "";
+}
+
+// 2026-09-20玩家回饋「探索拿到道具顯示不清楚，不知道廢料何時拿到、只知道一直扣體力」：
+// 行動結算改成獨立的獲得(綠)/消耗(紅)標籤列，附上資源名稱，不再只有一行沒名字的小圖示藏在敘事段落尾巴。
+// chip格式：{icon,label,delta} 或 {icon,label,text,kind}(text優先於delta顯示，kind可指定gain/loss/info)
+const RESOURCE_NAMES = { food: "食物", water: "飲水", scrap: "廢料", medicine: "藥品" };
+function effectChips(effect) {
+  const chips = [];
+  if (!effect) return chips;
+  const add = (icon, label, delta, text, kind) => { if (delta || text) chips.push({ icon, label, delta, text, kind }); };
+  add("❤️", "生命", effect.hp);
+  add("⚡", "體力", effect.stamina);
+  if (effect.resources) {
+    for (const k in effect.resources) add(RESOURCE_ICONS[k] || "📦", RESOURCE_NAMES[k] || k, effect.resources[k]);
+  }
+  add("🛡️", "防禦", effect.baseDefense);
+  if (effect.equipment_pool && state.lastGainedItemId) {
+    const ref = state.lastGainedItemId;
+    const inst = typeof ref === "string" && ref.startsWith("inst_") ? getInstance(state, ref) : null;
+    const item = inst ? ITEMS[inst.baseItemId] : ITEMS[ref];
+    if (item) add(item.icon, inst ? inst.name : item.name, 1, "獲得", "gain");
+  }
+  if (effect.furniture) {
+    for (const itemId of effect.furniture) { const item = ITEMS[itemId]; if (item) add(item.icon, item.name, 1, "獲得", "gain"); }
+  }
+  add("🔥", "晶燼", effect.embers);
+  add("⭐", "技能點", effect.skillPoint);
+  if (effect.san) effect.san >= 900 ? add("🧠", "SAN", 1, "已回滿", "gain") : add("🧠", "SAN", effect.san);
+  add("✨", "經驗", effect.exp);
+  return chips;
+}
+// 行動結算：敘事文字 + 獨立的獲得/消耗標籤列(extraChips放effect以外的額外項目，例如行動的體力消耗)
+function renderResult(text, effect, extraChips = [], opts = {}) {
+  renderText(text, { kind: "event", ...opts, summary: [...extraChips, ...effectChips(effect)] });
+}
+// 行動的體力消耗標籤(cost為0或未知時不顯示)
+function staminaCostChip(stResult) {
+  return stResult && stResult.cost > 0 ? [{ icon: "⚡", label: "體力", delta: -stResult.cost }] : [];
 }
 
 // #26-2：格式化效果文字內嵌版(資源/晶燼等)，用於單行顯示，例：❤️-8（不換行）
@@ -330,6 +369,16 @@ function renderText(text, opts = {}) {
     _twFrame = requestAnimationFrame(step);
   } else {
     el.innerHTML = text;
+  }
+  if (opts.summary && opts.summary.length) {
+    const sum = document.createElement("div");
+    sum.className = "resultSummary";
+    sum.innerHTML = opts.summary.map(c => {
+      const kind = c.kind || (c.delta > 0 ? "gain" : c.delta < 0 ? "loss" : "info");
+      const val = c.text != null ? c.text : `${c.delta > 0 ? "+" : ""}${c.delta}`;
+      return `<span class="rsChip ${kind}">${c.icon} ${c.label} ${val}</span>`;
+    }).join("");
+    screen.appendChild(sum);
   }
 }
 
@@ -1428,20 +1477,6 @@ function bindHomeCanvasMove(canvas) {
     } });
   };
 }
-function bindConfirmAction(el, action) {
-  let timer = null;
-  el.onclick = (e) => {
-    e.stopPropagation();
-    if (el.classList.contains("armed")) {
-      clearTimeout(timer);
-      el.classList.remove("armed");
-      action();
-      return;
-    }
-    el.classList.add("armed");
-    timer = setTimeout(() => el.classList.remove("armed"), 2500);
-  };
-}
 // 2026-07-04 V3移除：startCompanionWander()原本只服務雷恩的走動動畫(依附#homeCompanionCell)，
 // V3統一改成全部同伴固定站位(見COMPANIONS_REGISTRY.pos+homeSceneHtml)，跟艾莉/阿卡/新同伴一致，
 // 這個函式引用的DOM id已經不存在，整段移除避免留著死程式碼
@@ -1784,7 +1819,7 @@ const lowHp = state.hp <= state.hpMax * 0.25;
     }
     const itemId = placed.itemId;
     if (itemId === "furn_sleeping_bag") {
-      bindConfirmAction(cell, () => playerAnim("anim-rest", doRest));
+      cell.onclick = (e) => { e.stopPropagation(); playerAnim("anim-rest", doRest); };
       return;
     }
     cell.onclick = (e) => {
@@ -1893,9 +1928,11 @@ const lowHp = state.hp <= state.hpMax * 0.25;
   if (mirror2Cell) mirror2Cell.onclick = (e) => { e.stopPropagation(); showAppearancePicker(); };
   // V2.0：點擊家具/門等顯示提示文字，呼應v93調整造型互動方式
   const exploreDoorCell = document.getElementById("homeExploreDoorCell");
-  if (exploreDoorCell) bindConfirmAction(exploreDoorCell, () => { if (!lowHp) playerAnim("anim-explore", showExploreChoice); });
+  // 2026-09-20玩家實測回饋：原本門/睡袋要「點兩次」(第一次armed待確認、再點才執行)，每次進出都要點兩下太麻煩，
+  // 改成單擊直接執行。探索門只是開選單、採集/睡覺誤觸的代價也很小，不需要二次確認保護
+  if (exploreDoorCell) exploreDoorCell.onclick = (e) => { e.stopPropagation(); if (!lowHp) playerAnim("anim-explore", showExploreChoice); };
   const gatherDoorCell = document.getElementById("homeGatherDoorCell");
-  if (gatherDoorCell) bindConfirmAction(gatherDoorCell, () => { if (!lowHp) playerAnim("anim-gather", doGather); });
+  if (gatherDoorCell) gatherDoorCell.onclick = (e) => { e.stopPropagation(); if (!lowHp) playerAnim("anim-gather", doGather); };
   // v94：長按顯示label，配合CSS .labelShow / :hover，讓觸控裝置也能看到家具名稱標籤
   document.querySelectorAll(".roomCanvas .roomCell").forEach(el => {
     el.addEventListener("click", () => {
@@ -2186,6 +2223,10 @@ function showEvent(evt, onDone, staminaResult) {
     } else if (!opt.battle && !opt.roll) {
       hint = formatEffectInline(opt.effect);
     }
+    // 2026-09-20玩家回饋：睡覺劇情選了之後既沒回體力也沒過夜——體力只在endPhase(推進日夜)時回滿，
+    // 這類事件是從「附近搜刮」觸發的，結束後只回主畫面。opt.endsPhase=true代表這個選項「睡到天亮」，
+    // 結束後走正常的endPhase流程(體力回滿+日夜推進)，選項提示先講清楚後果
+    if (opt.endsPhase) hint = `😴 睡到天亮${hint ? " " + hint : ""}`;
     return {
     label: opt.label,
     variant: opt.battle ? "danger" : undefined,
@@ -2210,7 +2251,7 @@ function showEvent(evt, onDone, staminaResult) {
           return;
         }
         const eff = applyEventEffect(outcome.effect);
-        renderText((outcome.resultText || "...") + formatEffect(eff), { kind: "event" });
+        renderResult(outcome.resultText || "...", eff);
         renderOptions([{ label: "繼續", variant: "ghost", onClick: onDone }]);
         return;
       }
@@ -2227,7 +2268,7 @@ function showEvent(evt, onDone, staminaResult) {
           return;
         }
         const eff = applyEventEffect(outcome.effect);
-        renderText(rollLine + (outcome.resultText || "...") + formatEffect(eff), { kind: "event" });
+        renderResult(rollLine + (outcome.resultText || "..."), eff);
         renderOptions([{ label: "繼續", variant: "ghost", onClick: onDone }]);
         return;
       }
@@ -2236,8 +2277,8 @@ function showEvent(evt, onDone, staminaResult) {
         return;
       }
       const eff = applyEventEffect(opt.effect);
-      renderText((opt.resultText || "...") + formatEffect(eff), { kind: "event" });
-      renderOptions([{ label: "繼續", variant: "ghost", onClick: onDone }]);
+      renderResult(opt.resultText || "...", eff, opt.endsPhase ? [{ icon: "😴", label: "睡到天亮", text: "體力回滿", kind: "info" }] : []);
+      renderOptions([{ label: "繼續", variant: "ghost", onClick: opt.endsPhase ? () => endPhase() : onDone }]);
     }
   };});
   renderOptions(opts);
@@ -2533,21 +2574,20 @@ function renderExploreProgress(isBattle, onComplete) {
   }, 220);
 }
 
-// 從resolveLocation()的非戰鬥結果套用資源/道具效果，回傳{effectText,qty,lootFlavorPool}供全動畫版(visitLocation)
+// 從resolveLocation()的非戰鬥結果套用資源/道具效果，回傳{chips,qty,lootFlavorPool}(chips=獲得標籤，供renderText的summary顯示)供全動畫版(visitLocation)
 // 跟委派快速結算版(delegateVisitLocation)共用，避免兩處各自重複一份加總邏輯
 function applyLootResult(result, stResult) {
-  let effectText = "";
+  let chips = [];
   let lootFlavorPool;
   const qty = stResult.overdraw ? Math.max(1, Math.floor(result.qty * stResult.resourceMultiplier)) : result.qty;
   if (RESOURCE_DROP_KEYS.includes(result.itemId)) {
     applyEffect({ resources: { [result.itemId]: qty } });
-    effectText = formatEffect({ resources: { [result.itemId]: qty } });
+    chips = effectChips({ resources: { [result.itemId]: qty } });
     lootFlavorPool = result.itemId === "scrap" ? LOOT_FLAVOR_BY_TYPE.material : (LOOT_FLAVOR_BY_TYPE["consumable_" + result.itemId] || LOOT_TEXTS);
   } else {
     addItemToInventory(result.itemId, qty);
     const item = ITEMS[result.itemId];
-    effectText = `
-獲得 ${item.icon} ${item.name} x${qty}`;
+    chips = [{ icon: item.icon, label: item.name, text: `獲得 x${qty}`, kind: "gain" }];
     if (item.type === "weapon") lootFlavorPool = LOOT_FLAVOR_BY_TYPE.weapon;
     else if (item.type === "armor") lootFlavorPool = LOOT_FLAVOR_BY_TYPE.armor;
     else if (item.useEffect && item.useEffect.resources) {
@@ -2557,7 +2597,7 @@ function applyLootResult(result, stResult) {
       lootFlavorPool = LOOT_TEXTS;
     }
   }
-  return { effectText, qty, lootFlavorPool };
+  return { chips, qty, lootFlavorPool };
 }
 
 // 探索地點的共用核心步驟：消耗體力/檢查死亡/遠行額外消耗/抽今日探索條件(modifier)/resolveLocation。
@@ -2567,34 +2607,35 @@ function applyLootResult(result, stResult) {
 function resolveLocationCore(loc) {
   const stResult = spendStamina(state, loc.distance === "far" ? "explore_far" : "explore_near", loc);
   if (state.hp <= 0) { renderGameOver(); return null; }
-  let travelText = stResult.overdraw ? overdrawFlavor(stResult.streak) : "";
+  const travelText = stResult.overdraw ? overdrawFlavor(stResult.streak) : "";
+  const travelChips = staminaCostChip(stResult);
   if (loc.distance === "far") {
-    applyEffect({ resources: { food: -FAR_TRAVEL_COST.food, water: -FAR_TRAVEL_COST.water } });
-    travelText += `
-🚗 遠行消耗：${formatEffect({ resources: { food: -FAR_TRAVEL_COST.food, water: -FAR_TRAVEL_COST.water } })}`;
+    const farCost = { resources: { food: -FAR_TRAVEL_COST.food, water: -FAR_TRAVEL_COST.water } };
+    applyEffect(farCost);
+    travelChips.push(...effectChips(farCost));
   }
   // 地點探索模組化(2026-07-06)：每次前往地點都抽一種「今日探索條件」，比照血月模組化的做法
   const locModifier = pickLocationModifier();
   const locModifierFlavor = locModifier.flavor ? `\n\n${locModifier.flavor}` : "";
   const result = resolveLocation(loc, Math.random, state, locModifier);
-  return { stResult, travelText, locModifier, locModifierFlavor, result };
+  return { stResult, travelText, travelChips, locModifier, locModifierFlavor, result };
 }
 
 function visitLocation(loc) {
   const core = resolveLocationCore(loc);
   if (!core) return;
-  const { stResult, travelText, locModifierFlavor, result } = core;
+  const { stResult, travelText, travelChips, locModifierFlavor, result } = core;
   renderExploreProgress(result.type === "battle", () => {
     if (result.type === "battle") {
       renderStatusBar();
       const encounterPool = ENCOUNTER_TEXTS[loc.id];
       const encounterLine = encounterPool ? encounterPool[Math.floor(Math.random() * encounterPool.length)] : "未知的威脅突然出現，你被迫戰鬥！";
-      renderText(`${encounterLine}${locModifierFlavor}${travelText}`, { kind: "battle" });
+      renderText(`${encounterLine}${locModifierFlavor}${travelText}`, { kind: "battle", summary: travelChips });
           renderOptions([{ label: "⚔️ 應戰", variant: "danger", onClick: () => startBattle(result.enemyId, () => finishAction(), false, { loc }) }]);
       return;
     }
 
-    const { effectText, lootFlavorPool } = applyLootResult(result, stResult);
+    const { chips, lootFlavorPool } = applyLootResult(result, stResult);
     renderStatusBar();
     const beats = SEARCH_BEATS[loc.riskLevel] || SEARCH_BEATS[1];
     // 草稿4(2026-07-04)：day60後改用「後期版本」文字池，呈現世界逐漸復甦的跡象；day60前或沒有
@@ -2608,7 +2649,7 @@ function visitLocation(loc) {
     const companionLineText = companionLine ? `\n\n${companionLine}` : "";
     renderText(`你在${loc.icon}${loc.name}：${beat}
 
-${flavor}${effectText}${travelText}${locModifierFlavor}${companionLineText}`, { kind: "event" });
+${flavor}${travelText}${locModifierFlavor}${companionLineText}`, { kind: "event", summary: [...travelChips, ...chips] });
     renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
   });
 }
@@ -2623,18 +2664,18 @@ function delegateExplore() {
   const loc = pickLocations(available, 1, Math.random)[0];
   const core = resolveLocationCore(loc);
   if (!core) return;
-  const { stResult, travelText, locModifierFlavor, result } = core;
+  const { stResult, travelText, travelChips, locModifierFlavor, result } = core;
   if (result.type === "battle") {
     renderStatusBar();
     const encounterPool = ENCOUNTER_TEXTS[loc.id];
     const encounterLine = encounterPool ? encounterPool[Math.floor(Math.random() * encounterPool.length)] : "未知的威脅突然出現，你被迫戰鬥！";
-    renderText(`📋 委派隊員前往${loc.icon}${loc.name}，卻半路撞上了麻煩——${encounterLine}${locModifierFlavor}${travelText}`, { kind: "battle" });
+    renderText(`📋 委派隊員前往${loc.icon}${loc.name}，卻半路撞上了麻煩——${encounterLine}${locModifierFlavor}${travelText}`, { kind: "battle", summary: travelChips });
     renderOptions([{ label: "⚔️ 應戰", variant: "danger", onClick: () => startBattle(result.enemyId, () => finishAction(), false, { loc }) }]);
     return;
   }
-  const { effectText } = applyLootResult(result, stResult);
+  const { chips } = applyLootResult(result, stResult);
   renderStatusBar();
-  renderText(`📋 委派隊員快速前往${loc.icon}${loc.name}探了一趟，帶回了一些收穫。${effectText}${travelText}${locModifierFlavor}`, { kind: "event" });
+  renderText(`📋 委派隊員快速前往${loc.icon}${loc.name}探了一趟，帶回了一些收穫。${travelText}${locModifierFlavor}`, { kind: "event", summary: [...travelChips, ...chips] });
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
 }
 
@@ -2646,7 +2687,7 @@ function doConvert() {
   renderStatusBar();
     const flavor = "你將廢料分類整理，轉換成了可用的資源。";
   const overdrawText = result.overdraw ? overdrawFlavor(result.streak) : "";
-  renderText(flavor + overdrawText + "\n\n" + formatEffect({ resources: gain }), { kind: "event" });
+  renderResult(flavor + overdrawText, { resources: { scrap: -CONVERT_SCRAP_COST, ...gain } }, staminaCostChip(result));
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
 }
 
@@ -2671,7 +2712,7 @@ function doGather() {
   renderStatusBar();
   const flavor = GATHER_TEXTS[Math.floor(Math.random() * GATHER_TEXTS.length)];
   const overdrawText = result.overdraw ? overdrawFlavor(result.streak) : "";
-  renderText(flavor + overdrawText + "\n\n" + formatEffect({ resources: gain }), { kind: "event" });
+  renderResult(flavor + overdrawText, { resources: gain }, staminaCostChip(result));
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
 }
 
@@ -2724,7 +2765,8 @@ function doRest() {
   }
   const gain = { hp: 15 + restHealAmount(state), resources: { food: -1, water: -1 } };
   applyEffect(gain);
-  state.san = clamp(state.san + restSanRegen(state), 0, getEffectiveSanMax(state));
+  const sanRegen = restSanRegen(state);
+  state.san = clamp(state.san + sanRegen, 0, getEffectiveSanMax(state));
   // 2026-07-04修正：支線「彼此照顧」(side_companion_care)要求careCompletedCount>=5，但這個計數器
   // 從未被累加過，任務永遠無法完成——改用通用的getCompanionTaskEffect()判斷是否有任何同伴正在
   // 執行照護任務(目前只有艾莉的registry有restHealBonus，但寫成通用判斷式避免以後新增同伴又要改這裡)
@@ -2732,7 +2774,7 @@ function doRest() {
     state.questFlags.careCompletedCount = (state.questFlags.careCompletedCount || 0) + 1;
   }
   renderStatusBar();
-    renderText("你躺下好好休息了一陣子。" + formatEffect(gain), { kind: "event" });
+    renderResult("你躺下好好休息了一陣子。", { ...gain, san: sanRegen }, [{ icon: "😴", label: "新的一段時間", text: "體力回滿", kind: "info" }]);
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => endPhase() }]);
 }
 

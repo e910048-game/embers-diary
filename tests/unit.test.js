@@ -1315,6 +1315,27 @@ test("side_collect_factions：只需inventory裡曾經擁有過5大派系裝備�
   assert.strictEqual(collectFactions.condition(s), true); // 5派系全湊齊，完全沒有任何一件裝備上身
 });
 
+// 2026-09-20玩家實測回饋：睡覺劇情(如evt_companion_watch「你沉沉睡去，醒來時...」)選了之後既沒回體力也沒過夜——
+// 體力只在endPhase(advancePhase)時回滿，而這類事件是從「附近搜刮」觸發、結束後只回主畫面。
+// 修法是選項加endsPhase:true(game.js的showEvent改走endPhase)。這裡鎖定：①那幾個睡覺劇情確實標了endsPhase
+// ②endsPhase只能出現在夜間事件(睡到天亮只有夜晚有意義)③這類選項都要附帶恢復類效果(hp/san至少一項為正，
+// 或明確是「硬撐」型的負面效果，不能只給廢料/經驗這種跟睡覺無關的獎勵)
+test("睡覺劇情選項：標記endsPhase(睡到天亮)且只出現在夜間事件，並附帶跟睡眠相符的效果", () => {
+  const events = require("../js/data.js").EVENTS;
+  const sleepOpts = [];
+  events.forEach(e => (e.options || []).forEach(o => { if (o.endsPhase) sleepOpts.push({ evt: e, opt: o }); }));
+  assert.ok(sleepOpts.length >= 5, "應至少有5個睡到天亮的選項(companion_watch/streetlight/shadow x2/insomnia)");
+  sleepOpts.forEach(({ evt, opt }) => {
+    assert.ok(evt.phase.includes("night"), `${evt.id}的endsPhase選項所屬事件必須包含night階段`);
+    assert.ok(!evt.phase.includes("day"), `${evt.id}是睡到天亮的事件，不該出現在白天`);
+    const eff = opt.effect || {};
+    assert.ok(eff.hp > 0 || eff.san !== undefined, `${evt.id}「${opt.label}」睡覺選項要有hp/san效果，不能只有無關的獎勵`);
+  });
+  const watch = events.find(e => e.id === "evt_companion_watch").options[0];
+  assert.strictEqual(watch.endsPhase, true);
+  assert.ok(watch.effect.hp > 0 && watch.effect.san > 0, "夥伴守夜安心睡下應同時回血跟回SAN");
+});
+
 test("getEffectiveAttribute: 基礎值+等級成長(每4級+1)+飾品加成，上限10", () => {
   const s = L.defaultState();
   assert.strictEqual(L.getEffectiveAttribute(s, "strength"), 3);
