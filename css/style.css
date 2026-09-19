@@ -542,7 +542,12 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 .roomCell.penCell.occupied .icon { background: none; clip-path: none; overflow: visible; display: flex; align-items: flex-end; justify-content: center; }
 .roomCell.penCell.occupied.ready .icon { filter: drop-shadow(0 0 5px rgba(150,220,120,0.75)); }
 /* 2026-07-03新增：庭院純裝飾擺設(使用者反饋「庭院應該更多些裝飾」)，無互動、無底色框，只在hover顯示名稱 */
-.roomCell.yardDecor .icon { font-size: 22px; }
+.roomCell.yardDecor .icon { font-size: 22px; transform-origin: center bottom; }
+/* 2026-09-20玩家回饋「整個畫面一堆無用擺飾」：4個裝飾槽已退到畫布四個角落，沒放裝飾道具時
+   的「野生擺設」再縮小+半透明當背景點綴，不搶農地的版面；玩家放了自己的裝飾才恢復較大尺寸 */
+.roomCell.yardDecor:not(.placed) { opacity: 0.45; }
+.roomCell.yardDecor:not(.placed) .icon { transform: scale(0.55); }
+.roomCell.yardDecor.placed .icon { transform: scale(0.8); }
 /* 2026-07-04美術到位：farmTileHtml()產生的<img>共用樣式。地塊/欄位地面(farmTileGround)填滿已被clip-path
    裁成菱形的.icon容器；獸欄動物(pinnedGround)是額外疊一層地面圖在.icon底下(2026-07-03舊版放養後地面
    直接消失，改成動物疊在地面上，更像實際站在欄裡而非懸空)；動物本身(farmTileAnimal)故意不受菱形裁切、

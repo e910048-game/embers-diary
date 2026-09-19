@@ -1344,6 +1344,48 @@ test("睡覺/熬夜劇情選項：標記endsPhase讓時間真的過去，睡覺�
   assert.ok(cold.endsPhase && cold.restless, "刺骨夜風硬撐是一夜無眠，要過夜但只回一半體力");
 });
 
+// 2026-09-20玩家回饋「只有六格可以種地」→ 農地擴成18格(6欄x3排)，庭院擺飾退到四個角落
+test("農場18格：FARM_PLOT_LAYOUT座標不重複且在網格內，擺飾槽不與農地重疊，預設只解鎖plot_1", () => {
+  const layout = L.FARM_PLOT_LAYOUT;
+  assert.strictEqual(layout.length, 18);
+  assert.strictEqual(new Set(layout.map(p => p.id)).size, 18);
+  assert.strictEqual(new Set(layout.map(p => p.gx + "," + p.gy)).size, 18, "農地座標不可重複");
+  layout.forEach((p, i) => {
+    assert.strictEqual(p.id, "plot_" + (i + 1));
+    assert.ok(p.gx >= 1 && p.gx <= 6 && p.gy >= 1 && p.gy <= 3, p.id + "座標超出6x3範圍");
+  });
+  L.YARD_DECOR_SLOTS.forEach(d => {
+    assert.ok(!layout.some(p => p.gx === d.gx && p.gy === d.gy), d.id + "不可與農地重疊");
+    assert.ok(!(d.gx >= 1 && d.gx <= 6 && d.gy >= 1 && d.gy <= 3), d.id + "應在農地塊範圍之外(四個角落)");
+  });
+  const s = L.defaultState();
+  const plots = Object.values(s.farm.plots);
+  assert.strictEqual(plots.length, 18);
+  assert.strictEqual(plots.filter(p => p.unlocked).length, 1);
+  assert.strictEqual(s.farm.plots.plot_1.unlocked, true);
+});
+
+test("farmPlotUnlockCost：6,9,12...每次+3，最後一塊54，全部解鎖共510，且單次成本低於廢料上限(否則永遠解鎖不了)", () => {
+  const s = L.defaultState();
+  let total = 0, prev = 0;
+  for (let n = 1; n <= 17; n++) { // 目前已解鎖n塊時，解鎖下一塊的成本
+    const id = "plot_" + n;
+    s.farm.plots[id].unlocked = true;
+    const cost = L.farmPlotUnlockCost(s);
+    assert.strictEqual(cost, 6 + (n - 1) * 3);
+    assert.ok(cost > prev, "成本必須遞增");
+    assert.ok(cost <= s.resourceCaps.scrap, "單次成本不可超過廢料上限" + s.resourceCaps.scrap);
+    prev = cost; total += cost;
+  }
+  assert.strictEqual(prev, 54);
+  assert.strictEqual(total, 510);
+  // 實際解鎖扣款
+  const t = L.defaultState();
+  t.resources.scrap = 20;
+  const r = L.unlockFarmPlot(t, "plot_2");
+  assert.ok(r.ok && r.cost === 6 && t.resources.scrap === 14 && t.farm.plots.plot_2.unlocked);
+});
+
 test("getEffectiveAttribute: 基礎值+等級成長(每4級+1)+飾品加成，上限10", () => {
   const s = L.defaultState();
   assert.strictEqual(L.getEffectiveAttribute(s, "strength"), 3);

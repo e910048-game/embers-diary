@@ -1381,14 +1381,14 @@
   // 讓地塊本身畫成邊長等於1單位跨距的菱形(見style.css的.roomCell.farmPlot尺寸)，這樣gx/gy緊鄰1格
   // (等角投影下自然呈菱形棋盤交錯，跟小屋室內地板菱形磁磚是同一種視覺)就會不多不少地圖磚式緊貼，
   // 不留空隙也不重疊。改回3欄x2排、相鄰緊貼的座標：
-  const FARM_PLOT_LAYOUT = [
-    { id: "plot_1", gx: 2, gy: 2 },
-    { id: "plot_2", gx: 3, gy: 2 },
-    { id: "plot_3", gx: 4, gy: 2 },
-    { id: "plot_4", gx: 2, gy: 3 },
-    { id: "plot_5", gx: 3, gy: 3 },
-    { id: "plot_6", gx: 4, gy: 3 },
-  ];
+  // 2026-09-20玩家回饋「只有六格可以種地」：擴成6欄x3排=18格(gx 1..6 x gy 1..3)，row-major編號。
+  // plot_1~plot_6沿用舊id(舊存檔已解鎖/已種下的作物不受影響，只是座標換到第一排)；等角座標
+  // x+y落在2..9，畫布360px放得下，不需要動GRID_*邊界常數。舊存檔的補齊靠loadGame既有的plots合併。
+  const FARM_PLOT_LAYOUT = Array.from({ length: 18 }, (_, i) => ({
+    id: "plot_" + (i + 1),
+    gx: 1 + (i % 6),
+    gy: 1 + Math.floor(i / 6),
+  }));
 
   // 沒有真實時鐘離線結算機制，用「第幾個天/夜階段」當生長時間軸，回合制推進即天然達成離線也會生長
   function currentPhaseIndex(state) {
@@ -1396,10 +1396,11 @@
   }
 
   // 每塊地各自獨立解鎖，花費隨已解鎖地塊數遞增。plot_1從一開始就解鎖，故用(n-1)讓「第1次要花錢解鎖的地塊」
-  // 成本從基礎值6起算，而不是被plot_1的既有解鎖狀態多墊一階（6,10,14,18,22 而非10,14,18,22,26）
+  // 成本從基礎值6起算(6,9,12,...,最後一塊54，全部解鎖共510廢料，遠低於resourceCaps.scrap=99的單次上限)。
+  // 2026-09-20擴成18格時把遞增幅度從4降到3，避免最後幾格貴到離譜；順便成為廢料溢出的消耗出口
   function farmPlotUnlockCost(state) {
     const n = Object.values(state.farm.plots).filter(p => p.unlocked).length;
-    return 6 + (n - 1) * 4;
+    return 6 + (n - 1) * 3;
   }
 
   function unlockFarmPlot(state, plotId) {
@@ -1724,11 +1725,13 @@
   // ---------- 庭院裝飾區（2026-07-05，見規格文件/庭院裝飾區_設計規格.md） ----------
   // 定位是經濟迴圈的「花錢出口」，不是新的生產節點：沿用既有YARD_DECOR的4個位置，
   // 從寫死擺設改成玩家可自選的裝飾槽，不新增場景/不新增生產流程
+  // 2026-09-20玩家回饋「畫面一堆無用擺飾」：18塊農地占滿中央後，4個裝飾槽退到網格四個最外側角落
+  // (農地塊 x=1..6,y=1..3 之外)，並在CSS縮小/半透明，不再搶版面；id不變，舊存檔已擺的裝飾保留
   const YARD_DECOR_SLOTS = [
     { id: "decor_1", gx: 0, gy: 0 },
-    { id: "decor_2", gx: 6, gy: 0 },
-    { id: "decor_3", gx: 1, gy: 6 },
-    { id: "decor_4", gx: 10, gy: 6 },
+    { id: "decor_2", gx: 8, gy: 0 },
+    { id: "decor_3", gx: 0, gy: 5 },
+    { id: "decor_4", gx: 8, gy: 5 },
   ];
 
   // 裝飾道具是可換來換去的耐久品(不是消耗品)，取下時要還給背包，不是憑空消失

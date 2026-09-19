@@ -231,6 +231,19 @@ test("舊存檔相容：currency需走NESTED_STATE_FIELDS的淺層合併，否�
   assert.strictEqual(fixedMerge.gems, 0); // 新欄位補上defaults的預設值，不會是undefined
 });
 
+test("舊存檔相容：只有6塊農地(舊佈局)的存檔，讀檔後自動補上plot_7~plot_18為未解鎖，且舊地塊的進度完整保留", () => {
+  // 模擬game.js的loadGame()：對farm.plots額外做{...defaults.farm.plots, ...saved.farm.plots}合併
+  const defaults = L.defaultState();
+  const oldPlots = {};
+  for (let i = 1; i <= 6; i++) oldPlots["plot_" + i] = { unlocked: true, crop: null };
+  oldPlots.plot_2.crop = { cropId: "crop_potato", plantedAtPhaseIndex: 5, lastWateredDay: 2 };
+  const merged = { ...defaults.farm.plots, ...oldPlots };
+  assert.strictEqual(Object.keys(merged).length, 18);
+  for (let i = 1; i <= 6; i++) assert.strictEqual(merged["plot_" + i].unlocked, true);
+  for (let i = 7; i <= 18; i++) assert.strictEqual(merged["plot_" + i].unlocked, false);
+  assert.strictEqual(merged.plot_2.crop.cropId, "crop_potato"); // 已種下的作物不受影響
+});
+
 // ===== 規則式事件條件在完整遊玩流程中的影響 =====
 
 test("完整流程：companion=true且level>=3時，跑長時間夜晚事件迴圈不會出錯，且能抽到專屬事件", () => {

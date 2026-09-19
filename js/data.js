@@ -2530,9 +2530,9 @@ const QUESTS = {
   },
   side_collect_farm: {
     id: "side_collect_farm", type: "side", category: "collect",
-    title: "開墾庭院", desc: "解鎖庭院的全部6塊農地。",
+    title: "開墾庭院", desc: "解鎖庭院的全部18塊農地。",
     condition: (state) => !!(state.farm && Object.values(state.farm.plots).every(p => p.unlocked)),
-    reward: { scrap: 15 },
+    reward: { embers: 30, exp: 30 }, // 2026-09-20農地擴成18格(全部解鎖共510廢料)，獎勵從廢料15拉高到跟成本相稱
   },
   side_collect_pens: {
     id: "side_collect_pens", type: "side", category: "collect",
