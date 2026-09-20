@@ -515,11 +515,11 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
    並用置中transform(而非只有原本.roomCell的translateX)，這樣FARM_PLOT_LAYOUT/PEN_LAYOUT用緊鄰1格
    座標時，菱形地塊會像磁磚一樣緊貼交錯，不留空隙也不重疊——理由詳見logic.js對應常數旁的註解。
    emoji佔位，等使用者提供美術素材後只需要把.icon背景/內容換成圖片，容器與間距邏輯都不用動 */
-.roomCell.farmPlot, .roomCell.penCell, .roomCell.workshopStation {
+.roomCell.farmPlot, .roomCell.workshopStation {
   width: 14%; height: 34px;
   transform: translate(-50%, -50%);
 }
-.roomCell.farmPlot .icon, .roomCell.penCell .icon, .roomCell.workshopStation .icon {
+.roomCell.farmPlot .icon, .roomCell.workshopStation .icon {
   width: 100%; height: 100%;
   clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
   font-size: 18px;
@@ -533,14 +533,6 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 .roomCell.workshopStation.empty .icon { background: linear-gradient(to bottom, #4a4a55, #33333c); }
 .roomCell.workshopStation.processing .icon { background: linear-gradient(to bottom, #3d3d5a, #2a2a3f); }
 .roomCell.workshopStation.ready .icon { background: linear-gradient(to bottom, #3d3d5a, #2a2a3f); filter: drop-shadow(0 0 5px rgba(150,180,255,0.75)); }
-.roomCell.penCell .icon { transition: transform 1.2s ease-in-out; } /* 配合game.js的startPenWander()，讓JS隨機設定的transform位移平滑過渡 */
-.roomCell.penCell.empty .icon { background: linear-gradient(to bottom, #4a4034, #332c24); }
-.roomCell.penCell.locked .icon { background: #2b2f36; opacity: 0.6; }
-/* 2026-07-03修正：已放養動物後不該還留著方形底色框(使用者反饋「雞還有框框」)——動物本身會走動，
-   應該像自由活動的個體而不是關在一個色塊裡；底色/邊框只在「空欄位/上鎖」這種需要標示地面結構的狀態才留著。
-   佔用clip-path的.icon在這個狀態直接不設background，等於沒有菱形底色，只剩下動物emoji本身 */
-.roomCell.penCell.occupied .icon { background: none; clip-path: none; overflow: visible; display: flex; align-items: flex-end; justify-content: center; }
-.roomCell.penCell.occupied.ready .icon { filter: drop-shadow(0 0 5px rgba(150,220,120,0.75)); }
 /* 2026-07-03新增：庭院純裝飾擺設(使用者反饋「庭院應該更多些裝飾」)，無互動、無底色框，只在hover顯示名稱 */
 .roomCell.yardDecor .icon { font-size: 22px; transform-origin: center bottom; }
 /* 2026-09-20玩家回饋「整個畫面一堆無用擺飾」：4個裝飾槽已退到畫布四個角落，沒放裝飾道具時
@@ -548,21 +540,12 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 .roomCell.yardDecor:not(.placed) { opacity: 0.45; }
 .roomCell.yardDecor:not(.placed) .icon { transform: scale(0.55); }
 .roomCell.yardDecor.placed .icon { transform: scale(0.8); }
-/* 2026-07-04美術到位：farmTileHtml()產生的<img>共用樣式。地塊/欄位地面(farmTileGround)填滿已被clip-path
-   裁成菱形的.icon容器；獸欄動物(pinnedGround)是額外疊一層地面圖在.icon底下(2026-07-03舊版放養後地面
-   直接消失，改成動物疊在地面上，更像實際站在欄裡而非懸空)；動物本身(farmTileAnimal)故意不受菱形裁切、
-   允許超出小小的欄位範圍站得更自然；飼料槽(farmTileTrough)/庭院擺設(farmTileDecor)各自固定尺寸疊加 */
+/* 2026-07-04美術到位：farmTileHtml()產生的<img>共用樣式。地塊地面(farmTileGround)填滿已被clip-path
+   裁成菱形的.icon容器；牧場動物(farmTileAnimal)不受菱形裁切，2026-09-20起是牧場裡自由走動的.ranchAnimal的立繪
+   (舊的pinnedGround地面疊圖/farmTileTrough飼料槽隨格子式欄位一併移除)；庭院擺設(farmTileDecor)固定高度 */
 .farmTileImg { image-rendering: pixelated; display: block; }
 .farmTileGround { width: 100%; height: 100%; object-fit: cover; }
-.pinnedGround {
-  position: absolute; inset: 0; z-index: 0;
-  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
-}
 .farmTileAnimal { width: auto; height: 40px; object-fit: contain; position: relative; z-index: 2; }
-.farmTileTrough {
-  position: absolute; left: 50%; bottom: 1px; transform: translateX(-50%);
-  width: 24px; height: auto; z-index: 1;
-}
 .farmTileDecor { width: auto; height: 36px; object-fit: contain; }
 /* V3（2026-07-04）：拿掉「地塊/欄位狀態文字常駐顯示」——Gemini規格明確要求移除白底黑邊的網頁標籤，
    狀態改由地塊本身的視覺(顏色/圖示/發光)傳達，文字說明只在hover/點擊面板時才出現，跟家具同一套規則 */
@@ -591,6 +574,42 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
     repeating-linear-gradient(0deg, rgba(0,0,0,0.12) 0 2px, transparent 2px 22px),
     linear-gradient(to bottom, #566237, #3a4326);
 }
+/* ===== 牧場放養(2026-09-20)：整片圍籬草地，動物是獨立的.ranchAnimal在場內自由走動 ===== */
+.ranchField { overflow: hidden; }
+.ranchFence {
+  position: absolute; inset: 42px 3% 8px 3%; pointer-events: none; z-index: 1;
+  border: 5px solid #6b4a2b; border-radius: 8px;
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.28), 0 2px 0 rgba(0,0,0,0.3);
+  background: repeating-linear-gradient(90deg, transparent 0 18px, rgba(0,0,0,0.18) 18px 20px);
+  background-size: 100% 6px; background-repeat: repeat-x; /* 上緣一排籬笆柱的意象 */
+}
+.ranchTrough { position: absolute; right: 8%; bottom: 16px; font-size: 26px; z-index: 2; pointer-events: none; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.4)); }
+.ranchEmptyHint {
+  position: absolute; left: 0; right: 0; top: 46%; text-align: center; z-index: 3;
+  color: rgba(255,255,255,0.6); font-size: 14px; line-height: 1.7; pointer-events: none;
+}
+.homePill.ranchCount { cursor: default; opacity: 0.85; margin-left: 8px; }
+.ranchAnimal {
+  position: absolute; z-index: 10;
+  width: 46px; height: 46px; margin-left: -23px; margin-top: -46px; /* left/top是「腳底」位置 */
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition-property: left, top; transition-timing-function: ease-in-out; transition-duration: 2s;
+}
+.ranchAnimal .icon {
+  width: 100%; height: 100%; display: flex; align-items: flex-end; justify-content: center;
+  font-size: 34px; line-height: 1; transform-origin: center bottom;
+}
+.ranchAnimal.flip .icon { transform: scaleX(-1); }
+.ranchAnimal.moving .icon { animation: ranchStep 0.55s ease-in-out infinite; }
+.ranchAnimal.flip.moving .icon { animation-name: ranchStepFlip; }
+@keyframes ranchStep { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-4px) rotate(3deg); } }
+@keyframes ranchStepFlip { 0%, 100% { transform: scaleX(-1) translateY(0) rotate(-3deg); } 50% { transform: scaleX(-1) translateY(-4px) rotate(3deg); } }
+.ranchAnimal.ready .icon { filter: drop-shadow(0 0 6px rgba(150,220,120,0.85)); }
+.ranchBadge {
+  position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+  font-size: 15px; pointer-events: none; animation: rsPop 0.4s ease-out both;
+}
+.ranchAnimal .homeLabel { white-space: nowrap; }
 /* 加工間(2026-07-04)：定位為室內工坊(水泥/工作檯氛圍)，跟庭院/獸欄的戶外場景做出區隔 */
 .roomCanvas.ground-workshop {
   background-color: #3a3d42;
@@ -598,23 +617,12 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
     repeating-linear-gradient(0deg, rgba(0,0,0,0.16) 0 2px, transparent 2px 22px),
     linear-gradient(to bottom, #46494f, #2c2e32);
 }
-/* 飼料槽：V2星露谷式已取消會衰減的飽食度，改成「今天有沒有餵過」的當日提示，滿=今天餵過，空=還沒 */
-.penTrough {
-  position: absolute; left: 50%; bottom: 1px; transform: translateX(-50%);
-  width: 26px; height: 7px; border-radius: 2px;
-  background: #2c231a; border: 1px solid rgba(0,0,0,0.45); z-index: 1;
-}
-.penTrough.fed::after {
-  content: ""; position: absolute; left: 2px; right: 2px; top: 2px; bottom: 1px;
-  border-radius: 1px; background: #d4a94a;
-}
 /* 動物是持久存在的資產，疊一個原地輕微搖擺的動畫，回應「動物不會動」的反饋——欄位空間小，
    原地小動作比讓動物在格子間漫遊(那是給同伴/角色用的重量級系統)更符合「關在欄裡」的情境 */
 @keyframes idleSway {
   0%, 100% { transform: rotate(-6deg); }
   50% { transform: rotate(6deg); }
 }
-.roomCell.penCell .icon.idleSway,
 .roomCell.dogCompanion .icon.idleSway {
   animation: idleSway 2.2s ease-in-out infinite;
   transform-origin: 50% 85%;

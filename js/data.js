@@ -2536,9 +2536,9 @@ const QUESTS = {
   },
   side_collect_pens: {
     id: "side_collect_pens", type: "side", category: "collect",
-    title: "擴建獸欄", desc: "解鎖獸欄的全部4個欄位。",
+    title: "擴建牧場", desc: "把牧場擴建到全部8個容量。",
     condition: (state) => !!(state.pens && Object.values(state.pens.plots).every(p => p.unlocked)),
-    reward: { scrap: 15 },
+    reward: { embers: 25, exp: 25 }, // 2026-09-20牧場容量4→8(全部擴建共196廢料)，獎勵從廢料15拉高到跟成本相稱
   },
   side_collect_workshop: {
     id: "side_collect_workshop", type: "side", category: "collect",
@@ -2713,7 +2713,7 @@ const ACHIEVEMENTS = {
   },
   ach_pen_collect: {
     id: "ach_pen_collect", category: "collect",
-    title: "第一份蛋（或毛）", desc: "在獸欄收成一次動物產出。",
+    title: "第一份蛋（或毛）", desc: "在牧場收成一次動物產出。",
     condition: (state) => (state.questFlags && state.questFlags.penCollectCount) >= 1,
     reward: { embers: 10 }, hidden: false,
   },

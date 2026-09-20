@@ -1386,6 +1386,50 @@ test("farmPlotUnlockCost：6,9,12...每次+3，最後一塊54，全部解鎖共5
   assert.ok(r.ok && r.cost === 6 && t.resources.scrap === 14 && t.farm.plots.plot_2.unlocked);
 });
 
+// 2026-09-20玩家回饋「牧場太死板，應該是可以養動物、動物在區域裡亂逛」→ 改成放養牧場，容量4→8(資料模型不變)
+test("牧場放養：PEN_LAYOUT為8個容量格、預設只解鎖pen_1，容量摘要/空位/下一格擴建helper正確", () => {
+  assert.strictEqual(L.PEN_LAYOUT.length, 8);
+  assert.strictEqual(new Set(L.PEN_LAYOUT.map(p => p.id)).size, 8);
+  L.PEN_LAYOUT.forEach((p, i) => assert.strictEqual(p.id, "pen_" + (i + 1)));
+  const s = L.defaultState();
+  assert.strictEqual(Object.keys(s.pens.plots).length, 8);
+  assert.deepStrictEqual(L.penCapacityInfo(s), { total: 8, unlocked: 1, animals: 0, free: 1 });
+  assert.strictEqual(L.firstFreePenId(s), "pen_1");
+  assert.strictEqual(L.nextLockedPenId(s), "pen_2");
+
+  s.inventory.push({ itemId: "chick_token", qty: 2 });
+  assert.ok(L.placeAnimal(s, "pen_1", "chick_token").ok);
+  assert.strictEqual(L.firstFreePenId(s), null, "唯一的容量格滿了就沒有空位");
+  assert.deepStrictEqual(L.penCapacityInfo(s), { total: 8, unlocked: 1, animals: 1, free: 0 });
+
+  s.resources.scrap = 99;
+  assert.ok(L.unlockPen(s, L.nextLockedPenId(s)).ok); // 擴建pen_2
+  assert.strictEqual(L.firstFreePenId(s), "pen_2");
+  assert.ok(L.placeAnimal(s, L.firstFreePenId(s), "chick_token").ok);
+  assert.deepStrictEqual(L.penCapacityInfo(s), { total: 8, unlocked: 2, animals: 2, free: 0 });
+  // 全部擴建後沒有下一格
+  while (L.nextLockedPenId(s)) { s.resources.scrap = 99; assert.ok(L.unlockPen(s, L.nextLockedPenId(s)).ok); }
+  assert.strictEqual(L.nextLockedPenId(s), null);
+  assert.strictEqual(L.penCapacityInfo(s).unlocked, 8);
+});
+
+test("牧場擴建成本：10,16,...,46，單次低於廢料上限，全部擴建共196；side_collect_pens要全部8格才達成", () => {
+  const s = L.defaultState();
+  let total = 0;
+  for (let n = 1; n <= 7; n++) {
+    s.pens.plots["pen_" + n].unlocked = true;
+    const cost = L.penUnlockCost(s);
+    assert.strictEqual(cost, 10 + (n - 1) * 6);
+    assert.ok(cost <= s.resourceCaps.scrap);
+    total += cost;
+  }
+  assert.strictEqual(total, 196); // 10+16+22+28+34+40+46
+  const quest = L.QUESTS.side_collect_pens;
+  assert.strictEqual(quest.condition(s), false); // 只擴建了7格(pen_8仍鎖)
+  s.pens.plots.pen_8.unlocked = true;
+  assert.strictEqual(quest.condition(s), true);
+});
+
 test("getEffectiveAttribute: 基礎值+等級成長(每4級+1)+飾品加成，上限10", () => {
   const s = L.defaultState();
   assert.strictEqual(L.getEffectiveAttribute(s, "strength"), 3);

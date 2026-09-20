@@ -244,6 +244,19 @@ test("舊存檔相容：只有6塊農地(舊佈局)的存檔，讀檔後自動�
   assert.strictEqual(merged.plot_2.crop.cropId, "crop_potato"); // 已種下的作物不受影響
 });
 
+test("舊存檔相容：只有4個獸欄(舊版容量)的存檔，讀檔後自動補上pen_5~pen_8為未解鎖，已養的動物完整保留", () => {
+  // 模擬game.js的loadGame()：對pens.plots額外做{...defaults.pens.plots, ...saved.pens.plots}合併
+  const defaults = L.defaultState();
+  const oldPens = {};
+  for (let i = 1; i <= 4; i++) oldPens["pen_" + i] = { unlocked: true, animal: null };
+  oldPens.pen_2.animal = { speciesId: "species_chicken", happiness: 40, lastPetDay: 3, lastFedDay: 3, lastCollectedAtPhaseIndex: 10 };
+  const merged = { ...defaults.pens.plots, ...oldPens };
+  assert.strictEqual(Object.keys(merged).length, 8);
+  for (let i = 1; i <= 4; i++) assert.strictEqual(merged["pen_" + i].unlocked, true);
+  for (let i = 5; i <= 8; i++) assert.strictEqual(merged["pen_" + i].unlocked, false);
+  assert.strictEqual(merged.pen_2.animal.happiness, 40); // 動物與好感度不受影響
+});
+
 // ===== 規則式事件條件在完整遊玩流程中的影響 =====
 
 test("完整流程：companion=true且level>=3時，跑長時間夜晚事件迴圈不會出錯，且能抽到專屬事件", () => {

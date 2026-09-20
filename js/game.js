@@ -352,6 +352,7 @@ function animateNumber(el, from, to, duration = 350) {
   requestAnimationFrame(step);
 }
 function renderText(text, opts = {}) {
+  cancelActiveWalks(); // 畫面即將被整個換掉，進行中的走路鏈沒有意義了(見animateWalk旁說明)
   if (_twFrame) { cancelAnimationFrame(_twFrame); _twFrame = null; }
   const cls = ["storyCard"];
   if (opts.kind) cls.push(opts.kind);
@@ -587,7 +588,6 @@ function isoIconHtml(itemId, fallbackCategory) {
 // 走獨立的"farmtile"類別，跟ISO_ASSETS/ICON_ASSETS的「登記才換圖，沒登記就退回emoji」同一套邏輯
 const FARMTILE_ASSETS = {
   farm_plot_locked: 1, farm_plot_empty: 1, farm_stage_sprout: 1, farm_stage_growing: 1, farm_stage_mature: 1,
-  pen_locked: 1, pen_empty: 1, pen_trough_empty: 1, pen_trough_filled: 1,
   animal_chick: 1, animal_lamb: 1, animal_mutant_hen: 1,
   deco_fence_post: 1, deco_rock_cluster: 1, deco_bush: 1, deco_tree_small: 1,
 };
@@ -685,10 +685,24 @@ function findReachablePos(start, target, occupied) {
   if (!best || (best.gx === start.gx && best.gy === start.gy)) return null;
   return { gx: best.gx, gy: best.gy, path: buildPath(best) };
 }
+// 2026-09-20玩家回饋「基地偶爾會瞬移」：走路是一串setTimeout逐格更新座標，原本任何畫面重畫/門動畫都不會中斷它，
+// 造成：①切畫面後舊的走路鏈仍在背景更新state座標，新畫面的角色停在半途、下次重畫才「瞬移」到終點；
+// ②走路中點門，.anim-explore會關掉位移過渡(transition:none)但走路鏈還在改座標，角色一格一格直接跳。
+// 解法：每次走路取一個世代編號，cancelActiveWalks()遞增世代讓舊鏈在下一步自動停止，並釋放走路鎖；
+// renderText(所有畫面切換都會經過)與playerAnim(門/睡袋動畫)開頭都先取消，角色就停在最後走到的那一格，state與畫面一致
+let walkGeneration = 0;
+function cancelActiveWalks() {
+  walkGeneration++;
+  homeWalkLock = false;
+  outdoorWalkLock = false;
+  document.querySelectorAll(".roomCell.walking").forEach(el => el.classList.remove("walking"));
+}
 function animateWalk(el, path, onStep) {
+  const gen = ++walkGeneration;
   el.classList.add("walking");
   let i = 0;
   const step = () => {
+    if (gen !== walkGeneration) return; // 被取消，或被新的走路取代：停在最後走到的那一格，不再更新座標
     if (i >= path.length) { el.classList.remove("walking"); return; }
     const { gx, gy } = path[i];
     const p = gridPos(gx, gy);
@@ -828,7 +842,7 @@ const windowCls = `homeWindow ${state.phase === "night" ? "is-night" : "is-day"}
     <button class="homePill homeTabBtn${state.homePlacementMode ? " active" : ""}" id="homeTabPlacement">${state.homePlacementMode ? "結束佈置" : "🛋️ 佈置家具"}</button>
     <button class="homePill" id="homeComfortPill" title="居住舒適度">🛋️ 舒適 ${getComfortLevel(state)}（${getComfortLabel(getComfortLevel(state))}）</button>
     <button class="homePill homeTabBtn" id="homeTabYard">🌾 庭院</button>
-    <button class="homePill homeTabBtn" id="homeTabPen">🐑 獸欄</button>
+    <button class="homePill homeTabBtn" id="homeTabPen">🐑 牧場</button>
     <button class="homePill homeTabBtn" id="homeTabWorkshop">🏭 加工間</button>
   </div>`;
 const avatarRow = `<div class="homeAvatarRow">
@@ -1111,76 +1125,122 @@ function showYardDecorPanel(slotId) {
   renderOptions(opts);
 }
 
-// ---------- 養殖區/獸欄場景 ----------
+// ---------- 牧場場景（2026-09-20改版：放養，動物在整片場地自由走動）----------
+// 玩家回饋「牧場太死板，應該是可以養動物、動物在區域裡亂逛」。舊版是2x2固定格子、動物只在自己那格內±12px微動；
+// 現在整個場景是一片圍籬草地，每隻動物是獨立的.ranchAnimal，用CSS transition在場內隨機走動。
+// 資料模型(state.pens.plots)完全不變，「欄位」在概念上變成牧場容量格(一格養一隻)，見規格文件/養殖區_設計規格.md第19節
 const PEN_ANIMAL_ICONS = { species_chicken: "🐔", species_sheep: "🐑", species_mutant_hen: "🐔" };
 const PEN_ANIMAL_TILES = { species_chicken: "animal_chick", species_sheep: "animal_lamb", species_mutant_hen: "animal_mutant_hen" };
-let penWanderTimers = {};
-// 動物是持久存在的資產，讓牠在欄位周圍隨機微幅移動（每次間隔跟位移量都隨機，不是固定循環的動畫），
-// 回應「動物要能隨意動、不要寫死」的反饋。移動只改.icon的transform，不動外層.roomCell的left/top，
-// 所以不會影響bindOutdoorWalk依據固定gx/gy判斷的互動點擊範圍
-function startPenWander(penId) {
-  if (penWanderTimers[penId]) clearInterval(penWanderTimers[penId]);
-  penWanderTimers[penId] = setInterval(() => {
-    const pen = state.pens.plots[penId];
-    const cell = document.getElementById(`pen_${penId}`);
-    if (!pen || !pen.animal || !cell || !document.body.contains(cell)) {
-      clearInterval(penWanderTimers[penId]);
-      delete penWanderTimers[penId];
-      return;
-    }
-    const icon = cell.querySelector(".icon");
-    if (!icon) return;
-    const dx = (Math.random() * 24 - 12).toFixed(1);
-    const dy = (Math.random() * 14 - 7).toFixed(1);
-    icon.style.transform = `translate(${dx}px, ${dy}px)`;
-  }, 1800 + Math.random() * 1600);
+// 動物在場內的位置只存在記憶體(不進存檔)：left為畫布寬度%、top為腳底的px；場景重畫(餵食後refresh)時沿用，動物不會瞬間跳位
+const ranchPos = {};
+let ranchToken = 0; // 每次renderPenScene遞增，舊的走動迴圈發現token不符就自動停止
+const RANCH_BOUNDS = { xMin: 9, xMax: 88, yMin: 100, yMax: 320 };
+function ranchInitialPos(penId) {
+  if (!ranchPos[penId]) {
+    ranchPos[penId] = {
+      x: RANCH_BOUNDS.xMin + Math.random() * (RANCH_BOUNDS.xMax - RANCH_BOUNDS.xMin),
+      y: RANCH_BOUNDS.yMin + Math.random() * (RANCH_BOUNDS.yMax - RANCH_BOUNDS.yMin),
+    };
+  }
+  return ranchPos[penId];
 }
-function penCellHtml(state, penDef) {
-  const pen = state.pens.plots[penDef.id];
-  const pos = gridPos(penDef.gx, penDef.gy);
-  const z = cellZ(penDef.gx + penDef.gy);
-  // 2026-07-04美術到位：鎖頭/空欄一律先試著用真實美術，找不到才退回🔗/🐾佔位
-  if (!pen.unlocked) {
-    const cost = penUnlockCost(state);
-    const art = farmTileHtml("pen_locked", "farmTileGround");
-    return `<div class="roomCell penCell locked" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="解鎖欄位：${cost}📦"><div class="icon">${art || "🔗"}</div><div class="homeLabel">解鎖 ${cost}📦</div></div>`;
-  }
-  if (!pen.animal) {
-    const art = farmTileHtml("pen_empty", "farmTileGround");
-    return `<div class="roomCell penCell empty" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="點擊放入動物"><div class="icon">${art || "🐾"}</div><div class="homeLabel">空欄（點放入動物）</div></div>`;
-  }
+function ranchAnimalHtml(state, penId) {
+  const pen = state.pens.plots[penId];
   const prod = getPenProductionState(state, pen);
   const animalArt = farmTileHtml(PEN_ANIMAL_TILES[pen.animal.speciesId], "farmTileAnimal");
   const icon = animalArt || (PEN_ANIMAL_ICONS[pen.animal.speciesId] || "🐾");
   const label = `${prod.species.name} 好感${pen.animal.happiness}${prod.ready ? "（可收成）" : ""}`;
-  const stateCls = prod.ready ? " ready" : "";
   const fedToday = pen.animal.lastFedDay === state.day;
-  // 食槽視覺：今天餵過=滿，還沒餵=空——不再是會衰減的飽食度，純粹當天有沒有餵的提示
-  // 有真實美術時直接換成飼料槽圖片(pen_trough_filled/pen_trough_empty)，找不到才退回CSS畫的.penTrough
-  const troughArt = farmTileHtml(fedToday ? "pen_trough_filled" : "pen_trough_empty", "farmTileTrough");
-  const troughHtml = troughArt || `<div class="penTrough${fedToday ? " fed" : ""}"></div>`;
-  // 已放養動物時底下仍鋪一層pen_empty地面美術，動物疊在上面，不再是2026-07-03舊版的「動物一放進去地面就消失」
-  const groundArt = farmTileHtml("pen_empty", "farmTileGround pinnedGround");
-  return `<div class="roomCell penCell occupied${stateCls}" id="pen_${penDef.id}" style="left:${pos.left};top:${pos.top};z-index:${z}" title="${label}">${groundArt || ""}${troughHtml}<div class="icon">${icon}</div><div class="homeLabel">${label}</div></div>`;
+  const badge = prod.ready ? "✨" : (fedToday ? "" : "🍖");
+  const pos = ranchInitialPos(penId);
+  return `<div class="ranchAnimal${prod.ready ? " ready" : ""}" id="pen_${penId}" data-pen="${penId}" style="left:${pos.x.toFixed(1)}%;top:${Math.round(pos.y)}px;z-index:${10 + Math.round(pos.y / 3)}" title="${label}"><div class="icon">${icon}</div>${badge ? `<span class="ranchBadge">${badge}</span>` : ""}<div class="homeLabel">${label}</div></div>`;
 }
 function penSceneHtml(state) {
-  if (outdoorScene !== "pen") { outdoorScene = "pen"; outdoorPlayerPos = null; }
-  const items = PEN_LAYOUT.map(p => penCellHtml(state, p));
-  items.push(outdoorPlayerCellHtml("pen"));
-  // 獸欄是室外圍欄，不沿用state.roomFloor，改用專屬的ground-pen紋理
-  return `<div class="homeScene"><div class="homePillRow homeTabPills"><button class="homePill" id="penBackBtn">← 返回小屋</button></div><div class="roomCanvas ground-pen" id="penCanvas">${items.join("")}</div></div>`;
+  outdoorScene = "pen"; // 牧場沒有玩家走位，但切換場景時仍要讓庭院/加工間的outdoorPlayerPos重置邏輯正確觸發
+  const info = penCapacityInfo(state);
+  const animals = PEN_LAYOUT.filter(d => { const p = state.pens.plots[d.id]; return p && p.unlocked && p.animal; }).map(d => ranchAnimalHtml(state, d.id));
+  const empty = animals.length === 0 ? `<div class="ranchEmptyHint">牧場還是空的<br>放入動物，牠們就會在這裡悠閒地晃來晃去</div>` : "";
+  return `<div class="homeScene"><div class="homePillRow homeTabPills"><button class="homePill" id="penBackBtn">← 返回小屋</button><span class="homePill ranchCount">🐑 ${info.animals}／${info.unlocked} 容量（上限${info.total}）</span></div><div class="roomCanvas ground-pen ranchField" id="penCanvas"><div class="ranchFence"></div><div class="ranchTrough">🌾</div>${empty}${animals.join("")}</div></div>`;
+}
+// 每隻動物各自一條setTimeout鏈：隨機挑場內目標 → 依距離算移動時間 → 抵達後隨機發呆；移動用CSS transition(left/top)，
+// 依方向左右翻轉；場景被換掉(元素不在DOM)或token過期就自動停止，不需要另外清timer
+function ranchWanderStep(el, token) {
+  if (token !== ranchToken || !document.body.contains(el)) return;
+  const canvas = document.getElementById("penCanvas");
+  const pos = ranchPos[el.dataset.pen];
+  if (!canvas || !pos) return;
+  const nx = RANCH_BOUNDS.xMin + Math.random() * (RANCH_BOUNDS.xMax - RANCH_BOUNDS.xMin);
+  const ny = RANCH_BOUNDS.yMin + Math.random() * (RANCH_BOUNDS.yMax - RANCH_BOUNDS.yMin);
+  const distPx = Math.hypot((nx - pos.x) * canvas.clientWidth / 100, ny - pos.y);
+  const dur = Math.min(5, Math.max(1.2, distPx / 32)); // 約32px/秒的悠閒步伐
+  el.style.transitionDuration = dur.toFixed(2) + "s";
+  el.style.left = nx.toFixed(1) + "%";
+  el.style.top = Math.round(ny) + "px";
+  el.style.zIndex = 10 + Math.round(ny / 3);
+  el.classList.toggle("flip", nx < pos.x);
+  el.classList.add("moving");
+  pos.x = nx; pos.y = ny;
+  setTimeout(() => el.classList.remove("moving"), dur * 1000);
+  setTimeout(() => ranchWanderStep(el, token), dur * 1000 + 700 + Math.random() * 3000);
+}
+function startRanchWander() {
+  const token = ++ranchToken;
+  document.querySelectorAll("#penCanvas .ranchAnimal").forEach(el => {
+    setTimeout(() => ranchWanderStep(el, token), Math.random() * 1500); // 錯開起步，不要全部同時動
+  });
+}
+// 動物走到一半就重畫(餵食後refresh/擴建/開關面板)時，ranchPos存的是「目的地」，直接用會讓動物瞬間跳到終點；
+// 重畫前先讀DOM上動物目前實際所在位置(getBoundingClientRect)寫回ranchPos，重畫後從原地繼續走
+function snapshotRanchPositions() {
+  const canvas = document.getElementById("penCanvas");
+  if (!canvas) return;
+  const cr = canvas.getBoundingClientRect();
+  if (!cr.width || !cr.height) return;
+  canvas.querySelectorAll(".ranchAnimal").forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (!ranchPos[el.dataset.pen]) return;
+    ranchPos[el.dataset.pen] = {
+      x: Math.min(RANCH_BOUNDS.xMax, Math.max(RANCH_BOUNDS.xMin, (r.left + r.width / 2 - cr.left) / cr.width * 100)),
+      y: Math.min(RANCH_BOUNDS.yMax, Math.max(RANCH_BOUNDS.yMin, (r.bottom - cr.top) * (canvas.clientHeight / cr.height))),
+    };
+  });
 }
 function renderPenScene() {
+  snapshotRanchPositions();
   renderStatusBar();
   renderText(penSceneHtml(state));
   const backBtn = document.getElementById("penBackBtn");
   if (backBtn) backBtn.onclick = renderMain;
   const canvas = document.getElementById("penCanvas");
-  if (canvas) bindOutdoorWalk(canvas, "pen", PEN_LAYOUT, showPenPlotPanel);
-  PEN_LAYOUT.forEach(p => {
-    const pen = state.pens.plots[p.id];
-    if (pen.unlocked && pen.animal) startPenWander(p.id);
+  // 事件委派：動物會一直移動，直接在畫布上依點到的.ranchAnimal分派，點一下就開餵食/互動/收成面板
+  if (canvas) canvas.onclick = (e) => {
+    const animal = e.target.closest && e.target.closest(".ranchAnimal");
+    if (animal) { snapshotRanchPositions(); showPenActionsPanel(animal.dataset.pen); }
+  };
+  const info = penCapacityInfo(state);
+  const freePenId = firstFreePenId(state);
+  const lockedPenId = nextLockedPenId(state);
+  const opts = [];
+  opts.push({
+    label: `🐾 放入動物（空位 ${info.free}）`,
+    variant: "primary",
+    disabled: !freePenId,
+    onClick: () => showPlaceAnimalPanel(freePenId)
   });
+  if (lockedPenId) {
+    const cost = penUnlockCost(state);
+    opts.push({
+      label: `🔨 擴建牧場（+1容量，${cost}📦）`,
+      disabled: (state.resources.scrap || 0) < cost,
+      onClick: () => {
+        const result = unlockPen(state, lockedPenId);
+        if (result.ok) { runQuestCheck(); saveGame(); renderStatusBar(); }
+        renderPenScene();
+      }
+    });
+  }
+  renderOptions(opts);
+  startRanchWander();
 }
 function showPlaceAnimalPanel(penId) {
   renderStatusBar();
@@ -1201,27 +1261,7 @@ function showPlaceAnimalPanel(penId) {
   opts.push({ label: "返回", variant: "ghost", onClick: renderPenScene });
   renderOptions(opts);
 }
-// 玩家走到欄位旁後才會呼叫這個面板；依欄位狀態分派到對應互動（解鎖/放入動物/餵食·互動·收成）
-function showPenPlotPanel(penId) {
-  const pen = state.pens.plots[penId];
-  if (!pen.unlocked) {
-    renderStatusBar();
-    const cost = penUnlockCost(state);
-    renderText(`<div class="subtitle">解鎖欄位</div><div class="hint">花費 ${cost}📦 建造這個欄位。</div>`);
-    renderOptions([
-      { label: `解鎖（${cost}📦）`, disabled: (state.resources.scrap || 0) < cost, onClick: () => {
-        const result = unlockPen(state, penId);
-        if (result.ok) { runQuestCheck(); saveGame(); renderStatusBar(); }
-        renderPenScene();
-      } },
-      { label: "返回", variant: "ghost", onClick: renderPenScene }
-    ]);
-    return;
-  }
-  if (!pen.animal) { showPlaceAnimalPanel(penId); return; }
-  showPenActionsPanel(penId);
-}
-// 養殖欄位同時有餵食/互動/收成三種操作，跟農場地塊「一格一狀態直接點」不同，改成點格子跳這個小面板選操作
+// 每隻動物同時有餵食/互動/收成三種操作，跟農場地塊「一格一狀態直接點」不同，點動物跳這個小面板選操作(2026-09-20牧場放養後由點動物開啟)
 function showPenActionsPanel(penId) {
   renderStatusBar();
   const pen = state.pens.plots[penId];
@@ -1526,6 +1566,7 @@ function bindFurnitureDrag(el, canvas, furnitureIndex) {
 }
 
 function playerAnim(cls, callback) {
+  cancelActiveWalks(); // 走路中點門/睡袋：先停下來再播動畫，避免.anim-*的transition:none讓走路鏈一格一格直接跳
   const el = document.getElementById("homePlayerCell");
   if (!el) { callback(); return; }
   el.classList.add(cls);
@@ -2829,19 +2870,19 @@ function startBloodMoonNight() {
       renderText(`🌙 ${introText}
 ${blockText}${noiseText}${modifierFlavor}
 
-外圍的怪物已經突破防線，獸欄方向傳來動物驚慌的叫聲——你要死守獸欄，還是放棄獸欄、集中兵力退守安全屋？`, { kind: "battle" });
+外圍的怪物已經突破防線，獸欄方向傳來動物驚慌的叫聲——你要死守牧場，還是放棄牧場、集中兵力退守安全屋？`, { kind: "battle" });
       renderOptions([
-        { label: "🛡️ 死守獸欄", variant: "danger", onClick: () => {
+        { label: "🛡️ 死守牧場", variant: "danger", onClick: () => {
           applyEffect({ hp: -10 });
           if (state.hp <= 0) { renderGameOver(); return; }
           renderStatusBar();
-          renderText("你們死守在獸欄前，狠狠打退了撲上來的怪物——代價是身上又添了幾道傷。（HP-10）", { kind: "battle" });
+          renderText("你們死守在牧場前，狠狠打退了撲上來的怪物——代價是身上又添了幾道傷。（HP-10）", { kind: "battle" });
           renderOptions([{ label: "⚔️ 迎戰", variant: "danger", onClick: () => runBloodMoonWave(waves, 0, modifier) }]);
         } },
-        { label: "🚪 放棄獸欄，退守安全屋", variant: "ghost", onClick: () => {
+        { label: "🚪 放棄牧場，退守安全屋", variant: "ghost", onClick: () => {
           resetPensAfterRetreat(state);
           renderStatusBar();
-          renderText("你們放棄了獸欄，集中兵力退回安全屋。驚慌的動物在圍欄裡亂竄了一整夜，好感度跌回谷底，產出也得重新開始累積——但至少，牠們都還活著。", { kind: "battle" });
+          renderText("你們放棄了牧場，集中兵力退回安全屋。驚慌的動物在圍欄裡亂竄了一整夜，好感度跌回谷底，產出也得重新開始累積——但至少，牠們都還活著。", { kind: "battle" });
           renderOptions([{ label: "⚔️ 迎戰", variant: "danger", onClick: () => runBloodMoonWave(waves, 0, modifier) }]);
         } }
       ]);

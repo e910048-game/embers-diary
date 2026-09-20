@@ -1476,13 +1476,11 @@
   }
 
   // ---------- 養殖區（2026-07-02，見規格文件/養殖區_設計規格.md，2026-07-04 V3改版） ----------
-  // 欄位固定佈局：gx/gy給等角走路系統定位，理由跟FARM_PLOT_LAYOUT一致，2x2緊貼菱形棋盤
-  const PEN_LAYOUT = [
-    { id: "pen_1", gx: 2, gy: 2 },
-    { id: "pen_2", gx: 3, gy: 2 },
-    { id: "pen_3", gx: 2, gy: 3 },
-    { id: "pen_4", gx: 3, gy: 3 },
-  ];
+  // 2026-09-20玩家回饋「牧場太死板，應該是可以養動物、動物在區域裡亂逛」：改成放養牧場——
+  // 「欄位」在概念上變成「牧場容量格」(一格養一隻)，不再是畫面上固定位置的格子，動物在整片場地自由走動
+  // (見game.js的startRanchWander)，所以不再需要gx/gy座標。容量4→8，state.pens.plots資料結構完全不變
+  // (餵食/撫摸/收成/好感度/血月撤退全部沿用)，舊存檔4格由loadGame既有的pens.plots合併補成8格
+  const PEN_LAYOUT = Array.from({ length: 8 }, (_, i) => ({ id: "pen_" + (i + 1) }));
 
   const FEED_COST = 3; // 餵食消耗的food
   // 使用者明確表示「小屋活動要輕鬆寫意，不要有壓力」——澆水/餵食刻意不消耗體力，不跟探索/採集/強化據點
@@ -1502,6 +1500,24 @@
   function penUnlockCost(state) {
     const n = Object.values(state.pens.plots).filter(p => p.unlocked).length;
     return 10 + (n - 1) * 6;
+  }
+
+  // 牧場容量摘要：total=總容量格數、unlocked=已擴建、animals=目前養了幾隻、free=還有幾個空位
+  function penCapacityInfo(state) {
+    const plots = Object.values(state.pens.plots);
+    const unlocked = plots.filter(p => p.unlocked).length;
+    const animals = plots.filter(p => p.unlocked && p.animal).length;
+    return { total: plots.length, unlocked, animals, free: unlocked - animals };
+  }
+  // 放入動物時自動挑第一個空位(已擴建且沒有動物)；沒有空位回傳null
+  function firstFreePenId(state) {
+    const p = PEN_LAYOUT.find(d => { const pen = state.pens.plots[d.id]; return pen && pen.unlocked && !pen.animal; });
+    return p ? p.id : null;
+  }
+  // 擴建牧場時下一個要解鎖的容量格；已全部擴建回傳null
+  function nextLockedPenId(state) {
+    const p = PEN_LAYOUT.find(d => { const pen = state.pens.plots[d.id]; return pen && !pen.unlocked; });
+    return p ? p.id : null;
   }
 
   function unlockPen(state, penId) {
@@ -2338,7 +2354,7 @@
     COMPANION_TASKS, COMPANION_NAMES, defaultCompanionsState, recruitCompanion, refreshCompanionUnlocks, dispatchCompanion, companionAssigned, getCompanionTaskEffect,
     FACILITY_KEYS, syncBaseDefense, reinforceFacility, restSanRegen,
     FARM_PLOT_LAYOUT, CROPS, currentPhaseIndex, farmPlotUnlockCost, unlockFarmPlot, plantSeed, waterPlot, getCropStage, harvestFarmPlot,
-    PEN_LAYOUT, SPECIES, FEED_COST, getPenProductionState, penUnlockCost, unlockPen, placeAnimal, feedAnimal, petAnimal, collectPen,
+    PEN_LAYOUT, SPECIES, FEED_COST, getPenProductionState, penUnlockCost, penCapacityInfo, firstFreePenId, nextLockedPenId, unlockPen, placeAnimal, feedAnimal, petAnimal, collectPen,
     hasAnyPenAnimal, resetPensAfterRetreat,
     WORKSHOP_STATION_LAYOUT, RECIPES, recipeAvailable, canAffordRecipe, processingStationUnlockCost, unlockProcessingStation, startProcessing, getProcessingState, collectProcessing,
     YARD_DECOR_SLOTS, placeYardDecor, removeYardDecor, getYardDecorEffect,
