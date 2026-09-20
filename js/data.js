@@ -2964,6 +2964,28 @@ const PROJECTS = {
     effectDesc: "採集收穫+15%",
     doneText: "工作檯上擺滿了拆解到一半的零件和手寫的筆記。你逐漸摸清了哪裡該翻、哪些東西值得留——採集的效率明顯不一樣了。",
   },
+  // 體力成長三件套(2026-09-20，朋友試玩回饋「每回合體力太少」，使用者選擇用建造專案解決)
+  proj_bicycle: {
+    id: "proj_bicycle", name: "改裝腳踏車", icon: "🚲", requiresCampLv: 2, phases: 5,
+    cost: { resources: { scrap: 30 } },
+    effects: { exploreFarCostDelta: -1 },
+    effectDesc: "遠方探索體力消耗-1（最低1）",
+    doneText: "你把撿來的破腳踏車拆了又裝，換上結實的輪胎和一個載物架。騎起來吱嘎作響，卻比走路省力太多——遠途不再那麼折騰人。",
+  },
+  proj_thermos: {
+    id: "proj_thermos", name: "野戰保溫壺", icon: "🫖", requiresCampLv: 3, phases: 6,
+    cost: { resources: { scrap: 35 } },
+    effects: { staminaMaxBonus: 2 },
+    effectDesc: "體力上限+2",
+    doneText: "你用廢料焊出一個厚實的保溫壺，裝進熱水與糖鹽。出門前灌一口，整天的力氣都撐得更久。",
+  },
+  proj_vehicle: {
+    id: "proj_vehicle", name: "越野改裝車", icon: "🚙", requiresCampLv: 4, phases: 10,
+    cost: { resources: { scrap: 70 }, embers: 30 },
+    effects: { exploreNearCostDelta: -1 },
+    effectDesc: "附近搜刮體力消耗-1（最低1）",
+    doneText: "引擎在深夜終於轟然啟動。你用一台舊車架加上自製的防護欄，拼出了末日裡的第一輛座駕——搜刮不再靠兩條腿硬撐。",
+  },
 };
 
 // 營地等級：每一級是「需求清單」，全部滿足才升級(連續判定)。req.type對應logic.js campRequirementValue()

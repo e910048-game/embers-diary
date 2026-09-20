@@ -31,10 +31,11 @@
   function actionStaminaCost(state, actionType, loc) {
     if (actionType === "explore_far") {
       const discount = Math.floor((state.level - 1) / 3);
-      let cost = Math.max(1, ACTION_STAMINA_COSTS.explore_far - discount);
+      let cost = Math.max(1, ACTION_STAMINA_COSTS.explore_far - discount + getProjectEffect(state, "exploreFarCostDelta")); // 專案「改裝腳踏車」-1
       if (loc && getLocationOverpower(state, loc).highDanger) cost += 1;
       return cost;
     }
+    if (actionType === "explore_near") return Math.max(1, ACTION_STAMINA_COSTS.explore_near + getProjectEffect(state, "exploreNearCostDelta")); // 專案「越野改裝車」-1
     return ACTION_STAMINA_COSTS[actionType] ?? 1;
   }
 

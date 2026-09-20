@@ -1431,7 +1431,7 @@ test("牧場擴建成本：10,16,...,46，單次低於廢料上限，全部擴�
 });
 
 // ===== 2026-09-20 營地成長：建造專案 + 營地等級（玩家回饋「默默把基地養成的感覺太薄弱」）=====
-const SUPPORTED_PROJECT_EFFECTS = ["phaseYield", "resourceCapBonus", "baseDefenseBonus", "raidChanceDelta", "restHealBonus", "staminaMaxBonus", "noiseDampRatio", "gatherYieldBonusRatio"];
+const SUPPORTED_PROJECT_EFFECTS = ["phaseYield", "resourceCapBonus", "baseDefenseBonus", "raidChanceDelta", "restHealBonus", "staminaMaxBonus", "noiseDampRatio", "gatherYieldBonusRatio", "exploreFarCostDelta", "exploreNearCostDelta"];
 const SUPPORTED_CAMP_REQS = ["facilityTotal", "comfort", "projectsDone", "farmPlots", "companions", "penAnimals", "day"];
 
 test("CI斷言：PROJECTS/CAMP_LEVELS資料完整——欄位齊全、效果與需求型別都被支援、成本低於資源上限、等級需求單調不降", () => {
@@ -2572,6 +2572,25 @@ test("戰鬥畫面不再顯示綠色終端機戰報；戰鬥文字有換行分�
   assert.ok(/\$\{lifestealText\}\\n\$\{counterText\}/.test(src), "攻擊文字與反擊文字之間要換行");
   assert.ok(!/僅供展示/.test(src) && !/尚無實際加成/.test(src));
   assert.ok(!/`：\$\{cost\}📦/.test(src), "強化清單hint不該以孤立冒號開頭");
+});
+
+
+// ---------- 體力成長專案(2026-09-20) ----------
+test("體力成長專案：腳踏車遠征-1、越野車近探-1(皆最低1)、保溫壺體力上限+2", () => {
+  const s = L.defaultState();
+  const baseFar = L.actionStaminaCost(s, "explore_far");
+  const baseNear = L.actionStaminaCost(s, "explore_near");
+  const baseMax = L.staminaMax(s);
+  s.projects.proj_bicycle = { status: "done", startedAtPhaseIndex: 0 };
+  assert.strictEqual(L.actionStaminaCost(s, "explore_far"), baseFar - 1);
+  assert.strictEqual(L.actionStaminaCost(s, "explore_near"), baseNear);
+  s.projects.proj_vehicle = { status: "done", startedAtPhaseIndex: 0 };
+  assert.strictEqual(L.actionStaminaCost(s, "explore_near"), baseNear - 1);
+  s.projects.proj_thermos = { status: "done", startedAtPhaseIndex: 0 };
+  assert.strictEqual(L.staminaMax(s), baseMax + 2);
+  s.level = 20; // 高等級遠征本來就是1，不會降到0
+  assert.ok(L.actionStaminaCost(s, "explore_far") >= 1 && L.actionStaminaCost(s, "explore_near") >= 1);
+  assert.strictEqual(L.actionStaminaCost(s, "gather"), 1);
 });
 
 
