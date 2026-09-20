@@ -2304,5 +2304,115 @@ test("存檔相容防護：defaultState()裡每個巢狀物件欄位都必須登
   assert.deepStrictEqual(real, [], "這些巢狀欄位未登記NESTED_STATE_FIELDS，舊存檔缺新子欄位時會掉值: " + real.join(","));
 });
 
+// ---------- 敘事連續性(2026-09-20)：回訪記憶/因果鏈/據點連動/同伴警語與日常 ----------
+test("回訪記憶：第1次無迴響，第2/4/7次起各用對應門檻的文字池；recordLocationVisit累加", () => {
+  const D = require("../js/data.js");
+  const s = L.defaultState();
+  assert.strictEqual(L.getVisitMemoryLine(0), "");
+  assert.strictEqual(L.getVisitMemoryLine(1), "");
+  assert.ok(D.VISIT_MEMORY_LINES[2].includes(L.getVisitMemoryLine(2, () => 0)));
+  assert.ok(D.VISIT_MEMORY_LINES[2].includes(L.getVisitMemoryLine(3, () => 0.99)));
+  assert.ok(D.VISIT_MEMORY_LINES[4].includes(L.getVisitMemoryLine(5, () => 0)));
+  assert.ok(D.VISIT_MEMORY_LINES[7].includes(L.getVisitMemoryLine(99, () => 0)));
+  assert.strictEqual(L.recordLocationVisit(s, "loc_x"), 1);
+  assert.strictEqual(L.recordLocationVisit(s, "loc_x"), 2);
+  assert.strictEqual(L.recordLocationVisit(s, "loc_y"), 1);
+});
+
+test("因果鏈：善意選項設旗標→2天後(營火3天)才出現回饋事件，且只發生一次", () => {
+  const D = require("../js/data.js");
+  const find = id => D.EVENTS.find(e => e.id === id);
+  const chains = [
+    ["evt_neighbor_knock", "用一份食物換取對方的鐵罐", "neighbor_helped", "evt_neighbor_return", "neighbor_return_done", 2],
+    ["evt_stray_cat", "分牠一點食物", "cat_fed", "evt_cat_returns", "cat_return_done", 2],
+    ["evt_campfire_stranger", "走近，分一份食物給他們", "campfire_shared", "evt_campfire_return", "campfire_return_done", 3],
+  ];
+  for (const [startId, label, flag, retId, doneFlag, days] of chains) {
+    const opt = find(startId).options.find(o => o.label === label);
+    assert.ok(opt, startId + " 找不到選項 " + label);
+    assert.strictEqual(opt.effect.setFlag, flag);
+    const ret = find(retId);
+    assert.ok(ret && ret.weight > 0);
+    assert.strictEqual(ret.options[0].effect.setFlag, doneFlag);
+    const s = L.defaultState();
+    s.day = 10;
+    assert.strictEqual(ret.condition(s), false, "沒旗標不該出現");
+    s.flags[flag] = 10;
+    assert.strictEqual(ret.condition(s), false, "當天不該出現");
+    s.day = 10 + days;
+    assert.strictEqual(ret.condition(s), true, days + "天後應可出現");
+    s.flags[doneFlag] = s.day;
+    assert.strictEqual(ret.condition(s), false, "已回饋過不該重複");
+  }
+});
+
+test("據點連動：BASE_REACTION_OPTIONS的事件都存在、選項帶showIf，專案完成才顯示", () => {
+  const D = require("../js/data.js");
+  for (const [evtId, extra] of Object.entries(D.BASE_REACTION_OPTIONS)) {
+    const e = D.EVENTS.find(x => x.id === evtId);
+    assert.ok(e, "事件不存在: " + evtId);
+    for (const o of extra) {
+      assert.ok(e.options.includes(o), evtId + " 的專屬選項沒被加入");
+      assert.strictEqual(typeof o.showIf, "function");
+      assert.ok(o.resultText);
+    }
+  }
+  const opt = D.EVENTS.find(e => e.id === "evt_noise_outside").options.find(o => o.showIf);
+  const s = L.defaultState();
+  assert.strictEqual(opt.showIf(s), false);
+  s.projects.proj_watchtower = { status: "done", startedAtPhaseIndex: 0 };
+  assert.strictEqual(opt.showIf(s), true);
+});
+
+test("同伴警語：血月倒數期挑已招募同伴、同一天結果穩定；沒同伴回空字串", () => {
+  const s = L.defaultState();
+  Object.keys(s.companions).forEach(k => { s.companions[k] = "locked"; });
+  assert.strictEqual(L.getCompanionThreatLine(s), "");
+  s.companions["雷恩"] = "standby";
+  const a = L.getCompanionThreatLine(s);
+  assert.ok(a.startsWith("雷恩："));
+  assert.strictEqual(L.getCompanionThreatLine(s), a);
+});
+
+test("同伴日常：個人線解完者優先被選，且沙發互動改用定居感專屬對話", () => {
+  const D = require("../js/data.js");
+  const s = L.defaultState();
+  Object.keys(s.companions).forEach(k => { s.companions[k] = "locked"; });
+  assert.strictEqual(L.pickHomeCompanion(s), null);
+  s.companions["雷恩"] = "standby";
+  s.companions["艾莉"] = "standby";
+  s.flags["艾莉_arc_done"] = 5;
+  assert.strictEqual(L.pickHomeCompanion(s), "艾莉");
+  assert.ok(D.COMPANION_HOME_LINES["艾莉"].includes(L.getCompanionHomeLine(s, "艾莉")));
+  assert.strictEqual(L.getCompanionHomeLine(s, "雷恩"), "");
+  s.inventory.push({ itemId: "furn_sofa", qty: 1 });
+  L.placeFurniture(s, "furn_sofa");
+  const r = L.loungeInteract(s, "艾莉");
+  if (r.ok) assert.ok(D.COMPANION_HOME_LINES["艾莉"].includes(r.text));
+});
+
+test("新增敘事文字：每段≤100字、6位同伴都有警語與日常對話", () => {
+  const D = require("../js/data.js");
+  const names = Object.keys(D.COMPANIONS_REGISTRY);
+  for (const n of names) {
+    assert.ok(D.COMPANION_THREAT_LINES[n] && D.COMPANION_THREAT_LINES[n].length >= 2, n + " 缺警語");
+    assert.ok(D.COMPANION_HOME_LINES[n] && D.COMPANION_HOME_LINES[n].length >= 2, n + " 缺日常對話");
+  }
+  const all = [].concat(...Object.values(D.VISIT_MEMORY_LINES), ...Object.values(D.COMPANION_THREAT_LINES).flat(), ...Object.values(D.COMPANION_HOME_LINES).flat(),
+    ...D.CONSEQUENCE_EVENTS.map(e => e.text), ...D.CONSEQUENCE_EVENTS.flatMap(e => e.options.map(o => o.resultText)),
+    ...Object.values(D.BASE_REACTION_OPTIONS).flat().map(o => o.resultText));
+  const long = all.filter(t => t.length > 100);
+  assert.deepStrictEqual(long, [], "超過100字: " + long.join(" | "));
+});
+
+test("出門單一入口：小屋場景不再有採集門，showExploreChoice內含採集/搜刮/遠方三選項", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  assert.ok(!/homeGatherDoorCell/.test(src), "採集門殘留");
+  const i = src.indexOf("function showExploreChoice(");
+  const body = src.slice(i, src.indexOf("\nfunction ", i + 10));
+  assert.ok(/onClick: doGather/.test(body) && /onClick: doExplore/.test(body) && /onClick: showLocationList/.test(body));
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

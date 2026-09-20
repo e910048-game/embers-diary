@@ -217,9 +217,12 @@ function threatWarningText() {
   if (state.upcomingThreat) {
     const left = state.upcomingThreat.day - state.day;
     if (left > 0 && left <= THREAT_LEAD_DAYS) {
-      if (tier === 2) return `\n📢 地脈全面活化！血月狂潮將於${left}天後以更駭人的規模降臨！`;
-      if (tier === 1) return `\n📢 偵測到超大型靈能暴動！血月狂潮將於${left}天後降臨！`;
-      return `\n📢 血月狂潮將於${left}天後降臨！`;
+      const cLine = getCompanionThreatLine(state);
+      const cText = cLine ? `
+💬 ${cLine}` : "";
+      if (tier === 2) return `\n📢 地脈全面活化！血月狂潮將於${left}天後以更駭人的規模降臨！${cText}`;
+      if (tier === 1) return `\n📢 偵測到超大型靈能暴動！血月狂潮將於${left}天後降臨！${cText}`;
+      return `\n📢 血月狂潮將於${left}天後降臨！${cText}`;
     }
   }
   return "";
@@ -759,7 +762,7 @@ const CAMP_PROPS_BY_LEVEL = [
   [{ icon: "🏮", left: "41%" }, { icon: "🚩", left: "60%" }],
   [{ icon: "✨", left: "86%" }],
 ];
-const CAMP_PROJECT_SLOTS = ["8%", "17%", "26%", "35%", "65%", "74%", "83%", "92%", "44%"]; // 下緣牆帶，避開50%的採集門
+const CAMP_PROJECT_SLOTS = ["8%", "17%", "26%", "35%", "65%", "74%", "83%", "92%", "44%"]; // 下緣牆帶(原採集門已併入出門選單，44%等位置仍保留)
 function campPropsHtml(state, campLv) {
   const props = [];
   for (let lv = 2; lv <= campLv; lv++) (CAMP_PROPS_BY_LEVEL[lv - 1] || []).forEach(p => props.push(p));
@@ -915,8 +918,7 @@ const windowCls = `homeWindow ${state.phase === "night" ? "is-night" : "is-day"}
   // v164：點燈開關——純氛圍互動，跟state.phase的被動變暗濾鏡是兩件事，玩家可隨時主動關燈
   items.push(`<button class="lightSwitch${state.homeLightOff ? " is-off" : " is-on"}" id="homeLightSwitch" style="right:14px;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0) + 1}" title="${state.homeLightOff ? "點擊開燈" : "點擊關燈"}">${state.homeLightOff ? "🌑" : "💡"}</button>`);
   // 2026-07-02：門改為純CSS繪製（跟homeWindow同一套手法），不再用等角透視PNG貼進平面牆帶，避免黑邊/違和
-  items.push(`<div class="roomCell doorCell doorExplore clickable" id="homeExploreDoorCell" style="left:50%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="探索門（點擊探索）"><div class="icon"><div class="doorSeam"></div></div><div class="homeLabel">探索</div></div>`);
-  items.push(`<div class="roomCell doorCell doorGather clickable" id="homeGatherDoorCell" style="left:50%;top:${ROOM_H_PX - WALL_PX + WALL_ICON_OFFSET}px;z-index:${cellZ(GRID_FLOOR_ROW_MAX)}" title="採集門（點擊採集）"><div class="icon"><div class="doorSeam"></div></div><div class="homeLabel lbl-above">採集</div></div>`);
+  items.push(`<div class="roomCell doorCell doorExplore clickable" id="homeExploreDoorCell" style="left:50%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="出門（採集／搜刮／遠征）"><div class="icon"><div class="doorSeam"></div></div><div class="homeLabel">出門</div></div>`);
   // V2.0 7.6：Lv/晶燼/食物等資訊併入statusExtra，避免畫面重複顯示
   // v95：背包/商店面板入口統一改用頂部按鈕(invBtn/shopBtn)，避免重複
   // 2026-06-21：peepsBtn(👥)已移除，另一半QR同步面板改走「⋯」展開列的statusPeepsBtn(💌)，小屋頭像旁「+邀請隊友」改開showCompanionPanel(小隊夥伴)
@@ -2076,8 +2078,6 @@ const lowHp = state.hp <= state.hpMax * 0.25;
   // 2026-09-20玩家實測回饋：原本門/睡袋要「點兩次」(第一次armed待確認、再點才執行)，每次進出都要點兩下太麻煩，
   // 改成單擊直接執行。探索門只是開選單、採集/睡覺誤觸的代價也很小，不需要二次確認保護
   if (exploreDoorCell) exploreDoorCell.onclick = (e) => { e.stopPropagation(); if (!lowHp) playerAnim("anim-explore", showExploreChoice); };
-  const gatherDoorCell = document.getElementById("homeGatherDoorCell");
-  if (gatherDoorCell) gatherDoorCell.onclick = (e) => { e.stopPropagation(); if (!lowHp) playerAnim("anim-gather", doGather); };
   // v94：長按顯示label，配合CSS .labelShow / :hover，讓觸控裝置也能看到家具名稱標籤
   document.querySelectorAll(".roomCanvas .roomCell").forEach(el => {
     el.addEventListener("click", () => {
@@ -2301,10 +2301,11 @@ function applyFlagExploreBuff() {
 function showExploreChoice() {
   applyFlagExploreBuff();
   renderStatusBar();
-    renderText("你要往哪裡探索？", { kind: "event" });
+  renderText("你站在門口，外頭的風帶著灰燼的味道。這一趟打算怎麼走？", { kind: "event" });
   renderOptions([
-    { label: "🔍 附近搜刮", hint: `體力-${actionStaminaCost(state, "explore_near")}`, onClick: doExplore },
-        { label: "🚙 前往遠方地點", hint: `體力-${actionStaminaCost(state, "explore_far")}`, onClick: showLocationList },
+    { label: "🧺 就近採集", hint: `體力-${actionStaminaCost(state, "gather")}｜安全，固定收穫食物/飲水/廢料`, onClick: doGather },
+    { label: "🔍 深入廢墟搜刮", hint: `體力-${actionStaminaCost(state, "explore_near")}｜有風險，可能遇到事件或戰鬥`, onClick: doExplore },
+    { label: "🚙 前往遠方地點", hint: `體力-${actionStaminaCost(state, "explore_far")}｜挑選地點，高風險高收穫`, onClick: showLocationList },
     { label: "返回", variant: "ghost", onClick: renderMain },
   ]);
 }
@@ -2369,7 +2370,7 @@ function showEvent(evt, onDone, staminaResult) {
     return;
   }
 
-  const opts = evt.options.map(opt => {
+  const opts = evt.options.filter(opt => !opt.showIf || opt.showIf(state)).map(opt => {
     let lacking = false;
     let hint = "";
     if (opt.requiresResource) {
@@ -2786,6 +2787,7 @@ function resolveLocationCore(loc) {
 function visitLocation(loc) {
   const core = resolveLocationCore(loc);
   if (!core) return;
+  const visitMemory = getVisitMemoryLine(recordLocationVisit(state, loc.id));
   const { stResult, travelText, travelChips, locModifierFlavor, result } = core;
   renderExploreProgress(result.type === "battle", () => {
     if (result.type === "battle") {
@@ -2809,7 +2811,10 @@ function visitLocation(loc) {
     // 2026-07-06：遠距離(far)地點才會插入同伴遠征台詞，呼應「遠征高Tier地點」的原始需求
     const companionLine = loc.distance === "far" ? pickCompanionLocationLine(state) : "";
     const companionLineText = companionLine ? `\n\n${companionLine}` : "";
-    renderText(`你在${loc.icon}${loc.name}：${beat}
+    const memoryText = visitMemory ? `${visitMemory}
+
+` : "";
+    renderText(`${memoryText}你在${loc.icon}${loc.name}：${beat}
 
 ${flavor}${travelText}${locModifierFlavor}${companionLineText}`, { kind: "event", summary: [...travelChips, ...chips] });
     renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
@@ -2880,7 +2885,7 @@ function doGather() {
 
 function showLounge() {
   renderStatusBar();
-  const companionName = state.companions ? Object.keys(state.companions)[0] : null;
+  const companionName = pickHomeCompanion(state);
   const result = loungeInteract(state, companionName);
   saveGame();
     renderText(`🛋️ ${result.text}

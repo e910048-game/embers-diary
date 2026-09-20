@@ -2983,10 +2983,120 @@ const CAMP_LEVELS = [
     levelUpText: "你坐在院子裡，看著這一切：一磚一瓦都是自己和同伴親手搭起來的。世界依然是灰燼，但在這片灰燼裡，你們有了一個家。" },
 ];
 
+// ============ 敘事連續性補強(2026-09-20，使用者同意方向後實作) ============
+// 1) 回訪記憶：同一地點去第2、4、7次以上時，探索文字前面多一句「這裡你來過」的迴響(純文字，不改掉落)
+const VISIT_MEMORY_LINES = {
+  2: [
+    "這裡你來過。牆上的塗鴉、翻倒的推車，都還停在上次離開時的模樣。",
+    "熟悉的氣味撲面而來——你記得上回就是從這個角落開始翻找的。",
+    "腳印還留在灰塵裡，是你上次來的痕跡，還沒被風吹散。",
+  ],
+  4: [
+    "這裡的貨架已經被你翻過好幾遍，剩下的都是別人不要的東西，你得多花點心思。",
+    "你閉著眼都能走完這條路。但也因為太熟，你更容易漏看角落裡的異狀。",
+    "來了這麼多次，連牆縫裡鑽出的雜草你都認得出哪一叢是新長的。",
+  ],
+  7: [
+    "這裡幾乎被你搬空了，空蕩蕩的貨架回著你的腳步聲。能再找到點什麼，全靠運氣。",
+    "第幾次來了？你已經數不清。這片廢墟像是你的第二個後院，只是後院裡再也長不出東西。",
+    "你在這裡留下太多足跡，連流浪的野狗都學會了避開你常走的路線。",
+  ],
+};
+
+// 2) 同伴在血月倒數期的警語(依同伴個性，用day輪替固定挑選，重繪畫面不會亂跳)
+const COMPANION_THREAT_LINES = {
+  "雷恩": ["「彈藥數過了嗎？我不想到時候才發現少一發。」", "「血月快到了。今晚我守前半夜，你先睡。」"],
+  "艾莉": ["「我把藥品都分裝好了，血月那晚會有人受傷的……我知道。」", "「天空的顏色不對勁，我有點怕，但我會撐住的。」"],
+  "阿卡": ["「嘿，我改裝了幾個小玩意兒，血月來多少炸多少！」", "「別擔心，我把引線都檢查三遍了——大概吧。」"],
+  "老周": ["「圍牆再敲緊一點，螺絲別偷懶。血月不等人。」", "「工具我都磨好了，該修的今晚前修完。」"],
+  "小雨": ["「我把窗縫都塞好了……只要撐過這一晚就好，對吧？」", "「我在門口放了鈴鐺，有東西靠近我會先聽到。」"],
+  "阿海": ["「我去外圍看過了，血月前的路況我都記著，逃跑路線有兩條。」", "「聞到了嗎？空氣裡有鐵鏽味，狂潮快來了。」"],
+};
+
+// 3) 同伴個人線解完(arc_done)後的「定居感」日常對話：沙發互動時優先使用
+const COMPANION_HOME_LINES = {
+  "雷恩": ["雷恩把你的杯子洗好放回原位，什麼也沒說，只是嘴角微微上揚。", "雷恩在門邊磨著刀，忽然說：「這裡……比我以前待過的任何地方都像家。」"],
+  "艾莉": ["艾莉在窗台擺了一小盆不知哪撿來的野花，說是「讓家看起來有活著的感覺」。", "艾莉靠著你的肩膀睡著了，手裡還握著那本翻舊的筆記。"],
+  "阿卡": ["阿卡在牆上貼了一張歪歪扭扭的「安全守則」，第一條是「別碰阿卡的東西」。", "阿卡邊修東西邊哼歌：「我以前從沒想過，還會有人等我回家吃飯。」"],
+  "老周": ["老周坐在自己修好的椅子上喝著水，滿足地敲了敲扶手：「結實。這才叫家具。」", "老周悄悄把你桌腳的木屑掃乾淨，沒讓你看見。"],
+  "小雨": ["小雨在牆角用粉筆畫了一整排小房子，說是「我們的鄰居」。", "小雨把最後一塊餅乾掰成兩半，硬是塞了一半給你。"],
+  "阿海": ["阿海把地圖攤在桌上，指著據點的位置說：「從現在起，所有路都從這裡出發。」", "阿海在屋頂看星星，回來時說：「今晚的天空，第一次沒讓我想逃。」"],
+};
+
+// 4) 短期因果鏈：先前的善意，2~5天後有回音(條件都是flag天數差，各只發生一次)
+const CONSEQUENCE_EVENTS = [
+  {
+    id: "evt_neighbor_return", phase: ["day"], weight: 60, minDay: 1,
+    condition: (state) => daysSinceFlagAtLeast(state, "neighbor_helped", 2) && !(state.flags && state.flags.neighbor_return_done),
+    text: "據點的門被輕輕敲響，門外放著一個小布包。你認得那道瘦弱的背影——是前幾天用鐵罐換過食物的那位倖存者，正遠遠地朝你揮手。",
+    options: [{ label: "打開布包", effect: { resources: { water: 2, scrap: 3, medicine: 1 }, exp: 4, setFlag: "neighbor_return_done" }, resultText: "布包裡是幾樣他自己攢下的東西。他沒有等你道謝，只是揮了揮手，消失在街角。" }],
+  },
+  {
+    id: "evt_cat_returns", phase: ["day", "night"], weight: 60, minDay: 1,
+    condition: (state) => daysSinceFlagAtLeast(state, "cat_fed", 2) && !(state.flags && state.flags.cat_return_done),
+    text: "窗台傳來輕輕的抓撓聲。那隻你餵過的貓蹲在那裡，腳邊放著一隻不知從哪叼來的、還在閃著微光的小零件。",
+    options: [{ label: "摸摸牠的頭", effect: { resources: { scrap: 2 }, san: 5, setFlag: "cat_return_done" }, resultText: "牠把零件往你這邊推了推，像是在說「這是給你的」。你心頭一暖。" }],
+  },
+  {
+    id: "evt_campfire_return", phase: ["day"], weight: 60, minDay: 1,
+    condition: (state) => daysSinceFlagAtLeast(state, "campfire_shared", 3) && !(state.flags && state.flags.campfire_return_done),
+    text: "一個陌生的身影在據點外徘徊，你認出他是之前營火旁的那群人之一。他遠遠地舉起雙手，示意沒有敵意，腳邊放著一包東西。",
+    options: [{ label: "上前道謝", effect: { resources: { medicine: 1, ammo: 3, food: 2 }, exp: 5, setFlag: "campfire_return_done" }, resultText: "「上次那份食物，我們一直記著。」他把包裹推給你，轉身消失在暮色裡。" }],
+  },
+];
+
+// 5) 據點連動：已建成的專案讓事件多出專屬選項(showIf由showEvent過濾)
+function projectBuilt(state, id) {
+  return !!(state.projects && state.projects[id] && state.projects[id].status === "done");
+}
+const BASE_REACTION_OPTIONS = {
+  evt_noise_outside: [
+    { label: "[瞭望台] 從高處看清那是什麼", showIf: (s) => projectBuilt(s, "proj_watchtower"), effect: { resources: { scrap: 2 }, exp: 3 }, resultText: "你爬上瞭望台，一眼就認出那是落單的拾荒者，正拖著壞掉的推車。你什麼都沒驚動，順手收了他掉落的零件。" },
+  ],
+  evt_infected_encounter: [
+    { label: "[發電機房] 打開探照燈驅離", showIf: (s) => projectBuilt(s, "proj_generator"), effect: { exp: 3 }, resultText: "發電機轟然運轉，探照燈的光柱刺破黑暗。感染者被強光逼得踉蹌後退，終於轉身消失在巷子深處。" },
+  ],
+  evt_distant_howl: [
+    { label: "[隔音牆] 窩回牆後安心休息", showIf: (s) => projectBuilt(s, "proj_soundproof"), effect: { san: 4 }, resultText: "隔音牆把嚎叫擋在外面，只剩下模糊的低鳴。你難得睡得安穩。" },
+  ],
+  evt_injury: [
+    { label: "[簡易診所] 到診所處理傷口", showIf: (s) => projectBuilt(s, "proj_clinic"), effect: { hp: -2 }, resultText: "你走進自己搭的診所，用現成的器材消毒包紮。傷口不深，很快就處理好了。" },
+  ],
+  evt_power_surge: [
+    { label: "[發電機房] 穩壓器擋下了突波", showIf: (s) => projectBuilt(s, "proj_generator"), effect: { resources: { scrap: 2 }, exp: 2 }, resultText: "發電機房的穩壓器亮起綠燈，把突波吃得乾乾淨淨。你還從燒斷的保險絲裡拆到幾個好零件。" },
+  ],
+  evt_rain: [
+    { label: "[雨水收集塔] 打開集水閥", showIf: (s) => projectBuilt(s, "proj_rain_tower"), effect: { resources: { water: 4 }, exp: 3 }, resultText: "收集塔的水槽很快蓄滿，你不必再手忙腳亂擺容器，水位穩穩上升。" },
+  ],
+};
+for (const [evtId, extra] of Object.entries(BASE_REACTION_OPTIONS)) {
+  const e = EVENTS.find(x => x.id === evtId);
+  if (e && e.options) e.options.push(...extra);
+}
+EVENTS.push(...CONSEQUENCE_EVENTS);
+
+// 因果鏈的起點：把既有事件的善意選項掛上旗標(setFlag存的是當天day)
+(function attachConsequenceFlags() {
+  const patch = (id, label, flag) => {
+    const e = EVENTS.find(x => x.id === id);
+    const o = e && e.options.find(x => x.label === label);
+    if (o) { o.effect = { ...(o.effect || {}), setFlag: flag }; }
+  };
+  patch("evt_neighbor_knock", "用一份食物換取對方的鐵罐", "neighbor_helped");
+  patch("evt_stray_cat", "分牠一點食物", "cat_fed");
+  const camp = EVENTS.find(x => x.id === "evt_campfire_stranger");
+  if (camp) camp.options.unshift({ label: "走近，分一份食物給他們", requiresResource: { food: 1 }, effect: { resources: { food: -1 }, san: 3, setFlag: "campfire_shared" }, resultText: "你把食物放在火堆旁。他們愣了一下，隨即讓出位置請你坐下。這個晚上沒有人說話，卻比任何時候都暖。" });
+})();
+
 if (typeof module !== "undefined") {
-  module.exports = { PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
+  module.exports = { VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
+  window.VISIT_MEMORY_LINES = VISIT_MEMORY_LINES;
+  window.COMPANION_THREAT_LINES = COMPANION_THREAT_LINES;
+  window.COMPANION_HOME_LINES = COMPANION_HOME_LINES;
+  window.BASE_REACTION_OPTIONS = BASE_REACTION_OPTIONS;
+  window.CONSEQUENCE_EVENTS = CONSEQUENCE_EVENTS;
   window.PROJECTS = PROJECTS;
   window.CAMP_LEVELS = CAMP_LEVELS;
   window.ITEMS = ITEMS;

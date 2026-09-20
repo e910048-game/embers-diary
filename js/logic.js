@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
+  const { VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -291,6 +291,7 @@
       noiseLevel: 0, // 噪音系統：0~100，製造/搜刮/戰鬥累加，每階段自然衰減，血月狂潮時每滿20點多一波敵人
       facilities: { command: 0, greenhouse: 0, workshop: 0, radar: 0 }, // 22.2
       farm: { plots: FARM_PLOT_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, crop: null }; return acc; }, {}) }, // 農場區(2026-07-02)：僅第一塊地預設解鎖
+      locationVisits: {}, // 回訪記憶(2026-09-20)：{locId: 造訪次數}，只影響文字
       projects: {}, // 營地成長(2026-09-20)：建造專案 {id: {status:"building"|"done", startedAtPhaseIndex}}，沒開工的專案不在這裡
       campLevelSeen: 1, // 營地等級「已慶祝過的最高級」，等級只升不降(見getCampLevel)，也用來偵測升級
       pens: { plots: PEN_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, animal: null }; return acc; }, {}) }, // 養殖區(2026-07-02)：僅第一個欄位預設解鎖
@@ -1981,8 +1982,47 @@
       "艾莉": "艾莉蜷在你旁邊，小聲哼著不成調的歌。",
       "阿卡": "阿卡笨拙地坐下，沙發發出一聲抗議般的悶響，逗你笑了。"
     };
-    const text = (companionName && lines[companionName]) || "你陷進沙發裡，緊繃的神經終於鬆懈下來。";
+    const text = getCompanionHomeLine(state, companionName) || (companionName && lines[companionName]) || "你陷進沙發裡，緊繃的神經終於鬆懈下來。";
     return { ok: true, text };
+  }
+
+  // ---- 敘事連續性(2026-09-20)：回訪記憶 / 同伴血月警語 / 同伴日常 ----
+  function recordLocationVisit(state, locId) {
+    if (!state.locationVisits) state.locationVisits = {};
+    state.locationVisits[locId] = (state.locationVisits[locId] || 0) + 1;
+    return state.locationVisits[locId];
+  }
+  // 回傳該造訪次數對應的「這裡你來過」迴響句；第1次或沒有對應門檻回空字串。rng可注入以便測試
+  function getVisitMemoryLine(count, rng) {
+    if (!count || count < 2) return "";
+    const tiers = Object.keys(VISIT_MEMORY_LINES).map(Number).filter(t => t <= count).sort((a, b) => b - a);
+    if (tiers.length === 0) return "";
+    const pool = VISIT_MEMORY_LINES[tiers[0]];
+    return pool[Math.floor((rng || Math.random)() * pool.length)];
+  }
+  function recruitedCompanionNames(state) {
+    return Object.keys(state.companions || {}).filter(n => state.companions[n] && state.companions[n] !== "locked");
+  }
+  // 血月倒數期間(由呼叫端判斷)的同伴警語：依day輪替選人、選句，同一天重繪畫面結果穩定
+  function getCompanionThreatLine(state) {
+    const names = recruitedCompanionNames(state).filter(n => COMPANION_THREAT_LINES[n]);
+    if (names.length === 0) return "";
+    const name = names[state.day % names.length];
+    const pool = COMPANION_THREAT_LINES[name];
+    return name + "：" + pool[state.day % pool.length];
+  }
+  // 沙發/日常互動要找哪位同伴：個人線已解完(`${name}_arc_done`)者優先，其餘依day輪替；沒有同伴回null
+  function pickHomeCompanion(state) {
+    const names = recruitedCompanionNames(state);
+    if (names.length === 0) return null;
+    const settled = names.filter(n => state.flags && state.flags[n + "_arc_done"]);
+    const pool = settled.length ? settled : names;
+    return pool[state.day % pool.length];
+  }
+  function getCompanionHomeLine(state, name) {
+    if (!name || !(state.flags && state.flags[name + "_arc_done"]) || !COMPANION_HOME_LINES[name]) return "";
+    const pool = COMPANION_HOME_LINES[name];
+    return pool[state.day % pool.length];
   }
 
   // v110：收音機互動——每日一次，SAN+3
@@ -2512,7 +2552,7 @@
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
-    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
+    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, recordLocationVisit, getVisitMemoryLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,
