@@ -697,12 +697,43 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 .campProps { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .campProp { position: absolute; font-size: 15px; line-height: 1; transform: translateX(-50%); filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5)); }
 .campPropTop { top: 14px; }
-.facMark { position: absolute; top: 12px; font-size: 16px; line-height: 1; transform: translateX(-50%); }
-.facMark i { position: absolute; right: -7px; bottom: -6px; font-style: normal; font-size: 9px; font-weight: 700; color: #1c1c1c; background: #ffd76a; border-radius: 6px; padding: 0 3px; }
-.facMark-lv0 { opacity: 0.28; filter: grayscale(1); }
-.facMark-lv1 { filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5)); }
-.facMark-lv2 { filter: drop-shadow(0 0 3px rgba(255,215,106,0.75)); }
-.facMark-lv3 { filter: drop-shadow(0 0 5px rgba(255,215,106,1)); font-size: 18px; }
+/* 設施實體造型(2026-09-20)：四個角落格各一座，純CSS繪製；p1=Lv1起、p2=Lv2起、p3=Lv3起才出現 */
+.facProp { --fs: 1.5; position: absolute; width: 52px; height: 44px; transform: translateX(-50%) scale(var(--fs)); transform-origin: 50% 100%; cursor: pointer; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.55)); }
+.facProp i { position: absolute; display: none; }
+.facProp:is(.lv1, .lv2, .lv3) .p1, .facProp:is(.lv2, .lv3) .p2, .facProp.lv3 .p3 { display: block; }
+.facProp .fpLv { position: absolute; right: -4px; top: -8px; font-size: 9px; font-weight: 700; font-style: normal; color: #1c1c1c; background: #ffd76a; border-radius: 7px; padding: 0 4px; }
+.facProp.lv0 { opacity: 0.4; border: 1px dashed rgba(255,255,255,0.5); border-radius: 6px; filter: none; }
+.facProp.lv0::after { content: "＋"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.7); font-size: 18px; }
+.facProp.lv3 { filter: drop-shadow(0 0 5px rgba(255,215,106,0.7)) drop-shadow(0 2px 2px rgba(0,0,0,0.55)); }
+/* 指揮核心：沙包→拒馬旗幟→探照燈 */
+.fp-command .bag { width: 20px; height: 10px; background: linear-gradient(#cdb680, #a48c56); border: 1px solid #6b5a33; border-radius: 6px 6px 3px 3px; }
+.fp-command .b1 { left: 2px; bottom: 2px; } .fp-command .b2 { left: 22px; bottom: 2px; } .fp-command .b3 { left: 12px; bottom: 11px; }
+.fp-command .pole { left: 40px; bottom: 2px; width: 2px; height: 36px; background: #777; }
+.fp-command .flag { left: 42px; top: 4px; width: 12px; height: 9px; background: #c0392b; clip-path: polygon(0 0, 100% 50%, 0 100%); }
+.fp-command .lamp { left: 1px; bottom: 22px; width: 11px; height: 8px; background: #333; border-radius: 2px; box-shadow: 0 0 9px 4px rgba(255,235,150,0.85); animation: fpBlink 1.8s ease-in-out infinite alternate; }
+/* 溫室：種植箱發芽→長高→開花 */
+.fp-greenhouse .box { left: 5px; bottom: 2px; width: 40px; height: 13px; background: linear-gradient(#8a5a2b, #5e3a1a); border: 1px solid #3a2410; border-radius: 2px 2px 5px 5px; }
+.fp-greenhouse .sprout { left: 14px; bottom: 14px; width: 4px; height: 9px; background: #5fd97a; border-radius: 2px; }
+.fp-greenhouse .plant2 { left: 27px; bottom: 14px; width: 4px; height: 17px; background: #3fbf5a; border-radius: 2px; box-shadow: -8px 7px 0 -1px #3fbf5a, 6px 4px 0 -1px #4fd06a; }
+.fp-greenhouse .bloom { left: 25px; bottom: 30px; width: 9px; height: 9px; border-radius: 50%; background: #ffb3d9; box-shadow: 0 0 8px 3px rgba(255,179,217,0.7); animation: fpBlink 2.2s ease-in-out infinite alternate; }
+/* 工坊：工作台→工具牆→火花 */
+.fp-workshop .legs { left: 5px; bottom: 0; width: 3px; height: 13px; background: #4a3620; box-shadow: 36px 0 0 #4a3620; }
+.fp-workshop .bench { left: 2px; bottom: 12px; width: 46px; height: 6px; background: #8a6a40; border-radius: 2px; }
+.fp-workshop .vise { left: 8px; bottom: 18px; width: 10px; height: 7px; background: #8a929a; border-radius: 1px; }
+.fp-workshop .toolwall { left: 1px; bottom: 26px; width: 48px; height: 14px; background: repeating-linear-gradient(90deg, #3a3f44 0 6px, #aab3bb 6px 8px); border: 1px solid #1c1f22; }
+.fp-workshop .spark { left: 32px; bottom: 19px; width: 5px; height: 5px; background: #ffd76a; border-radius: 50%; box-shadow: -4px -5px 0 #ff9a3c, 5px -3px 0 #ffe9a0; animation: fpSpark 0.5s steps(2) infinite; }
+/* 雷達站：天線→碟形天線→閃爍信標 */
+.fp-radar .rbase { left: 15px; bottom: 0; width: 22px; height: 6px; background: #555; border-radius: 2px; }
+.fp-radar .mast { left: 25px; bottom: 5px; width: 3px; height: 28px; background: #a4adb5; }
+.fp-radar .dish { left: 14px; bottom: 26px; width: 24px; height: 11px; background: #cfd6dc; border: 1px solid #6b747c; border-radius: 0 0 24px 24px; transform: rotate(-18deg); }
+.fp-radar .beacon { left: 23px; bottom: 38px; width: 7px; height: 7px; border-radius: 50%; background: #ff4d4d; box-shadow: 0 0 9px 4px rgba(255,77,77,0.85); animation: fpBlink 0.8s ease-in-out infinite alternate; }
+@keyframes fpBlink { from { opacity: 0.45; } to { opacity: 1; } }
+@keyframes fpSpark { from { transform: translate(0, 0); } to { transform: translate(2px, -2px); } }
+/* 強化後施工動畫：彈出＋煙塵 */
+.facProp.fp-build { animation: fpBuild 1.2s ease-out; }
+.facProp.fp-build::before { content: "🔨 ✨"; position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-size: 13px; white-space: nowrap; animation: fpDust 1.2s ease-out forwards; }
+@keyframes fpBuild { 0% { transform: translateX(-50%) scale(0.3); opacity: 0; } 55% { transform: translateX(-50%) scale(1.6); opacity: 1; } 100% { transform: translateX(-50%) scale(var(--fs)); } }
+@keyframes fpDust { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; top: -28px; } }
 .campPropBottom { bottom: 6px; font-size: 16px; }
 .campTitle { text-align: center; font-size: 22px; font-weight: 700; color: #ffd479; margin: 2px 0 6px; letter-spacing: 1px; }
 .campNext { margin-top: 10px; color: #cfd6dd; font-weight: 600; }
@@ -1026,3 +1057,4 @@ body.blood-moon .sysLogLine:last-child { color: #ff3b3b; }
 
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-thumb { background: #383f46; border-radius: 3px; }
+.fp-radar .fpLv { right: auto; left: -6px; }

@@ -2594,5 +2594,38 @@ test("體力成長專案：腳踏車遠征-1、越野車近探-1(皆最低1)、�
 });
 
 
+// ---------- 設施實體造型：四角保留格 ----------
+test("設施保留格：四個角落固定不可擺家具；findEmptyGridCell跳過；舊存檔家具會被搬走", () => {
+  assert.strictEqual(Object.keys(L.FACILITY_CELLS).length, 4);
+  Object.values(L.FACILITY_CELLS).forEach(c => assert.ok(L.isFacilityCell(c.gx, c.gy)));
+  assert.strictEqual(L.isFacilityCell(3, 3), false);
+  const s = L.defaultState();
+  // 塞滿其他格，只剩保留格時不該回傳保留格
+  for (let gy = 0; gy < 6; gy++) for (let gx = 0; gx < 9; gx++) {
+    if (!L.isFacilityCell(gx, gy) && !s.placedFurniture.some(f => f.gx === gx && f.gy === gy)) s.placedFurniture.push({ itemId: "furn_flag", gx, gy });
+  }
+  const cell = L.findEmptyGridCell(s);
+  assert.strictEqual(L.isFacilityCell(cell.gx, cell.gy), false);
+  // 舊存檔：家具擺在保留格 → 載入時搬到其他格，且不重疊
+  const old = L.defaultState();
+  old.placedFurniture.push({ itemId: "furn_flag", gx: 8, gy: 0 }, { itemId: "furn_turret", gx: 0, gy: 5 });
+  assert.strictEqual(L.relocateFurnitureFromFacilityCells(old), 2);
+  old.placedFurniture.forEach(f => assert.strictEqual(L.isFacilityCell(f.gx, f.gy), false));
+  const keys = old.placedFurniture.map(f => f.gx + "," + f.gy);
+  assert.strictEqual(new Set(keys).size, keys.length, "搬家後不可重疊");
+});
+
+test("設施造型：四座設施都有零件標記與對應CSS；小屋場景渲染四個facProp並可點擊強化", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  const css = require("fs").readFileSync(require("path").join(__dirname, "../css/style.css"), "utf8");
+  ["command", "greenhouse", "workshop", "radar"].forEach(k => {
+    assert.ok(new RegExp(k + ": '<i class=\"p1").test(src), k + " 缺造型零件");
+    assert.ok(css.includes(".fp-" + k), k + " 缺CSS");
+  });
+  assert.ok(/Object\.keys\(FACILITY_CELLS\)\.forEach/.test(src) && /\.facProp"\)\.forEach/.test(src));
+  assert.ok(/getOccupiedTileKeys[\s\S]*FACILITY_CELLS/.test(src), "站人/拖曳佔用格要含設施格");
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

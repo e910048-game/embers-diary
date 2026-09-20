@@ -1278,8 +1278,25 @@
   // 與game.js的GRID_COL_MAX(8)/GRID_FLOOR_ROW_MAX(5)同步——純數字邏輯網格範圍，跟等距投影公式無關，
   // 刻意不跨檔案共用常數以維持logic.js對DOM/game.js零依賴
   const FURNITURE_GRID_COLS = 9, FURNITURE_GRID_ROWS = 6;
+  // 設施佔用的固定格(2026-09-20)：四座設施在小屋四個角落各有實體造型，這四格永遠保留，不能擺家具/站人
+  const FACILITY_CELLS = { radar: { gx: 0, gy: 0 }, command: { gx: 8, gy: 0 }, greenhouse: { gx: 0, gy: 5 }, workshop: { gx: 8, gy: 5 } };
+  function isFacilityCell(gx, gy) {
+    return Object.values(FACILITY_CELLS).some(c => c.gx === gx && c.gy === gy);
+  }
   function isGridCellOccupied(state, gx, gy) {
-    return (state.placedFurniture || []).some(f => f.gx === gx && f.gy === gy);
+    return isFacilityCell(gx, gy) || (state.placedFurniture || []).some(f => f.gx === gx && f.gy === gy);
+  }
+  // 舊存檔相容：以前這四格可能擺了家具，載入時把它們搬到最近的空格。回傳搬動數量
+  function relocateFurnitureFromFacilityCells(state) {
+    let moved = 0;
+    (state.placedFurniture || []).forEach(f => {
+      if (isFacilityCell(f.gx, f.gy)) {
+        f.gx = -1; f.gy = -1; // 先讓出，避免自己佔著自己
+        const cell = findEmptyGridCell(state);
+        f.gx = cell.gx; f.gy = cell.gy; moved++;
+      }
+    });
+    return moved;
   }
   function findEmptyGridCell(state) {
     for (let gy = 0; gy < FURNITURE_GRID_ROWS; gy++) {
@@ -2616,7 +2633,7 @@
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
-    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
+    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,

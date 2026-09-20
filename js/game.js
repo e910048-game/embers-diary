@@ -63,6 +63,8 @@ function loadGame() {
   const defaults = defaultState();
   const saved = JSON.parse(raw);
   const merged = { ...defaults, ...saved };
+  // 設施實體佔角落四格：舊存檔若有家具在那裡，搬到空格
+  if (merged.placedFurniture) relocateFurnitureFromFacilityCells(merged);
   for (const key of NESTED_STATE_FIELDS) {
     if (saved[key] && typeof saved[key] === "object") {
       merged[key] = { ...defaults[key], ...saved[key] };
@@ -654,6 +656,7 @@ function getOccupiedTileKeys(state, excludeIndex) {
     if (idx === excludeIndex) return;
     occupied.add(tileKey(f.gx, f.gy));
   });
+  Object.values(FACILITY_CELLS).forEach(c => occupied.add(tileKey(c.gx, c.gy))); // 設施實體造型固定佔四個角落格
   return occupied;
 }
 function findReachablePos(start, target, occupied) {
@@ -770,13 +773,7 @@ function campPropsHtml(state, campLv) {
   const top = props.map(p => `<span class="campProp campPropTop" style="left:${p.left}">${p.icon}</span>`).join("");
   const done = Object.keys(PROJECTS).filter(id => isProjectDone(state, id));
   const bottom = done.map((id, i) => `<span class="campProp campPropBottom" style="left:${CAMP_PROJECT_SLOTS[i % CAMP_PROJECT_SLOTS.length]}" title="${PROJECTS[id].name}">${PROJECTS[id].icon}</span>`).join("");
-  // 設施標誌(2026-09-20)：四座設施各一個標誌掛在上緣牆帶，Lv0是暗淡的「尚未建造」輪廓，Lv1~3逐級更亮、帶等級角標
-  const FAC_MARKS = { command: { icon: "🛡️", left: "23%" }, greenhouse: { icon: "🪴", left: "29%" }, workshop: { icon: "🔧", left: "72%" }, radar: { icon: "📡", left: "79%" } };
-  const fac = Object.keys(FAC_MARKS).map(k => {
-    const lv = (state.facilities && state.facilities[k]) || 0;
-    return `<span class="facMark facMark-lv${lv}" style="left:${FAC_MARKS[k].left}" title="${FACILITY_LABELS[k]} Lv${lv}">${FAC_MARKS[k].icon}${lv > 0 ? `<i>${lv}</i>` : ""}</span>`;
-  }).join("");
-  return `<div class="campProps">${top}${bottom}${fac}</div>`;
+  return `<div class="campProps">${top}${bottom}</div>`;
 }
 
 // ---------- 營地面板 / 建造專案面板（2026-09-20，見規格文件/營地等級與建造專案_設計規格.md） ----------
@@ -925,6 +922,12 @@ const windowCls = `homeWindow ${state.phase === "night" ? "is-night" : "is-day"}
   // v164：點燈開關——純氛圍互動，跟state.phase的被動變暗濾鏡是兩件事，玩家可隨時主動關燈
   items.push(`<button class="lightSwitch${state.homeLightOff ? " is-off" : " is-on"}" id="homeLightSwitch" style="right:14px;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0) + 1}" title="${state.homeLightOff ? "點擊開燈" : "點擊關燈"}">${state.homeLightOff ? "🌑" : "💡"}</button>`);
   // 2026-07-02：門改為純CSS繪製（跟homeWindow同一套手法），不再用等角透視PNG貼進平面牆帶，避免黑邊/違和
+  // 設施實體造型(2026-09-20)：四座設施各佔一個角落格，外觀隨等級變化(純CSS)，強化後播一次施工動畫
+  const builtKey = lastBuiltFacility; lastBuiltFacility = null;
+  Object.keys(FACILITY_CELLS).forEach(key => {
+    const c = FACILITY_CELLS[key], p = gridPos(c.gx, c.gy), lv = (state.facilities && state.facilities[key]) || 0;
+    items.push(`<div class="facProp fp-${key} lv${lv}${builtKey === key ? " fp-build" : ""}" data-fac="${key}" style="left:clamp(42px, ${p.left}, calc(100% - 42px));top:${p.top};z-index:${cellZ(c.gx + c.gy, 0)}" title="${FACILITY_LABELS[key]} Lv${lv}（點擊強化）">${FACILITY_PARTS[key]}${lv > 0 ? `<em class="fpLv">Lv${lv}</em>` : ""}</div>`);
+  });
   items.push(`<div class="roomCell doorCell doorExplore clickable" id="homeExploreDoorCell" style="left:50%;top:${WALL_ICON_OFFSET}px;z-index:${cellZ(0)}" title="出門（採集／搜刮／遠征）"><div class="icon"><div class="doorSeam"></div></div><div class="homeLabel">出門</div></div>`);
   // V2.0 7.6：Lv/晶燼/食物等資訊併入statusExtra，避免畫面重複顯示
   // v95：背包/商店面板入口統一改用頂部按鈕(invBtn/shopBtn)，避免重複
@@ -2092,6 +2095,7 @@ const lowHp = state.hp <= state.hpMax * 0.25;
   const mirror2Cell = document.getElementById("homeMirror2Cell");
   if (mirror2Cell) mirror2Cell.onclick = (e) => { e.stopPropagation(); showAppearancePicker(); };
   // V2.0：點擊家具/門等顯示提示文字，呼應v93調整造型互動方式
+  document.querySelectorAll(".facProp").forEach(el => { el.onclick = (e) => { e.stopPropagation(); if (!lowHp) doReinforce(); }; });
   const exploreDoorCell = document.getElementById("homeExploreDoorCell");
   // 2026-09-20玩家實測回饋：原本門/睡袋要「點兩次」(第一次armed待確認、再點才執行)，每次進出都要點兩下太麻煩，
   // 改成單擊直接執行。探索門只是開選單、採集/睡覺誤觸的代價也很小，不需要二次確認保護
@@ -3151,6 +3155,14 @@ const FACILITY_LABELS = {
   workshop: "🔧 工坊",
     radar: "📡 雷達站",
 };
+let lastBuiltFacility = null; // 剛強化完的設施key，下次畫小屋時播一次施工動畫
+// 設施造型零件(p1=Lv1起、p2=Lv2起、p3=Lv3起才顯示，實際樣式在style.css的.fp-*)
+const FACILITY_PARTS = {
+  command: '<i class="p1 bag b1"></i><i class="p1 bag b2"></i><i class="p1 bag b3"></i><i class="p2 pole"></i><i class="p2 flag"></i><i class="p3 lamp"></i>',
+  greenhouse: '<i class="p1 box"></i><i class="p1 sprout"></i><i class="p2 plant2"></i><i class="p3 bloom"></i>',
+  workshop: '<i class="p1 legs"></i><i class="p1 bench"></i><i class="p1 vise"></i><i class="p2 toolwall"></i><i class="p3 spark"></i>',
+  radar: '<i class="p1 rbase"></i><i class="p1 mast"></i><i class="p2 dish"></i><i class="p3 beacon"></i>',
+};
 const FACILITY_LEVEL_TEXT = {
   command: ["指揮核心啟動：防禦+2，夜襲更難得逞。", "指揮核心升級：資源上限+10，夜襲敵人HP-20%。", "指揮核心完全體：夜襲機率再降3%，也許有人願意加入你。"],
   greenhouse: ["溫室運轉：每階段自動產出食物+1。", "溫室升級：每階段另外產出飲水+1。", "溫室完全體：休息時SAN額外回復+50%。"],
@@ -3244,9 +3256,10 @@ function doReinforceFacility(key, cost) {
   applyEffect({ resources: { scrap: -cost } });
   if (state.reinforceDiscount) consumeReinforceDiscount(state);
   reinforceFacility(state, key);
+  lastBuiltFacility = key;
   const overdrawText = result.overdraw ? overdrawFlavor(result.streak) : "";
   const lvNow = state.facilities[key];
-  renderText(`你強化了${FACILITY_LABELS[key]}，現在是 Lv${lvNow}\n\n${(FACILITY_LEVEL_TEXT[key] || [])[lvNow - 1] || ""}\n（小屋牆上的設施標誌已更新）${overdrawText}`, { kind: "event" });
+  renderText(`你強化了${FACILITY_LABELS[key]}，現在是 Lv${lvNow}\n\n${(FACILITY_LEVEL_TEXT[key] || [])[lvNow - 1] || ""}\n（回到小屋就能看到它的新模樣）${overdrawText}`, { kind: "event" });
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
 }
 
