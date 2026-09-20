@@ -2265,8 +2265,21 @@ function showDiary() {
   if (!todayEntry) {
     opts.push({ label: "✏️ 写下今日感受", onClick: () => showDiaryWrite() });
   }
+  if ((state.loreFound || []).length > 0) {
+    opts.push({ label: `📜 深淵日誌 (${state.loreFound.length}/${LORE_LOGS.length})`, onClick: showLoreArchive });
+  }
   opts.push({ label: "返回", variant: "ghost", onClick: renderMain });
   renderOptions(opts);
+}
+
+// 深淵日誌閱覽：依取得順序列出已拿到的篇章，沒拿到的顯示「？？？」保留懸念
+function showLoreArchive() {
+  renderStatusBar();
+  const body = LORE_LOGS.map(l => (state.loreFound || []).includes(l.id)
+    ? `<div class="diaryEntry"><div class="diaryEntryDate">📜 ${l.title}</div><div class="diaryEntryBody">${l.text.split("\n").join("<br>")}</div></div>`
+    : `<div class="diaryEntry"><div class="diaryEntryDate">📜 ？？？</div><div class="diaryEntryBody" style="color:#8a9099">尚未找到的日誌……</div></div>`).join("");
+  renderText(`<div class="diaryPanel">${body}</div>`);
+  renderOptions([{ label: "返回", variant: "ghost", onClick: showDiary }]);
 }
 
 function showDiaryWrite() {
@@ -3076,8 +3089,15 @@ function onAbyssSurgeWon(surge) {
   applyEffect(surge.reward);
   renderStatusBar();
   const victoryText = ABYSS_SURGE_VICTORY_TEXTS[Math.floor(Math.random() * ABYSS_SURGE_VICTORY_TEXTS.length)];
+  const lore = grantNextLore(state);
+  const loreText = lore ? `
+
+📜 你在殘骸旁撿到一頁破損的日誌：
+《${lore.title}》
+${lore.text}` : "";
+  if (lore) runQuestCheck();
   renderText(`👁️ ${victoryText}
-${formatEffect(surge.reward)}`, { kind: "event" });
+${formatEffect(surge.reward)}${loreText}`, { kind: "event" });
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => endPhase() }]);
 }
 

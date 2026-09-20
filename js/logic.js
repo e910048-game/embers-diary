@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { RECAP_LINES, LOCATION_MEMORY_LINES, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
+  const { LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -291,6 +291,7 @@
       noiseLevel: 0, // 噪音系統：0~100，製造/搜刮/戰鬥累加，每階段自然衰減，血月狂潮時每滿20點多一波敵人
       facilities: { command: 0, greenhouse: 0, workshop: 0, radar: 0 }, // 22.2
       farm: { plots: FARM_PLOT_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, crop: null }; return acc; }, {}) }, // 農場區(2026-07-02)：僅第一塊地預設解鎖
+      loreFound: [], // 深淵日誌(2026-09-20)：已取得的LORE_LOGS id，依序掉落
       recap: {}, // 前情回顧(2026-09-20)：這個階段發生的事 {hpStart,wins,enemy,loc,gathers}，endPhase時消費並重置
       locationVisits: {}, // 回訪記憶(2026-09-20)：{locId: 造訪次數}，只影響文字
       projects: {}, // 營地成長(2026-09-20)：建造專案 {id: {status:"building"|"done", startedAtPhaseIndex}}，沒開工的專案不在這裡
@@ -2004,6 +2005,15 @@
     return pool[Math.floor((rng || Math.random)() * pool.length)];
   }
   // 前情回顧：記錄這個階段發生的事(win=擊倒敵人/loc=去過的地點/gather=採集)，endPhase時由buildRecapLine消費
+  // 深淵日誌：依序發下一篇還沒拿到的，全部拿完回null(呼叫端不顯示)
+  function grantNextLore(state) {
+    if (!state.loreFound) state.loreFound = [];
+    const next = LORE_LOGS.find(l => !state.loreFound.includes(l.id));
+    if (!next) return null;
+    state.loreFound.push(next.id);
+    return next;
+  }
+
   function noteRecap(state, key, val) {
     if (!state.recap) state.recap = {};
     if (key === "win") { state.recap.wins = (state.recap.wins || 0) + 1; state.recap.enemy = val; }
@@ -2578,7 +2588,7 @@
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
-    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, recordLocationVisit, getVisitMemoryLine, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
+    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, recordLocationVisit, getVisitMemoryLine, grantNextLore, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,

@@ -2494,5 +2494,35 @@ test("因果鏈第二批：5條起點選項有旗標、回饋事件只在天數�
 });
 
 
+// ---------- 深淵世界觀日誌 ----------
+test("深淵日誌：6篇、依序發放不重複、發完回null；每段<=100字", () => {
+  const D = require("../js/data.js");
+  assert.strictEqual(D.LORE_LOGS.length, 6);
+  D.LORE_LOGS.forEach(l => {
+    assert.ok(l.id && l.title && l.text);
+    l.text.split("\n").forEach(p => assert.ok(p.length <= 100, l.id + " 段落過長: " + p));
+  });
+  const s = L.defaultState();
+  assert.deepStrictEqual(s.loreFound, []);
+  const got = [];
+  for (let i = 0; i < 6; i++) got.push(L.grantNextLore(s).id);
+  assert.deepStrictEqual(got, D.LORE_LOGS.map(l => l.id));
+  assert.strictEqual(L.grantNextLore(s), null);
+  assert.strictEqual(s.loreFound.length, 6);
+});
+
+test("深淵日誌成就：集齊6篇才解鎖ach_lore_all；深淵先驅勝利(onAbyssSurgeWon)與日記入口有接上", () => {
+  const D = require("../js/data.js");
+  const s = L.defaultState();
+  assert.strictEqual(D.ACHIEVEMENTS.ach_lore_all.condition(s), false);
+  for (let i = 0; i < 6; i++) L.grantNextLore(s);
+  assert.strictEqual(D.ACHIEVEMENTS.ach_lore_all.condition(s), true);
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  const i = src.indexOf("function onAbyssSurgeWon(");
+  assert.ok(/grantNextLore\(state\)/.test(src.slice(i, src.indexOf("\nfunction ", i + 10))), "先驅勝利未發日誌");
+  assert.ok(/function showLoreArchive\(/.test(src) && /onClick: showLoreArchive/.test(src), "日記入口缺");
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

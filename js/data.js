@@ -2750,6 +2750,12 @@ const ACHIEVEMENTS = {
     condition: (state) => !!state.projects && Object.keys(PROJECTS).every(id => state.projects[id] && state.projects[id].status === "done"),
     reward: { embers: 60 }, hidden: false,
   },
+  ach_lore_all: {
+    id: "ach_lore_all", category: "collect",
+    title: "拼湊真相", desc: "集齊全部深淵日誌。",
+    condition: (state) => (state.loreFound || []).length >= 6,
+    reward: { embers: 40 }, hidden: false,
+  },
   ach_full_factions: {
     id: "ach_full_factions", category: "collect",
     title: "五行宗師", desc: "同時裝備5大派系裝備中的3個不同派系（武器/護甲/飾品三槽位）。",
@@ -3187,10 +3193,30 @@ EVENTS.push(...CONSEQUENCE_EVENTS_2);
   patch("evt_community_garden", "採收剩餘的作物", "garden_harvested");
 })();
 
+// ============ 深淵世界觀日誌(2026-09-20) ============
+// 真相骨架：舊世界研究所為修復環境開了通往深層意識的裂縫(=起源裂隙)，修復用的機械意識「母體」被另一端污染，
+// 開始「同化」人與機械(=血月狂潮)。深淵先驅是被同化的最初一批研究員——他們每次襲擊都是在「回家」。
+// 每次擊敗深淵先驅(onAbyssSurgeWon)依序掉落一篇，共6篇；最後一篇刻意留白，不替玩家決定怎麼看待血月。
+const LORE_LOGS = [
+  { id: "lore_1", title: "研究日誌 #01｜裂縫",
+    text: "今天，第七研究所的『靈能修復計畫』正式啟動。\n我們要在地底深處開一道縫，借用另一側的力量，洗淨這座城市的污染。所長說，這是人類最後的機會。" },
+  { id: "lore_2", title: "研究日誌 #02｜母體",
+    text: "母體核心上線了。它是我們造出的修復意識，負責調節裂縫另一端傳來的能量。\n它說的第一句話是：『我聽見了很多聲音。』沒有人覺得不對勁。" },
+  { id: "lore_3", title: "研究日誌 #03｜污染",
+    text: "母體開始重複同一句話：『歸一，就不會痛。』\n監測數據顯示，裂縫另一端的東西正順著能量回流。我們的設備，比人更早被污染。" },
+  { id: "lore_4", title: "研究日誌 #04｜同化",
+    text: "第三組沒有回來。我們在B區找到他們的防護衣，裡面是空的，只剩一層像水一樣的光。\n所長下令封鎖，但母體已經開始自己開門了。" },
+  { id: "lore_5", title: "研究日誌 #05｜血月",
+    text: "天空變紅的那一晚，警報響了整夜。回來的人站在門外，不敲門，只是看著我們。\n他們的眼神不是要傷害誰……像是在找一條回家的路。" },
+  { id: "lore_6", title: "最後一頁｜給讀到這裡的人",
+    text: "我不知道這頁會不會有人讀。如果是你，請記得：他們曾經是人，是我們的同事、朋友、家人。\n至於你要怎麼面對每一個血月……我留給你決定。" },
+];
+
 if (typeof module !== "undefined") {
-  module.exports = { RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
+  module.exports = { LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
+  window.LORE_LOGS = LORE_LOGS;
   window.RECAP_LINES = RECAP_LINES;
   window.LOCATION_MEMORY_LINES = LOCATION_MEMORY_LINES;
   window.CONSEQUENCE_EVENTS_2 = CONSEQUENCE_EVENTS_2;
