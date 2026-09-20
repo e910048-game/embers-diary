@@ -26,9 +26,16 @@
     var el = document.getElementById("bootError");
     if (!el) return;
     el.style.display = "block";
-    el.textContent = "⚠️ 遊戲開機失敗，請把這段訊息截圖回報\n\n" + errors.join("\n\n") +
-      "\n\n---\n常見原因：瀏覽器的file://安全限制擋住了本地檔案之間的載入(較新版本的手機瀏覽器常見)。\n" +
-      "如果是這個原因，建議改用本機小型伺服器打開(例如手機上的HTTP Server類App)。";
+    var isLocal = location.protocol === "file:" || location.protocol === "content:";
+    var hint = isLocal
+      ? "常見原因：瀏覽器的file://安全限制擋住了本地檔案之間的載入(較新版本的手機瀏覽器常見)。\n如果是這個原因，建議改用網址(GitHub Pages)打開，不要直接開本機檔案。"
+      : "常見原因：網路暫時中斷，或網站剛更新、部分檔案還沒送到手機。\n請點下方「重新載入」再試一次；你的存檔在手機裡，不會因此消失。若一直失敗，請確認網路後再試，並把這段訊息截圖回報。";
+    el.textContent = "⚠️ 遊戲開機失敗，請把這段訊息截圖回報\n\n" + errors.join("\n\n") + "\n\n---\n" + hint + "\n\n";
+    var btn = document.createElement("button");
+    btn.textContent = "🔄 重新載入";
+    btn.style.cssText = "font-size:18px;padding:10px 20px;border-radius:8px;border:1px solid #c66;background:#3a1010;color:#fff;";
+    btn.onclick = function () { location.reload(); };
+    el.appendChild(btn);
   }
   window.__reportBootError = function (msg) {
     if (bootDone) return;
