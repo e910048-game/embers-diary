@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>餘燼日記</title>
-<link rel="stylesheet" href="css/style.css?v=263">
+<link rel="stylesheet" href="css/style.css?v=264">
 </head>
 <body>
 <div id="app">
@@ -66,10 +66,19 @@
   });
 })();
 </script>
-<script src="js/data.js?v=263"></script>
-<script src="js/story.js?v=263"></script>
-<script src="js/logic.js?v=263"></script>
-<script src="js/game.js?v=263"></script>
+<script src="js/data.js?v=264"></script>
+<script src="js/story.js?v=264"></script>
+<script src="js/logic.js?v=264"></script>
+<script src="js/game.js?v=264"></script>
+<script>
+// 離線快取(2026-09-20)：註冊Service Worker，第一次載入後整包存進手機，之後斷網也能開。
+// localhost不註冊(避免開發時吃到舊快取)；註冊失敗完全不影響遊戲
+if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol) && (location.hostname !== "localhost" || location.search.indexOf("sw=1") >= 0)) {
+  window.addEventListener("load", function () {
+    try { navigator.serviceWorker.register("sw.js").catch(function () {}); } catch (e) {}
+  });
+}
+</script>
 </body>
 </html>
 

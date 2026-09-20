@@ -2627,5 +2627,34 @@ test("設施造型：四座設施都有零件標記與對應CSS；小屋場景�
 });
 
 
+// ---------- 離線快取(Service Worker) ----------
+test("Service Worker：VERSION與index.html的?v=一致、CORE檔案存在、ASSETS與assets/資料夾完全相符", () => {
+  const fs = require("fs"), path = require("path");
+  const root = path.join(__dirname, "..");
+  const sw = fs.readFileSync(path.join(root, "sw.js"), "utf8");
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const swVer = sw.match(/const VERSION = (\d+);/);
+  assert.ok(swVer, "sw.js找不到VERSION");
+  const htmlVers = [...html.matchAll(/\?v=(\d+)/g)].map(m => m[1]);
+  assert.ok(htmlVers.length >= 5);
+  assert.ok(htmlVers.every(v => v === swVer[1]), "sw.js VERSION(" + swVer[1] + ")必須等於index.html的?v=(" + htmlVers.join(",") + ")——改js/css時兩邊要一起+1");
+  ["index.html", "css/style.css", "js/data.js", "js/story.js", "js/logic.js", "js/game.js"].forEach(f => assert.ok(fs.existsSync(path.join(root, f)), f));
+  assert.ok(sw.includes('"js/game.js?v=" + VERSION') && sw.includes('"js/logic.js?v=" + VERSION'));
+  // ASSETS清單 == assets/實際檔案
+  const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
+  const actual = walk(path.join(root, "assets")).map(f => path.relative(root, f).split(path.sep).join("/")).filter(f => !path.basename(f).startsWith(".")).sort();
+  const block = sw.slice(sw.indexOf("const ASSETS = ["), sw.indexOf("];", sw.indexOf("const ASSETS = [")));
+  const listed = [...block.matchAll(/"(assets\/[^"]+)"/g)].map(m => m[1]).sort();
+  assert.deepStrictEqual(listed, actual, "sw.js的ASSETS清單與assets/資料夾不一致——新增/刪除圖片後要重新產生清單");
+});
+
+test("Service Worker註冊：index.html有註冊碼、localhost不註冊、失敗不影響遊戲(catch)", () => {
+  const html = require("fs").readFileSync(require("path").join(__dirname, "../index.html"), "utf8");
+  assert.ok(/serviceWorker\.register\("sw\.js"\)/.test(html));
+  assert.ok(/hostname !== "localhost"/.test(html));
+  assert.ok(/\.catch\(function \(\) \{\}\)/.test(html));
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
