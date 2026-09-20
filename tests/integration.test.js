@@ -257,6 +257,24 @@ test("舊存檔相容：只有4個獸欄(舊版容量)的存檔，讀檔後自�
   assert.strictEqual(merged.pen_2.animal.happiness, 40); // 動物與好感度不受影響
 });
 
+test("舊存檔相容：沒有projects/campLevelSeen的舊存檔合併defaultState後，營地成長欄位補齊且不影響既有數值", () => {
+  // 模擬game.js的loadGame()：NESTED_STATE_FIELDS淺層合併 + 頂層{...defaults, ...saved}
+  const defaults = L.defaultState();
+  const oldSave = JSON.parse(JSON.stringify(defaults));
+  delete oldSave.projects; delete oldSave.campLevelSeen;
+  const merged = { ...defaults, ...oldSave };
+  assert.deepStrictEqual(merged.projects, {});
+  assert.strictEqual(merged.campLevelSeen, 1);
+  assert.strictEqual(L.staminaMax(merged), L.staminaMax(defaults));
+  assert.strictEqual(L.raidChance(merged), L.raidChance(defaults));
+  // 有專案進度的存檔round-trip：序列化後再合併，專案狀態完整保留
+  const s = L.defaultState();
+  s.resources.scrap = 50; L.startProject(s, "proj_rain_tower");
+  const loaded = { ...L.defaultState(), ...JSON.parse(JSON.stringify(s)) };
+  assert.strictEqual(loaded.projects.proj_rain_tower.status, "building");
+  assert.strictEqual(loaded.projects.proj_rain_tower.startedAtPhaseIndex, s.projects.proj_rain_tower.startedAtPhaseIndex);
+});
+
 // ===== 規則式事件條件在完整遊玩流程中的影響 =====
 
 test("完整流程：companion=true且level>=3時，跑長時間夜晚事件迴圈不會出錯，且能抽到專屬事件", () => {

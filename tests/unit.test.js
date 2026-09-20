@@ -904,10 +904,10 @@ test("gatherYield: 阿海指派expedition時採集收穫額外加成", () => {
   s.flags.ahai_recruited = true;
   L.refreshCompanionUnlocks(s);
   L.dispatchCompanion(s, "阿海", "expedition");
-  const rng = () => 0.99; // 固定rng讓基準值可預期
+  const rng = () => 0.1; // 基礎量food=1/water=1/scrap=0；隨機進位rng()=0.1低於小數部分，必定進位，加成必然可見
   const withBonus = L.gatherYield(rng, s);
   const without = L.gatherYield(rng, null);
-  assert.ok(withBonus.food >= without.food && withBonus.water >= without.water);
+  assert.ok(withBonus.food > without.food && withBonus.water > without.water, "阿海加成不能被整數捨入吃掉");
 });
 
 test("syncBaseDefense: baseDefense = 指揮中心*2 + bonusDefense", () => {
@@ -1430,6 +1430,182 @@ test("牧場擴建成本：10,16,...,46，單次低於廢料上限，全部擴�
   assert.strictEqual(quest.condition(s), true);
 });
 
+// ===== 2026-09-20 營地成長：建造專案 + 營地等級（玩家回饋「默默把基地養成的感覺太薄弱」）=====
+const SUPPORTED_PROJECT_EFFECTS = ["phaseYield", "resourceCapBonus", "baseDefenseBonus", "raidChanceDelta", "restHealBonus", "staminaMaxBonus", "noiseDampRatio", "gatherYieldBonusRatio"];
+const SUPPORTED_CAMP_REQS = ["facilityTotal", "comfort", "projectsDone", "farmPlots", "companions", "penAnimals", "day"];
+
+test("CI斷言：PROJECTS/CAMP_LEVELS資料完整——欄位齊全、效果與需求型別都被支援、成本低於資源上限、等級需求單調不降", () => {
+  const ids = Object.keys(L.PROJECTS);
+  assert.ok(ids.length >= 9);
+  const caps = L.defaultState().resourceCaps;
+  ids.forEach(id => {
+    const p = L.PROJECTS[id];
+    assert.strictEqual(p.id, id);
+    ["name", "icon", "effectDesc", "doneText"].forEach(k => assert.ok(p[k] && String(p[k]).length > 0, id + "缺" + k));
+    assert.ok(Number.isInteger(p.phases) && p.phases >= 2 && p.phases <= 12, id + "工期不合理");
+    assert.ok(p.requiresCampLv >= 1 && p.requiresCampLv <= L.CAMP_LEVELS.length);
+    Object.keys(p.effects).forEach(k => assert.ok(SUPPORTED_PROJECT_EFFECTS.includes(k), id + "含未支援的效果" + k));
+    Object.entries(p.cost.resources || {}).forEach(([k, v]) => assert.ok(v > 0 && v <= caps[k], id + "成本" + k + "=" + v + "超過資源上限" + caps[k] + "，永遠開不了工"));
+    p.doneText.split("\n\n").forEach(par => assert.ok(par.length <= 100, id + "完成文案單段超過100字"));
+  });
+  const lvs = L.CAMP_LEVELS;
+  lvs.forEach((l, i) => {
+    assert.strictEqual(l.lv, i + 1);
+    l.reqs.forEach(r => assert.ok(SUPPORTED_CAMP_REQS.includes(r.type), "Lv" + l.lv + "含未支援的需求" + r.type));
+    if (i >= 1) { assert.ok(l.levelUpText && l.levelUpText.length > 0); assert.ok(l.reward > 0); }
+  });
+  // 同一種需求跨等級單調不降(下一級不會比上一級更容易)
+  SUPPORTED_CAMP_REQS.forEach(type => {
+    let prev = -1;
+    lvs.forEach(l => { const r = l.reqs.find(x => x.type === type); if (r) { assert.ok(r.n >= prev, type + "需求在Lv" + l.lv + "變小了"); prev = r.n; } });
+  });
+  // 最高級需要的專案數不能超過專案總數(否則永遠升不上去)
+  const maxProj = Math.max(...lvs.map(l => (l.reqs.find(r => r.type === "projectsDone") || { n: 0 }).n));
+  assert.ok(maxProj <= ids.length);
+});
+
+test("startProject：資源/營地等級/同時施工名額/重複開工的驗證，成功時扣資源並記錄開工phase", () => {
+  const s = L.defaultState();
+  s.resources.scrap = 100;
+  assert.strictEqual(L.startProject(s, "nope").reason, "invalid_project");
+  assert.strictEqual(L.startProject(s, "proj_wall").reason, "camp_level"); // 需要營地Lv2
+  s.resources.scrap = 5;
+  assert.strictEqual(L.startProject(s, "proj_rain_tower").reason, "insufficient");
+  s.resources.scrap = 100;
+  const noise0 = s.noiseLevel || 0;
+  const r = L.startProject(s, "proj_rain_tower");
+  assert.ok(r.ok);
+  assert.strictEqual(s.resources.scrap, 80); // 廢料20
+  assert.strictEqual(s.projects.proj_rain_tower.status, "building");
+  assert.strictEqual(s.projects.proj_rain_tower.startedAtPhaseIndex, L.currentPhaseIndex(s));
+  assert.ok((s.noiseLevel || 0) > noise0, "施工要製造噪音");
+  assert.strictEqual(L.startProject(s, "proj_rain_tower").reason, "already_started");
+  assert.strictEqual(L.startProject(s, "proj_storage").reason, "no_slot"); // Lv1只能同時1項
+  assert.strictEqual(L.activeProjectCount(s), 1);
+});
+
+test("建造專案惰性完成：phase差值夠了就生效，settleProjects定案並回傳新完成清單，之後不重複回報", () => {
+  const s = L.defaultState();
+  s.resources.scrap = 100;
+  L.startProject(s, "proj_storage");
+  const cap0 = L.getResourceCap(s, "scrap");
+  const total = L.PROJECTS.proj_storage.phases;
+  assert.strictEqual(L.getProjectState(s, "proj_storage").remaining, total);
+  assert.strictEqual(L.isProjectDone(s, "proj_storage"), false);
+  assert.strictEqual(L.getResourceCap(s, "scrap"), cap0, "施工中不生效");
+  // 推進 total-1 個phase：還沒完成
+  for (let i = 0; i < total - 1; i++) L.advancePhase(s);
+  assert.strictEqual(L.getProjectState(s, "proj_storage").remaining, 1);
+  assert.strictEqual(L.isProjectDone(s, "proj_storage"), false);
+  L.advancePhase(s);
+  assert.strictEqual(L.isProjectDone(s, "proj_storage"), true);
+  assert.strictEqual(L.getResourceCap(s, "scrap"), cap0 + 10, "儲物棚：資源上限+10");
+  assert.deepStrictEqual(L.settleProjects(s), ["proj_storage"]);
+  assert.strictEqual(s.projects.proj_storage.status, "done");
+  assert.deepStrictEqual(L.settleProjects(s), [], "已定案的專案不會重複通知");
+  assert.strictEqual(L.getProjectState(s, "proj_storage").status, "done");
+});
+
+test("專案效果確實掛進既有計算：防禦/夜襲/休息回血/體力上限/噪音/採集/每階段產出", () => {
+  const done = (s, ...ids) => ids.forEach(id => { s.projects[id] = { status: "done", startedAtPhaseIndex: 0 }; });
+  const base = L.defaultState();
+  const base_def = L.syncBaseDefense(base), base_raid = L.raidChance(base), base_heal = L.restHealAmount(base), base_stamina = L.staminaMax(base);
+
+  const s = L.defaultState();
+  done(s, "proj_wall", "proj_watchtower", "proj_clinic", "proj_generator");
+  assert.strictEqual(L.syncBaseDefense(s), base_def + 2, "加固圍牆：防禦+2");
+  assert.ok(Math.abs(L.raidChance(s) - Math.max(0.02, base_raid - 0.08 - 0.02 * 0)) < 0.05 || L.raidChance(s) < base_raid, "瞭望台：夜襲機率下降");
+  assert.strictEqual(L.restHealAmount(s), base_heal + 8, "簡易診所：休息+8血");
+  assert.strictEqual(L.staminaMax(s), base_stamina + 1, "發電機房：體力上限+1");
+
+  // 噪音：隔音牆讓相同行動累積的噪音更少
+  const a = L.defaultState(), b = L.defaultState();
+  done(b, "proj_soundproof");
+  L.addNoise(a, 10); L.addNoise(b, 10);
+  assert.ok(b.noiseLevel < a.noiseLevel, "隔音牆：噪音累積-30%");
+  assert.ok(Math.abs(b.noiseLevel - a.noiseLevel * 0.7) < 0.01);
+
+  // 採集：研究角+15%
+  const g0 = L.defaultState(), g1 = L.defaultState();
+  done(g1, "proj_lab");
+  const y0 = L.gatherYield(() => 0.1, g0), y1 = L.gatherYield(() => 0.1, g1);
+  assert.ok(y1.food + y1.water + y1.scrap > y0.food + y0.water + y0.scrap, "研究角讓採集收穫變多");
+
+  // 每階段被動產出：雨水收集塔+1水、煙燻架+1食物
+  const p = L.defaultState();
+  p.resources.water = 5; p.resources.food = 5;
+  done(p, "proj_rain_tower", "proj_smoke");
+  const w0 = p.resources.water, f0 = p.resources.food;
+  L.advancePhase(p);
+  assert.strictEqual(p.resources.water, w0 + 1);
+  assert.strictEqual(p.resources.food, f0 + 1);
+  assert.deepStrictEqual(L.getProjectPhaseYield(p), { food: 1, water: 1 });
+});
+
+test("營地等級：預設Lv1，需求連續判定、等級只升不降、升級獎勵只發一次、Lv3起同時施工名額變2", () => {
+  const s = L.defaultState();
+  assert.strictEqual(L.getCampLevel(s), 1);
+  assert.strictEqual(L.projectSlotLimit(s), 1);
+  assert.deepStrictEqual(L.checkCampLevelUp(s), []);
+
+  // 湊齊Lv2需求：設施總等級2、舒適度3、完成1個專案
+  s.facilities.command = 1; s.facilities.greenhouse = 1;
+  s.projects.proj_rain_tower = { status: "done", startedAtPhaseIndex: 0 };
+  s.placedFurniture.push({ itemId: "furn_bench", gx: 1, gy: 1 }, { itemId: "furn_sofa", gx: 2, gy: 1 }, { itemId: "furn_toolbox", gx: 3, gy: 1 });
+  assert.ok(L.getComfortLevel(s) >= 3);
+  assert.strictEqual(L.computeCampLevel(s), 2);
+  const embers0 = s.currency.embers;
+  const ups = L.checkCampLevelUp(s);
+  assert.strictEqual(ups.length, 1);
+  assert.strictEqual(ups[0].lv, 2);
+  assert.strictEqual(s.currency.embers, embers0 + L.CAMP_LEVELS[1].reward);
+  assert.strictEqual(s.campLevelSeen, 2);
+  assert.deepStrictEqual(L.checkCampLevelUp(s), [], "同一級只慶祝/發獎一次");
+
+  // 只升不降：把需求條件拆掉，等級不倒退
+  s.placedFurniture = []; s.facilities.command = 0; s.facilities.greenhouse = 0;
+  assert.strictEqual(L.computeCampLevel(s), 1);
+  assert.strictEqual(L.getCampLevel(s), 2);
+
+  // 需求要連續：Lv3的需求滿足但Lv2不滿足時不會跳級
+  const t = L.defaultState();
+  t.facilities = { command: 3, greenhouse: 2, workshop: 0, radar: 0 };
+  assert.strictEqual(L.computeCampLevel(t), 1);
+
+  // Lv3起同時施工名額2
+  const u = L.defaultState();
+  u.campLevelSeen = 3;
+  assert.strictEqual(L.projectSlotLimit(u), 2);
+  u.resources.scrap = 200;
+  assert.ok(L.startProject(u, "proj_rain_tower").ok);
+  assert.ok(L.startProject(u, "proj_storage").ok);
+  assert.strictEqual(L.startProject(u, "proj_wall").reason, "no_slot");
+});
+
+test("營地進度與成就：campProgress回傳下一級需求進度；ach_camp_lv3/lv5/ach_all_projects條件正確；舊存檔(缺projects/campLevelSeen)不會出錯", () => {
+  const s = L.defaultState();
+  const p = L.campProgress(s);
+  assert.strictEqual(p.level, 1);
+  assert.strictEqual(p.next.lv, 2);
+  assert.ok(p.next.reqs.length >= 3 && p.next.reqs.every(r => typeof r.have === "number" && typeof r.need === "number"));
+  s.campLevelSeen = 5;
+  assert.strictEqual(L.campProgress(s).next, null, "最高級沒有下一級");
+
+  const a3 = L.ACHIEVEMENTS.ach_camp_lv3, a5 = L.ACHIEVEMENTS.ach_camp_lv5, all = L.ACHIEVEMENTS.ach_all_projects;
+  const t = L.defaultState();
+  assert.ok(!a3.condition(t) && !a5.condition(t) && !all.condition(t));
+  t.campLevelSeen = 3; assert.ok(a3.condition(t) && !a5.condition(t));
+  t.campLevelSeen = 5; assert.ok(a5.condition(t));
+  Object.keys(L.PROJECTS).forEach(id => { t.projects[id] = { status: "done", startedAtPhaseIndex: 0 }; });
+  assert.ok(all.condition(t));
+
+  // 舊存檔：沒有projects/campLevelSeen欄位
+  const old = L.defaultState();
+  delete old.projects; delete old.campLevelSeen;
+  assert.doesNotThrow(() => { L.getCampLevel(old); L.getProjectEffect(old, "resourceCapBonus"); L.settleProjects(old); L.raidChance(old); L.staminaMax(old); L.getResourceCap(old, "food"); L.advancePhase(old); });
+  assert.strictEqual(L.getCampLevel(old), 1);
+});
+
 test("getEffectiveAttribute: 基礎值+等級成長(每4級+1)+飾品加成，上限10", () => {
   const s = L.defaultState();
   assert.strictEqual(L.getEffectiveAttribute(s, "strength"), 3);
@@ -1826,14 +2002,18 @@ test("evt_shadow_on_wall：mind_eye裝備時多一個看穿幻覺的安全選項
 // 2026-07-05 序章結局→無限模式生態變數：4篇序章共用companion/alone/weak/dead結局代碼，
 // applyPrologueEnding設定的flags.alone/weak不只是開局當下的一次性加成，會持續影響本局後續表現
 test("結局生態變數：alone永久+15%採集收穫，weak永久+5%探索驚動機率", () => {
-  const rng = () => 0.99; // 固定rng讓基準值可預期
   const sAlone = L.defaultState();
   L.applyPrologueEnding(sAlone, "alone");
-  const withAlone = L.gatherYield(rng, sAlone);
-  const withoutAlone = L.gatherYield(rng, L.defaultState());
-  // 比照既有「阿海指派expedition」測試同一種寫法(>=)：base值上限只有2，15%/20%比例加成經Math.round後
-  // 常常四捨五入不出來(2*1.15=2.3->2)，這是gatherYield既有的捨入特性，不是這次新增的行為，故沿用同一種容忍度
-  assert.ok(withAlone.food >= withoutAlone.food && withAlone.water >= withoutAlone.water);
+  // 2026-09-20修正：這裡原本用>=容忍「加成被Math.round吃掉」，其實是把bug當特性——+15%從來沒有實際效果。
+  // gatherYield已改隨機進位，這裡改成：①rng=0.1時必定進位、加成可見 ②大量抽樣的平均產出約為1.15倍(有統計意義)
+  const withAlone = L.gatherYield(() => 0.1, sAlone);
+  const withoutAlone = L.gatherYield(() => 0.1, L.defaultState());
+  assert.ok(withAlone.food > withoutAlone.food && withAlone.water > withoutAlone.water);
+  let seed = 12345;
+  const lcg = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  const avg = (st) => { let t = 0; for (let i = 0; i < 20000; i++) { const y = L.gatherYield(lcg, st); t += y.food + y.water + y.scrap; } return t / 20000; };
+  const ratio = avg(sAlone) / avg(L.defaultState());
+  assert.ok(ratio > 1.10 && ratio < 1.20, "獨自生還的平均採集量應約為1.15倍，實際" + ratio.toFixed(3));
 
   const loc = { encounterChance: 0.5, encounterEnemyIds: ["enemy_walker_weak"], lootTable: [{ itemId: "scrap", qty: 1, weight: 1 }] };
   const sWeak = L.defaultState();

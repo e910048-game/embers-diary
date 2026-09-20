@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS } = data;
+  const { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -102,7 +102,8 @@
 
   // 含技能樹/覺醒加成的實際體力上限
   function staminaMax(state) {
-    return staminaMaxForLevel(state.level) + staminaBonusFromSources(state);
+    // 建造專案「發電機房」的體力上限+1獨立於STAMINA_BONUS_CAP之外(那個上限只管覺醒/道具來源)
+    return staminaMaxForLevel(state.level) + staminaBonusFromSources(state) + getProjectEffect(state, "staminaMaxBonus");
   }
 
   // 生存樹1階：過勞HP懲罰-1（最低0）；覺醒"冷靜"：懲罰固定為-1
@@ -254,6 +255,7 @@
     heal += getCompanionTaskEffect(state, "restHealBonus");
     if (getComfortLevel(state) >= 6) heal += 5; // v110：舒適度≥6「安樂窩」休息HP額外+5
     heal += getFactionResonanceBonus(state, "restHealBonus"); // 雙修共鳴：gaia+ocean「共生體液」
+    heal += getProjectEffect(state, "restHealBonus"); // 建造專案「簡易診所」+8
     return heal;
   }
 
@@ -289,6 +291,8 @@
       noiseLevel: 0, // 噪音系統：0~100，製造/搜刮/戰鬥累加，每階段自然衰減，血月狂潮時每滿20點多一波敵人
       facilities: { command: 0, greenhouse: 0, workshop: 0, radar: 0 }, // 22.2
       farm: { plots: FARM_PLOT_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, crop: null }; return acc; }, {}) }, // 農場區(2026-07-02)：僅第一塊地預設解鎖
+      projects: {}, // 營地成長(2026-09-20)：建造專案 {id: {status:"building"|"done", startedAtPhaseIndex}}，沒開工的專案不在這裡
+      campLevelSeen: 1, // 營地等級「已慶祝過的最高級」，等級只升不降(見getCampLevel)，也用來偵測升級
       pens: { plots: PEN_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, animal: null }; return acc; }, {}) }, // 養殖區(2026-07-02)：僅第一個欄位預設解鎖
       processing: { stations: WORKSHOP_STATION_LAYOUT.reduce((acc, s, idx) => { acc[s.id] = { unlocked: idx === 0, job: null }; return acc; }, {}) }, // 加工區(2026-07-04)：僅第一站預設解鎖
       yardDecorSlots: YARD_DECOR_SLOTS.reduce((acc, s) => { acc[s.id] = { itemId: null }; return acc; }, {}), // 庭院裝飾區(2026-07-05)：4個槽位皆不需解鎖，空槽時退回原本的野生擺設
@@ -429,11 +433,9 @@
 
   // A.3：取得資源上限（基礎resourceCaps + 同居紀念相片牆等家具的resourceCapBonus，僅spouseState.hasLinked時生效）
   function getResourceCap(state, key) {
-    const base = state.resourceCaps[key] ?? 99;
-    if (state.spouseState && state.spouseState.hasLinked) {
-      return base + sumFurnitureEffect(state, "resourceCapBonus");
-    }
-    return base;
+    let cap = state.resourceCaps[key] ?? 99;
+    if (state.spouseState && state.spouseState.hasLinked) cap += sumFurnitureEffect(state, "resourceCapBonus");
+    return cap + getProjectEffect(state, "resourceCapBonus"); // 建造專案「儲物棚」
   }
 
   function applyEffect(state, effect) {
@@ -666,6 +668,9 @@
     const greenhouseLv = (state.facilities && state.facilities.greenhouse) || 0;
     if (greenhouseLv >= 1) applyEffect(state, { resources: { food: 1 } });
     if (greenhouseLv >= 2) applyEffect(state, { resources: { water: 1 } });
+    // 營地成長：已完成的建造專案(雨水收集塔/煙燻架)每個晝夜的被動產出
+    const projYield = getProjectPhaseYield(state);
+    if (projYield.food || projYield.water) applyEffect(state, { resources: { food: projYield.food, water: projYield.water } });
     // 25.3 蓋亞血脈T1：每階段自動回復HP上限3%
     if (factionTier(state, "gaia") >= 1 && state.hp > 0) {
       applyEffect(state, { hp: Math.round(state.hpMax * 0.03) });
@@ -1108,8 +1113,16 @@
     // 2026-07-05：序章「獨自生還(alone)」結局的生態變數——沒有同伴分擔，逼出更強的自力更生能力，永久+15%採集收穫
     let bonusRatio = state ? getCompanionTaskEffect(state, "gatherYieldBonusRatio") : 0;
     if (state && state.flags && state.flags.alone) bonusRatio += 0.15;
+    if (state) bonusRatio += getProjectEffect(state, "gatherYieldBonusRatio"); // 建造專案「研究角」+15%
     if (bonusRatio) {
-      Object.keys(base).forEach((k) => { base[k] = Math.round(base[k] * (1 + bonusRatio)); });
+      // 2026-09-20修正：基礎採集量只有0~2的小整數，原本Math.round會把+15%整個吃掉(2*1.15=2.3→2、1*1.15→1)，
+      // 導致序章「獨自生還」宣稱的「永久+15%採集收穫」、同伴阿海的採集加成從來沒有實際效果(平均產出跟沒加成一樣)。
+      // 改成隨機進位：整數部分保底，小數部分當機率進1，期望值精確等於基礎值*(1+bonusRatio)
+      Object.keys(base).forEach((k) => {
+        const v = base[k] * (1 + bonusRatio);
+        const whole = Math.floor(v);
+        base[k] = whole + (rng() < v - whole ? 1 : 0);
+      });
     }
     if (state) addNoise(state, NOISE_AMOUNTS.gather);
     return base;
@@ -1228,13 +1241,14 @@
     chance += getFurnitureRaidChanceDelta(state); // 27.2：重力晶簇掛鏡(家具)-5%
     chance += getAccessoryEffect(state, "raidChanceDelta"); // 27.1：重力晶簇掛鏡(飾品)-5%
     chance += getFactionResonanceBonus(state, "raidChanceDelta"); // 雙修共鳴：cyber+aero「電磁裝甲」
+    chance += getProjectEffect(state, "raidChanceDelta"); // 建造專案「瞭望台」-8%
     return Math.max(0.02, chance);
   }
 
   // 22.2：baseDefense = facilities.command*2（相容別名）+ bonusDefense（事件/道具的舊式加成）+ 27.2家具防禦加成
   function syncBaseDefense(state) {
     const commandLv = (state.facilities && state.facilities.command) || 0;
-    state.baseDefense = commandLv * 2 + (state.bonusDefense || 0) + getFurnitureDefBonus(state);
+    state.baseDefense = commandLv * 2 + (state.bonusDefense || 0) + getFurnitureDefBonus(state) + getProjectEffect(state, "baseDefenseBonus"); // 含建造專案「加固圍牆」+2
     return state.baseDefense;
   }
 
@@ -1312,7 +1326,7 @@
   const NOISE_AMOUNTS = { gather: 4, explore: 6, craft: 5, battle: 8 };
   function addNoise(state, amount) {
     if (!state || !amount) return;
-    const dampRatio = Math.min(0.6, sumFurnitureEffect(state, "noiseDampRatio"));
+    const dampRatio = Math.min(0.6, sumFurnitureEffect(state, "noiseDampRatio") + getProjectEffect(state, "noiseDampRatio")); // 含建造專案「隔音牆」
     // 庭院裝飾區(2026-07-05)：風鈴等裝飾道具的noiseGenRatio是反向疊加(好看但更吵)，跟隔音的dampRatio相減
     const genRatio = state.yardDecorSlots ? getYardDecorEffect(state, "noiseGenRatio") : 0;
     state.noiseLevel = clamp((state.noiseLevel || 0) + amount * (1 - dampRatio + genRatio), 0, 100);
@@ -1736,6 +1750,154 @@
     station.job = null;
     state.questFlags.workshopCraftCount = (state.questFlags.workshopCraftCount || 0) + 1;
     return { ok: true, recipe };
+  }
+
+  // ---------- 營地成長：建造專案 + 營地等級（2026-09-20，見規格文件/營地等級與建造專案_設計規格.md） ----------
+  // 專案狀態存在state.projects[id]={status,startedAtPhaseIndex}；跟getCropStage/getProcessingState同一種「用phase差值惰性推算」，
+  // 沒有per-tick更新：building的專案只要phase差值夠了就視為完成(效果立刻生效)，settleProjects負責把status定案並回傳新完成清單給UI通知
+  function isProjectDone(state, id) {
+    const proj = PROJECTS[id];
+    const p = state.projects && state.projects[id];
+    if (!proj || !p) return false;
+    if (p.status === "done") return true;
+    return currentPhaseIndex(state) - p.startedAtPhaseIndex >= proj.phases;
+  }
+
+  // 加總所有已完成專案的某個數值型效果(resourceCapBonus/baseDefenseBonus/raidChanceDelta/...)，掛進各既有計算函式
+  function getProjectEffect(state, key) {
+    if (!state || !state.projects) return 0;
+    let total = 0;
+    for (const id in PROJECTS) {
+      if (!isProjectDone(state, id)) continue;
+      const v = PROJECTS[id].effects[key];
+      if (typeof v === "number") total += v;
+    }
+    return total;
+  }
+
+  // 每個晝夜的被動資源產出(雨水收集塔/煙燻架的phaseYield)，advancePhase呼叫
+  function getProjectPhaseYield(state) {
+    const total = { food: 0, water: 0 };
+    if (!state || !state.projects) return total;
+    for (const id in PROJECTS) {
+      if (!isProjectDone(state, id)) continue;
+      const y = PROJECTS[id].effects.phaseYield;
+      if (y) for (const k in y) total[k] = (total[k] || 0) + y[k];
+    }
+    return total;
+  }
+
+  // 施工中(尚未完成)的專案數量，用來判斷同時施工名額
+  function activeProjectCount(state) {
+    if (!state.projects) return 0;
+    return Object.keys(state.projects).filter(id => PROJECTS[id] && state.projects[id].status === "building" && !isProjectDone(state, id)).length;
+  }
+  function projectSlotLimit(state) {
+    return 1 + (getCampLevel(state) >= 3 ? 1 : 0); // 營地Lv3起可同時動工兩項
+  }
+
+  function canAffordProject(state, proj) {
+    const c = proj.cost || {};
+    if (c.resources) for (const k in c.resources) if ((state.resources[k] || 0) < c.resources[k]) return false;
+    if (c.embers && (state.currency.embers || 0) < c.embers) return false;
+    return true;
+  }
+
+  // 專案的顯示狀態：done/building(含剩餘phase)/available/locked(營地等級不足)
+  function getProjectState(state, id) {
+    const proj = PROJECTS[id];
+    if (isProjectDone(state, id)) return { status: "done", proj };
+    const p = state.projects && state.projects[id];
+    if (p && p.status === "building") {
+      const elapsed = currentPhaseIndex(state) - p.startedAtPhaseIndex;
+      return { status: "building", proj, elapsed, remaining: Math.max(0, proj.phases - elapsed) };
+    }
+    if (getCampLevel(state) < proj.requiresCampLv) return { status: "locked", proj };
+    return { status: "available", proj };
+  }
+
+  function startProject(state, id) {
+    const proj = PROJECTS[id];
+    if (!proj) return { ok: false, reason: "invalid_project" };
+    if (!state.projects) state.projects = {};
+    if (state.projects[id]) return { ok: false, reason: "already_started" };
+    if (getCampLevel(state) < proj.requiresCampLv) return { ok: false, reason: "camp_level" };
+    if (activeProjectCount(state) >= projectSlotLimit(state)) return { ok: false, reason: "no_slot" };
+    if (!canAffordProject(state, proj)) return { ok: false, reason: "insufficient" };
+    const c = proj.cost || {};
+    if (c.resources) for (const k in c.resources) state.resources[k] -= c.resources[k];
+    if (c.embers) state.currency.embers -= c.embers;
+    state.projects[id] = { status: "building", startedAtPhaseIndex: currentPhaseIndex(state) };
+    addNoise(state, NOISE_AMOUNTS.craft); // 叮叮咚咚地施工，跟強化據點/重鍛同一級的噪音
+    return { ok: true, proj };
+  }
+
+  // 把「phase差值已夠」的施工中專案定案成done，回傳新完成的id清單供UI顯示完成通知；
+  // 完成時重算會被專案影響的儲存值(防禦、體力上限)
+  function settleProjects(state) {
+    const finished = [];
+    if (!state.projects) return finished;
+    for (const id in state.projects) {
+      const p = state.projects[id];
+      if (PROJECTS[id] && p.status === "building" && isProjectDone(state, id)) { p.status = "done"; finished.push(id); }
+    }
+    if (finished.length) {
+      syncBaseDefense(state);
+      state.staminaMax = staminaMax(state);
+    }
+    return finished;
+  }
+
+  // 營地等級需求：各type對應的目前數值
+  function campRequirementValue(state, type) {
+    switch (type) {
+      case "facilityTotal": return FACILITY_KEYS.reduce((sum, k) => sum + ((state.facilities && state.facilities[k]) || 0), 0);
+      case "comfort": return getComfortLevel(state);
+      case "projectsDone": return Object.keys(PROJECTS).filter(id => isProjectDone(state, id)).length;
+      case "farmPlots": return Object.values(state.farm.plots).filter(p => p.unlocked).length;
+      case "companions": return Object.values(state.companions || {}).filter(v => v && v !== "locked").length;
+      case "penAnimals": return penCapacityInfo(state).animals;
+      case "day": return state.day;
+      default: return 0;
+    }
+  }
+  // 依需求清單「連續」判定：Lv.N的需求全部滿足才算到N，任一級不滿足就停(不會跳級)
+  function computeCampLevel(state) {
+    let lv = 1;
+    for (let i = 1; i < CAMP_LEVELS.length; i++) {
+      if (CAMP_LEVELS[i].reqs.every(r => campRequirementValue(state, r.type) >= r.n)) lv = CAMP_LEVELS[i].lv;
+      else break;
+    }
+    return lv;
+  }
+  // 營地等級只升不降：取「已慶祝過的等級」與「目前算出的等級」較大者，玩家拆掉家具/賣掉東西不會讓辛苦養成的等級倒退
+  function getCampLevel(state) {
+    return Math.max(state.campLevelSeen || 1, computeCampLevel(state));
+  }
+  // 給營地面板用：目前等級、下一級的各項需求進度
+  function campProgress(state) {
+    const level = getCampLevel(state);
+    const cur = CAMP_LEVELS[level - 1];
+    const nextDef = CAMP_LEVELS[level] || null;
+    const next = nextDef ? {
+      lv: nextDef.lv, name: nextDef.name, reward: nextDef.reward || 0,
+      reqs: nextDef.reqs.map(r => { const have = campRequirementValue(state, r.type); return { label: r.label, have, need: r.n, met: have >= r.n }; }),
+    } : null;
+    return { level, name: cur.name, desc: cur.desc, next, slotLimit: projectSlotLimit(state) };
+  }
+  // 偵測升級：算出的等級高於已慶祝過的，逐級發放晶燼獎勵並回傳通知清單(舊存檔第一次讀進來若已達標也會一次補發)
+  function checkCampLevelUp(state) {
+    const computed = computeCampLevel(state);
+    const seen = state.campLevelSeen || 1;
+    const ups = [];
+    if (computed <= seen) return ups;
+    for (let lv = seen + 1; lv <= computed; lv++) {
+      const def = CAMP_LEVELS[lv - 1];
+      if (def.reward) applyEffect(state, { embers: def.reward });
+      ups.push({ lv, name: def.name, reward: def.reward || 0, text: def.levelUpText || "" });
+    }
+    state.campLevelSeen = computed;
+    return ups;
   }
 
   // ---------- 庭院裝飾區（2026-07-05，見規格文件/庭院裝飾區_設計規格.md） ----------
@@ -2357,6 +2519,8 @@
     PEN_LAYOUT, SPECIES, FEED_COST, getPenProductionState, penUnlockCost, penCapacityInfo, firstFreePenId, nextLockedPenId, unlockPen, placeAnimal, feedAnimal, petAnimal, collectPen,
     hasAnyPenAnimal, resetPensAfterRetreat,
     WORKSHOP_STATION_LAYOUT, RECIPES, recipeAvailable, canAffordRecipe, processingStationUnlockCost, unlockProcessingStation, startProcessing, getProcessingState, collectProcessing,
+    PROJECTS, CAMP_LEVELS, isProjectDone, getProjectEffect, getProjectPhaseYield, activeProjectCount, projectSlotLimit, canAffordProject, getProjectState, startProject, settleProjects,
+    campRequirementValue, computeCampLevel, getCampLevel, campProgress, checkCampLevelUp,
     YARD_DECOR_SLOTS, placeYardDecor, removeYardDecor, getYardDecorEffect,
     placeFurniture, getFurnitureDefBonus, getFurnitureRaidChanceDelta, loungeInteract, sumFurnitureEffect,
     hasFurniturePlaced, allPlacedFurnitureIds, findEmptyGridCell,

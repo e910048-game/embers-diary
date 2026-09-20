@@ -2732,6 +2732,24 @@ const ACHIEVEMENTS = {
     condition: (state) => isEquippedInData(state, "accessory", "wedding_ring"),
     reward: { embers: 20 }, hidden: false,
   },
+  ach_camp_lv3: {
+    id: "ach_camp_lv3", category: "survival",
+    title: "站穩腳跟", desc: "營地升到3級「穩固據點」。",
+    condition: (state) => (state.campLevelSeen || 1) >= 3,
+    reward: { embers: 30 }, hidden: false,
+  },
+  ach_camp_lv5: {
+    id: "ach_camp_lv5", category: "survival",
+    title: "灰燼中的家", desc: "營地升到最高級「灰燼中的家」。",
+    condition: (state) => (state.campLevelSeen || 1) >= 5,
+    reward: { embers: 80, exp: 50 }, hidden: false,
+  },
+  ach_all_projects: {
+    id: "ach_all_projects", category: "collect",
+    title: "一磚一瓦", desc: "完成全部建造專案。",
+    condition: (state) => !!state.projects && Object.keys(PROJECTS).every(id => state.projects[id] && state.projects[id].status === "done"),
+    reward: { embers: 60 }, hidden: false,
+  },
   ach_full_factions: {
     id: "ach_full_factions", category: "collect",
     title: "五行宗師", desc: "同時裝備5大派系裝備中的3個不同派系（武器/護甲/飾品三槽位）。",
@@ -2871,10 +2889,106 @@ const ABYSS_SURGE_VICTORY_TEXTS = [
   "殘餘的威脅暫時被壓制，你清點著滿身的傷痕，心裡清楚，深淵不會就此罷休。"
 ];
 
+// ---------- 營地成長：建造專案 + 營地等級（2026-09-20，見規格文件/營地等級與建造專案_設計規格.md） ----------
+// 玩家回饋「默默把自己基地養成的感覺太薄弱」：加上「花幾個晝夜慢慢蓋好」的大型建造專案，以及由設施/舒適度/專案/農牧/同伴
+// 綜合算出的營地等級，等級提升時小屋畫面會跟著進化。建造沿用加工區的「記錄開始的phase、用phase差值惰性推算」手法，
+// 效果用資料驅動的加成登錄表(effects)，由logic.js的getProjectEffect()單一聚合、掛進既有的各個計算函式。
+// phases=耗時(每個晝或夜算1個phase，2個phase=1天)；cost.resources/embers是開工時一次扣除
+const PROJECTS = {
+  proj_rain_tower: {
+    id: "proj_rain_tower", name: "雨水收集塔", icon: "🪣", requiresCampLv: 1, phases: 4,
+    cost: { resources: { scrap: 20 } },
+    effects: { phaseYield: { water: 1 } },
+    effectDesc: "每個晝夜自動蓄水，飲水+1",
+    doneText: "屋頂的接水槽總算接上了儲水桶。下過第一場雨之後，桶底已經積了一層清水——不用再為了乾淨的水走遠路。",
+  },
+  proj_storage: {
+    id: "proj_storage", name: "儲物棚", icon: "📦", requiresCampLv: 1, phases: 4,
+    cost: { resources: { scrap: 25 } },
+    effects: { resourceCapBonus: 10 },
+    effectDesc: "所有資源儲量上限+10",
+    doneText: "用舊貨架和防水布搭起的儲物棚立了起來。以前塞不下的物資，現在終於有地方好好收著了。",
+  },
+  proj_smoke: {
+    id: "proj_smoke", name: "煙燻架", icon: "🍖", requiresCampLv: 2, phases: 4,
+    cost: { resources: { scrap: 20, food: 8 } },
+    effects: { phaseYield: { food: 1 } },
+    effectDesc: "每個晝夜自動處理保存食物，食物+1",
+    doneText: "煙燻架冒出第一縷細煙。多出來的食材被仔細處理過，不再放到壞掉，每天都能多撐一點。",
+  },
+  proj_wall: {
+    id: "proj_wall", name: "加固圍牆", icon: "🧱", requiresCampLv: 2, phases: 6,
+    cost: { resources: { scrap: 35 } },
+    effects: { baseDefenseBonus: 2 },
+    effectDesc: "據點防禦+2",
+    doneText: "最後一塊鐵皮釘上去的時候，你退後幾步看著整圈圍牆。它不好看，但今晚起，外頭的東西沒那麼容易闖進來了。",
+  },
+  proj_watchtower: {
+    id: "proj_watchtower", name: "瞭望台", icon: "🔭", requiresCampLv: 2, phases: 6,
+    cost: { resources: { scrap: 30, food: 5 } },
+    effects: { raidChanceDelta: -0.08 },
+    effectDesc: "夜襲機率-8%",
+    doneText: "瞭望台架好了。站在上頭能看見更遠的街角，有什麼東西靠近，這次你會比牠們先發現。",
+  },
+  proj_clinic: {
+    id: "proj_clinic", name: "簡易診所", icon: "🩺", requiresCampLv: 2, phases: 6,
+    cost: { resources: { scrap: 25, medicine: 2 } },
+    effects: { restHealBonus: 8 },
+    effectDesc: "休息時額外回復HP+8",
+    doneText: "角落多了一張鋪著乾淨床單的診療床，藥品也終於有了固定的擺放位置。從今以後，休息真的能把傷養好。",
+  },
+  proj_generator: {
+    id: "proj_generator", name: "發電機房", icon: "⚡", requiresCampLv: 3, phases: 8,
+    cost: { resources: { scrap: 45 } },
+    effects: { staminaMaxBonus: 1 },
+    effectDesc: "體力上限+1",
+    doneText: "發電機終於在隔音的小房間裡穩定運轉。夜裡有了穩定的燈光，你比從前更有精神撐過一整天。",
+  },
+  proj_soundproof: {
+    id: "proj_soundproof", name: "隔音牆", icon: "🔇", requiresCampLv: 3, phases: 6,
+    cost: { resources: { scrap: 40 } },
+    effects: { noiseDampRatio: 0.3 },
+    effectDesc: "行動製造的噪音-30%",
+    doneText: "外牆內襯了一層厚厚的舊棉被和吸音板。敲敲打打的聲音被悶在牆裡，遠處的東西聽不見了。",
+  },
+  proj_lab: {
+    id: "proj_lab", name: "研究角", icon: "🔬", requiresCampLv: 4, phases: 8,
+    cost: { resources: { scrap: 60 }, embers: 30 },
+    effects: { gatherYieldBonusRatio: 0.15 },
+    effectDesc: "採集收穫+15%",
+    doneText: "工作檯上擺滿了拆解到一半的零件和手寫的筆記。你逐漸摸清了哪裡該翻、哪些東西值得留——採集的效率明顯不一樣了。",
+  },
+};
+
+// 營地等級：每一級是「需求清單」，全部滿足才升級(連續判定)。req.type對應logic.js campRequirementValue()
+// 門檻對照既有數值範圍：設施總等級最高12(4種x3級)、舒適度依家具稀有度加總(common1/rare2/epic3)、
+// 舒適度效果門檻本來就是3/6/10。reward是升級時一次性給的晶燼，levelUpText是升級時主畫面的短文案
+const CAMP_LEVELS = [
+  { lv: 1, name: "殘破小屋", reqs: [], desc: "四面漏風的屋子，勉強擋得住雨。" },
+  { lv: 2, name: "簡易營地", reward: 20,
+    reqs: [{ type: "facilityTotal", n: 2, label: "設施總等級" }, { type: "comfort", n: 3, label: "舒適度" }, { type: "projectsDone", n: 1, label: "完成建造專案" }],
+    desc: "屋子有了樣子，開始像個能住人的地方。",
+    levelUpText: "你站在門口環顧四周——牆補過了，角落有了固定的東西，這裡不再只是「暫時躲一躲」的地方，而是一座簡易的營地。" },
+  { lv: 3, name: "穩固據點", reward: 40,
+    reqs: [{ type: "facilityTotal", n: 5, label: "設施總等級" }, { type: "comfort", n: 6, label: "舒適度" }, { type: "projectsDone", n: 3, label: "完成建造專案" }, { type: "farmPlots", n: 4, label: "開墾農地" }],
+    desc: "有防禦、有存糧、有自己的小菜園，能同時進行兩項建設。",
+    levelUpText: "夜裡的風聲不再讓你不安。圍牆、菜園、儲糧都有了著落——這裡已經是一處穩固的據點，你甚至有餘力同時動工兩項建設。" },
+  { lv: 4, name: "小型聚落", reward: 80,
+    reqs: [{ type: "facilityTotal", n: 8, label: "設施總等級" }, { type: "comfort", n: 10, label: "舒適度" }, { type: "projectsDone", n: 5, label: "完成建造專案" }, { type: "companions", n: 2, label: "同伴人數" }, { type: "penAnimals", n: 1, label: "牧場動物" }],
+    desc: "同伴、牲畜、菜園，這裡漸漸有了人氣。",
+    levelUpText: "有人在院子裡走動，有動物在圍欄裡悠閒地晃，燈火在夜裡一盞盞亮著。這裡不只是據點，已經開始像一個小小的聚落。" },
+  { lv: 5, name: "灰燼中的家", reward: 150,
+    reqs: [{ type: "facilityTotal", n: 11, label: "設施總等級" }, { type: "comfort", n: 14, label: "舒適度" }, { type: "projectsDone", n: 8, label: "完成建造專案" }, { type: "farmPlots", n: 10, label: "開墾農地" }, { type: "companions", n: 4, label: "同伴人數" }, { type: "day", n: 80, label: "生存天數" }],
+    desc: "廢墟裡長出來的、真正屬於你們的家。",
+    levelUpText: "你坐在院子裡，看著這一切：一磚一瓦都是自己和同伴親手搭起來的。世界依然是灰燼，但在這片灰燼裡，你們有了一個家。" },
+];
+
 if (typeof module !== "undefined") {
-  module.exports = { ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
+  module.exports = { PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
+  window.PROJECTS = PROJECTS;
+  window.CAMP_LEVELS = CAMP_LEVELS;
   window.ITEMS = ITEMS;
   window.ENEMIES = ENEMIES;
   window.EVENTS = EVENTS;

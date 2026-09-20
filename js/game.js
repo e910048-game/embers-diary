@@ -51,7 +51,7 @@ function saveGame() {
 // 2026-07-06補上currency(見code review)：defaultState()裡currency:{embers:150}目前只有單一子欄位，
 // 漏列在這裡暫時無害，但只要之後currency比照resources/resourceCaps那樣新增第二個子欄位，
 // 舊存檔讀進來就會被saved.currency整包覆蓋掉新欄位——先補進清單防患未然
-const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "attributes", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress", "farm", "pens", "processing", "yardDecorSlots", "currency"];
+const NESTED_STATE_FIELDS = ["resources", "resourceCaps", "equipment", "stats", "attributes", "facilities", "skills", "spouseState", "sharedFridge", "baseSlots", "companions", "questFlags", "questProgress", "farm", "pens", "processing", "yardDecorSlots", "currency", "projects"];
 // v167相容：v166以前的存檔把table/floor/rug類家具放在baseSlots的這些鍵裡，free-form改版後這些鍵已不再被
 // 任何程式碼讀取——若不搬移，舊存檔讀進來的家具會「卡在baseSlots裡但形同消失」（不在room顯示、不算舒適度、
 // 也回不去背包）。讀檔時偵測到就搬進placedFurniture，搬完即從baseSlots刪除，只需做這一次
@@ -749,6 +749,93 @@ function renderPlacedFurnitureCell(state, index) {
   const matHtml = isTable ? `<div class="propMat"></div>` : "";
   return `<div class="${cls}" id="${furnitureCellId(index)}" style="left:${pos.left};top:${pos.top};z-index:${cellZ(placed.gx + placed.gy, isRug ? -1 : 0)}" title="${item.name}${item.desc ? "：" + item.desc : ""}${hint}">${matHtml}<div class="icon">${isoIconHtml(itemId, "furniture")}</div><div class="homeLabel${labelCls(row)}">${used ? "今日已使用" : item.name}</div></div>`;
 }
+// 營地成長(2026-09-20)：小屋畫面隨營地等級進化。純CSS+emoji(沿用「牆帶元素一律純CSS，不用等角PNG」規範)：
+// 上緣牆帶依等級多幾個氛圍小擺飾(避開窗戶/探索門/掛畫/燈開關的位置)，下緣牆帶一排已完成建造專案的圖示，
+// 牆面質感/暖光由.homeScene.camp-lvN在style.css處理。全部pointer-events:none，不影響既有點擊
+const CAMP_PROPS_BY_LEVEL = [
+  [], // Lv1 殘破小屋：什麼都沒有
+  [{ icon: "🕯️", left: "35%" }],
+  [{ icon: "🪴", left: "66%" }],
+  [{ icon: "🏮", left: "41%" }, { icon: "🚩", left: "60%" }],
+  [{ icon: "✨", left: "86%" }],
+];
+const CAMP_PROJECT_SLOTS = ["8%", "17%", "26%", "35%", "65%", "74%", "83%", "92%", "44%"]; // 下緣牆帶，避開50%的採集門
+function campPropsHtml(state, campLv) {
+  const props = [];
+  for (let lv = 2; lv <= campLv; lv++) (CAMP_PROPS_BY_LEVEL[lv - 1] || []).forEach(p => props.push(p));
+  const top = props.map(p => `<span class="campProp campPropTop" style="left:${p.left}">${p.icon}</span>`).join("");
+  const done = Object.keys(PROJECTS).filter(id => isProjectDone(state, id));
+  const bottom = done.map((id, i) => `<span class="campProp campPropBottom" style="left:${CAMP_PROJECT_SLOTS[i % CAMP_PROJECT_SLOTS.length]}" title="${PROJECTS[id].name}">${PROJECTS[id].icon}</span>`).join("");
+  return `<div class="campProps">${top}${bottom}</div>`;
+}
+
+// ---------- 營地面板 / 建造專案面板（2026-09-20，見規格文件/營地等級與建造專案_設計規格.md） ----------
+function projectCostText(cost) {
+  const parts = [];
+  if (cost.resources) for (const k in cost.resources) parts.push(`${RESOURCE_ICONS[k] || ""}${RESOURCE_NAMES[k] || k}${cost.resources[k]}`);
+  if (cost.embers) parts.push(`🔥晶燼${cost.embers}`);
+  return parts.join(" ");
+}
+function showCampPanel() {
+  renderStatusBar();
+  const p = campProgress(state);
+  const total = Object.keys(PROJECTS).length;
+  const doneCount = Object.keys(PROJECTS).filter(id => isProjectDone(state, id)).length;
+  let html = `<div class="subtitle">🏕️ 營地</div><div class="campTitle">Lv.${p.level}　${p.name}</div><div class="hint">${p.desc}</div>`;
+  html += `<div class="hint">建造專案 ${doneCount}/${total}　同時施工上限 ${p.slotLimit}${p.slotLimit < 2 ? "（營地Lv.3起可同時2項）" : ""}</div>`;
+  if (p.next) {
+    html += `<div class="campNext">下一級：Lv.${p.next.lv} ${p.next.name}${p.next.reward ? `（升級獎勵 🔥${p.next.reward}）` : ""}</div><ul class="campReqs">`;
+    html += p.next.reqs.map(r => `<li class="${r.met ? "met" : ""}">${r.met ? "✅" : "⬜"} ${r.label} ${Math.min(r.have, r.need)}/${r.need}</li>`).join("");
+    html += `</ul>`;
+  } else {
+    html += `<div class="campNext">已達最高等級 🎉　這裡是灰燼中真正的家。</div>`;
+  }
+  renderText(html);
+  renderOptions([
+    { label: "🏗️ 前往建造專案", variant: "primary", onClick: () => { homeOpenPanel = "projects"; showProjectsPanel(); } },
+    { label: "返回", variant: "ghost", onClick: renderMain }
+  ]);
+}
+function showProjectsPanel() {
+  renderStatusBar();
+  const lv = getCampLevel(state);
+  const active = activeProjectCount(state), limit = projectSlotLimit(state);
+  const doneIcons = Object.keys(PROJECTS).filter(id => isProjectDone(state, id)).map(id => PROJECTS[id].icon).join(" ");
+  renderText(`<div class="subtitle">🏗️ 建造專案</div><div class="hint">營地 Lv.${lv}　施工中 ${active}/${limit}\n花費資源開工後，過幾個晝夜就會自動完成，不用一直盯著。${doneIcons ? `\n已完成：${doneIcons}` : ""}</div>`);
+  const opts = [];
+  const groups = { building: [], available: [], locked: [] };
+  Object.keys(PROJECTS).forEach(id => { const st = getProjectState(state, id); if (st.status !== "done") groups[st.status].push(st); });
+  groups.building.forEach(st => {
+    const bar = "▰".repeat(st.elapsed) + "▱".repeat(st.remaining);
+    opts.push({ label: `${st.proj.icon} ${st.proj.name}　🚧 施工中`, hint: `${bar}　還要${st.remaining}個階段（約${Math.ceil(st.remaining / 2)}天）`, disabled: true });
+  });
+  groups.available.forEach(st => {
+    const proj = st.proj;
+    const noSlot = active >= limit;
+    const afford = canAffordProject(state, proj);
+    opts.push({
+      label: `${proj.icon} ${proj.name}`,
+      hint: `${projectCostText(proj.cost)}｜${proj.phases}階段｜${proj.effectDesc}${noSlot ? "｜⛔ 施工名額已滿" : (afford ? "" : "｜❌ 資源不足")}`,
+      variant: noSlot || !afford ? undefined : "primary",
+      disabled: noSlot || !afford,
+      onClick: () => {
+        const r = startProject(state, proj.id);
+        if (!r.ok) { showProjectsPanel(); return; }
+        saveGame();
+        renderStatusBar();
+        renderResult(`🏗️ 開工：${proj.icon}${proj.name}\n${proj.desc || ""}預計${proj.phases}個階段(約${Math.ceil(proj.phases / 2)}天)後完工，完成後：${proj.effectDesc}。`, null,
+          [{ icon: "⏳", label: "工期", text: `${proj.phases}階段`, kind: "info" }, ...effectChips({ resources: Object.fromEntries(Object.entries(proj.cost.resources || {}).map(([k, v]) => [k, -v])), embers: proj.cost.embers ? -proj.cost.embers : 0 })]);
+        renderOptions([{ label: "繼續", variant: "ghost", onClick: showProjectsPanel }]);
+      }
+    });
+  });
+  groups.locked.forEach(st => {
+    opts.push({ label: `${st.proj.icon} ${st.proj.name}`, hint: `🔒 營地 Lv.${st.proj.requiresCampLv} 解鎖｜${st.proj.effectDesc}`, disabled: true });
+  });
+  opts.push({ label: "返回", variant: "ghost", onClick: renderMain });
+  renderOptions(opts);
+}
+
 function homeSceneHtml(state) {
   const items = [];
   const defaultPos = gridPos(5, 5);
@@ -837,6 +924,8 @@ const windowCls = `homeWindow ${state.phase === "night" ? "is-night" : "is-day"}
   const activeMainQuest = state.questProgress.activeMain ? QUESTS[state.questProgress.activeMain] : null;
   const questTargetText = activeMainQuest ? `🎯 目前目標：${activeMainQuest.title}` : "🎯 主線已完成，支線等著你";
   const questTargetRow = `<div class="homePillRow"><button class="homePill" id="homeQuestTargetPill" title="${activeMainQuest ? activeMainQuest.desc : "點擊查看支線任務"}">${questTargetText}</button></div>`;
+  const campLv = getCampLevel(state);
+  const activeProjects = activeProjectCount(state);
   const tabPills = `<div class="homePillRow homeTabPills" id="homeTabPillsRow">
     <button class="homePill homeTabBtn" id="homeTabSkill">⭐ 技能</button>
     <button class="homePill homeTabBtn${state.homePlacementMode ? " active" : ""}" id="homeTabPlacement">${state.homePlacementMode ? "結束佈置" : "🛋️ 佈置家具"}</button>
@@ -844,6 +933,8 @@ const windowCls = `homeWindow ${state.phase === "night" ? "is-night" : "is-day"}
     <button class="homePill homeTabBtn" id="homeTabYard">🌾 庭院</button>
     <button class="homePill homeTabBtn" id="homeTabPen">🐑 牧場</button>
     <button class="homePill homeTabBtn" id="homeTabWorkshop">🏭 加工間</button>
+    <button class="homePill homeTabBtn" id="homeTabCamp" title="營地等級與下一級需求">🏕️ 營地 Lv.${campLv}</button>
+    <button class="homePill homeTabBtn" id="homeTabProjects" title="建造專案：花幾個晝夜慢慢蓋好的大型建設">🏗️ 建造${activeProjects ? `（施工中${activeProjects}）` : ""}</button>
   </div>`;
 const avatarRow = `<div class="homeAvatarRow">
     <div class="homeAvatar">
@@ -867,7 +958,7 @@ const avatarRow = `<div class="homeAvatarRow">
   const nightCls = state.phase !== "day" ? " night" : "";
   const lightsOffCls = state.homeLightOff ? " lightsOff" : "";
   const windowGlow = state.homeLightOff ? `<div class="windowGlow"></div>` : "";
-  return `<div class="homeScene">${avatarRow}${questTargetRow}${tabPills}<div class="roomCanvas ${floorStyle.cls}${state.homePlacementMode ? " placementMode" : ""}${nightCls}${lightsOffCls}" id="roomCanvas">${items.join("")}${windowGlow}</div></div>`;
+  return `<div class="homeScene camp-lv${campLv}">${avatarRow}${questTargetRow}${tabPills}<div class="roomCanvas ${floorStyle.cls}${state.homePlacementMode ? " placementMode" : ""}${nightCls}${lightsOffCls}" id="roomCanvas">${items.join("")}${campPropsHtml(state, campLv)}${windowGlow}</div></div>`;
 }
 function bindHomeTabPills() {
   const map = {
@@ -877,7 +968,9 @@ function bindHomeTabPills() {
     homeQuestTargetPill: () => togglePanel("quest", () => showQuestPanel()),
     homeTabYard: renderYardScene,
     homeTabPen: renderPenScene,
-    homeTabWorkshop: renderWorkshopScene
+    homeTabWorkshop: renderWorkshopScene,
+    homeTabCamp: () => togglePanel("camp", showCampPanel),
+    homeTabProjects: () => togglePanel("projects", showProjectsPanel)
   };
   for (const id in map) {
     const el = document.getElementById(id);
@@ -1763,6 +1856,17 @@ function renderMain() {
   renderStatusBar();
   const cost = reinforceCost(state);
   let extra = "";
+  // 營地成長(2026-09-20)：專案是惰性計算的，回到主畫面時結算「這段時間完工了什麼」與「營地有沒有升級」，通知併入主畫面文字。
+  // 有變動(專案定案/升級獎勵發放)就存檔，避免重整後重複領獎
+  const finishedProjects = settleProjects(state);
+  const campUps = checkCampLevelUp(state);
+  if (finishedProjects.length || campUps.length) {
+    runQuestCheck();
+    saveGame();
+    renderStatusBar();
+    finishedProjects.forEach(id => { const pr = PROJECTS[id]; extra += `\n🏗️ 建造完成：${pr.icon}${pr.name}\n${pr.doneText}\n　→ ${pr.effectDesc}`; });
+    campUps.forEach(u => { extra += `\n🏕️ 營地升級：Lv.${u.lv} ${u.name}${u.reward ? `（🔥+${u.reward}）` : ""}\n${u.text}`; });
+  }
   if (state.skillPoints > 0) {
         extra += `\n⭐ 你有 ${state.skillPoints} 點未使用的技能點！`;
   }
