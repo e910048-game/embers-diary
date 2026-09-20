@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
+  const { LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -291,6 +291,7 @@
       noiseLevel: 0, // 噪音系統：0~100，製造/搜刮/戰鬥累加，每階段自然衰減，血月狂潮時每滿20點多一波敵人
       facilities: { command: 0, greenhouse: 0, workshop: 0, radar: 0 }, // 22.2
       farm: { plots: FARM_PLOT_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, crop: null }; return acc; }, {}) }, // 農場區(2026-07-02)：僅第一塊地預設解鎖
+      pendingLevelUp: null, // 升級回饋(2026-09-20)：{from,to}，回主畫面時顯示升級面板後清空
       loreFound: [], // 深淵日誌(2026-09-20)：已取得的LORE_LOGS id，依序掉落
       recap: {}, // 前情回顧(2026-09-20)：這個階段發生的事 {hpStart,wins,enemy,loc,gathers}，endPhase時消費並重置
       locationVisits: {}, // 回訪記憶(2026-09-20)：{locId: 造訪次數}，只影響文字
@@ -694,6 +695,10 @@
   // ---------- 血月狂潮排程（V2.0：取代26.3軟性預告，改為剛性7~10天週期） ----------
   // 3天倒數準備期；血月夜當天觸發決戰(isThreatDue)，結算後clearUpcomingThreat，下個phase即重新排程下一輪
   const THREAT_LEAD_DAYS = 3;
+  // 雷達站(2026-09-20)：每級血月預警提前1天、探索遭遇戰機率-3%(原本雷達完全沒效果，玩家實測回饋)
+  function radarLevel(state) { return Math.max(0, Math.min(3, (state && state.facilities && state.facilities.radar) || 0)); }
+  function threatLeadDays(state) { return THREAT_LEAD_DAYS + radarLevel(state); }
+  function radarEncounterReduction(state) { return 0.03 * radarLevel(state); }
   const BLOOD_MOON_CYCLE_MIN = 7;
   const BLOOD_MOON_CYCLE_MAX = 10;
 
@@ -1090,6 +1095,7 @@
   // 取得經驗值，可能連續升級；回傳升級次數
   function gainExp(state, amount) {
     state.exp += amount;
+    const fromLevel = state.level;
     let levelUps = 0;
     while (state.exp >= state.expToNext) {
       state.exp -= state.expToNext;
@@ -1108,6 +1114,7 @@
       state.staminaMax = newStaminaMax;
       levelUps += 1;
     }
+    if (levelUps > 0) state.pendingLevelUp = { from: (state.pendingLevelUp && state.pendingLevelUp.from) || fromLevel, to: state.level };
     return levelUps;
   }
 
@@ -1176,7 +1183,8 @@
     // 2026-07-05：序章「帶傷生還(weak)」結局的生態變數——傷勢未癒導致行動不夠俐落，探索時驚動怪物的機率永久+5%
     const encounterBonus = (state && state.flags && state.flags.weak) ? 0.05 : 0;
     const modifierEncounterDelta = (modifier && modifier.encounterChanceDelta) || 0;
-    if (rng() < location.encounterChance + encounterBonus + modifierEncounterDelta) {
+    const radarDelta = state ? radarEncounterReduction(state) : 0;
+    if (rng() < Math.max(0, location.encounterChance + encounterBonus + modifierEncounterDelta - radarDelta)) {
       const ids = location.encounterEnemyIds;
       let enemyId;
       if (state && state.day >= 15 && ids.length > 1 && rng() < 0.5) {
@@ -2014,6 +2022,25 @@
     return next;
   }
 
+  // 升級面板內容：回傳要顯示的行(敘事＋實際變強了什麼＋這一級帶來的新變化)。fromLevel=升級前等級
+  function getLevelUpSummary(state, fromLevel) {
+    const to = state.level, gained = to - fromLevel;
+    const lines = [];
+    const bracket = LEVEL_UP_LINES.find(b => to <= b.maxLevel) || LEVEL_UP_LINES[LEVEL_UP_LINES.length - 1];
+    lines.push(bracket.lines[to % bracket.lines.length]);
+    lines.push("❤️ HP上限 +" + (LEVEL_UP_HP_BONUS * gained) + "（現在 " + state.hpMax + "），已回滿");
+    lines.push("⚔️ 攻擊 +" + (LEVEL_UP_ATK_BONUS * gained) + "（現在 " + state.stats.atk + "）");
+    lines.push("⚡ 體力上限 +" + gained + "（現在 " + state.staminaMax + "）");
+    const tierOf = lv => Math.min(3, Math.floor((lv - 1) / 3));
+    if (tierOf(to) > tierOf(fromLevel)) lines.push("⚠️ 你的名聲傳開了——外頭的敵人也變得更強悍。");
+    const farOf = lv => Math.max(1, ACTION_STAMINA_COSTS.explore_far - Math.floor((lv - 1) / 3));
+    if (farOf(to) < farOf(fromLevel)) lines.push("🚙 你更熟悉遠途行軍了，遠征體力消耗降為 " + farOf(to) + "。");
+    const capped = LOCATIONS.filter(l => l.levelCap >= fromLevel && l.levelCap < to);
+    if (capped.length) lines.push("📉 " + capped.slice(0, 3).map(l => l.icon + l.name).join("、") + (capped.length > 3 ? "等" + capped.length + "處" : "") + "已學不到新東西了（經驗不再增加），該去更危險的地方。");
+    if (state.skillPoints > 0) lines.push("⭐ 技能點：" + state.skillPoints + "（可在技能面板使用）");
+    return lines;
+  }
+
   function noteRecap(state, key, val) {
     if (!state.recap) state.recap = {};
     if (key === "win") { state.recap.wins = (state.recap.wins || 0) + 1; state.recap.enemy = val; }
@@ -2588,7 +2615,7 @@
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
-    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, recordLocationVisit, getVisitMemoryLine, grantNextLore, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
+    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,

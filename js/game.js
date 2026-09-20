@@ -40,9 +40,10 @@ function pushSysLog(text) {
   battleSysLog.push(text);
   if (battleSysLog.length > 8) battleSysLog.shift();
 }
+// 2026-09-20：玩家實測回饋「戰鬥時出現綠色很不搭」——綠色終端機戰報(變數名/程式碼樣式)破壞末日文字氛圍，且內容與主敘事重複，不再顯示。
+// pushSysLog仍保留(僅內部除錯用)，需要時可在console看battleSysLog
 function sysLogHtml() {
-  if (!battleSysLog.length) return "";
-  return `<div class="sysLog">${battleSysLog.map(l => `<div class="sysLogLine">${l}</div>`).join("")}</div>`;
+  return "";
 }
 
 function saveGame() {
@@ -216,7 +217,7 @@ function threatWarningText() {
   }
   if (state.upcomingThreat) {
     const left = state.upcomingThreat.day - state.day;
-    if (left > 0 && left <= THREAT_LEAD_DAYS) {
+    if (left > 0 && left <= threatLeadDays(state)) {
       const cLine = getCompanionThreatLine(state);
       const cText = cLine ? `
 💬 ${cLine}` : "";
@@ -233,7 +234,7 @@ function isBloodMoonWarning() {
   if (isThreatDue(state)) return true;
   if (!state.upcomingThreat) return false;
   const left = state.upcomingThreat.day - state.day;
-  return left > 0 && left <= THREAT_LEAD_DAYS;
+  return left > 0 && left <= threatLeadDays(state);
 }
 
 // #26-2：事件結算統一加上隨機exp獎勵(effect本身沒設定時，補8~12隨機值)
@@ -769,7 +770,13 @@ function campPropsHtml(state, campLv) {
   const top = props.map(p => `<span class="campProp campPropTop" style="left:${p.left}">${p.icon}</span>`).join("");
   const done = Object.keys(PROJECTS).filter(id => isProjectDone(state, id));
   const bottom = done.map((id, i) => `<span class="campProp campPropBottom" style="left:${CAMP_PROJECT_SLOTS[i % CAMP_PROJECT_SLOTS.length]}" title="${PROJECTS[id].name}">${PROJECTS[id].icon}</span>`).join("");
-  return `<div class="campProps">${top}${bottom}</div>`;
+  // 設施標誌(2026-09-20)：四座設施各一個標誌掛在上緣牆帶，Lv0是暗淡的「尚未建造」輪廓，Lv1~3逐級更亮、帶等級角標
+  const FAC_MARKS = { command: { icon: "🛡️", left: "23%" }, greenhouse: { icon: "🪴", left: "29%" }, workshop: { icon: "🔧", left: "72%" }, radar: { icon: "📡", left: "79%" } };
+  const fac = Object.keys(FAC_MARKS).map(k => {
+    const lv = (state.facilities && state.facilities[k]) || 0;
+    return `<span class="facMark facMark-lv${lv}" style="left:${FAC_MARKS[k].left}" title="${FACILITY_LABELS[k]} Lv${lv}">${FAC_MARKS[k].icon}${lv > 0 ? `<i>${lv}</i>` : ""}</span>`;
+  }).join("");
+  return `<div class="campProps">${top}${bottom}${fac}</div>`;
 }
 
 // ---------- 營地面板 / 建造專案面板（2026-09-20，見規格文件/營地等級與建造專案_設計規格.md） ----------
@@ -1857,6 +1864,14 @@ function formatQuestReward(reward) {
 function renderMain() {
   homeOpenPanel = null;
   renderStatusBar();
+  // 升級回饋(2026-09-20)：玩家實測「升級跟沒升級沒有差別」——回到主畫面時先跳出升級面板，列出這次實際變強了什麼
+  if (state.pendingLevelUp) {
+    const lu = state.pendingLevelUp;
+    state.pendingLevelUp = null;
+    saveGame();
+    showLevelUpPanel(getLevelUpSummary(state, lu.from), lu, () => renderMain());
+    return;
+  }
   const cost = reinforceCost(state);
   let extra = "";
   // 營地成長(2026-09-20)：專案是惰性計算的，回到主畫面時結算「這段時間完工了什麼」與「營地有沒有升級」，通知併入主畫面文字。
@@ -2101,7 +2116,7 @@ const lowHp = state.hp <= state.hpMax * 0.25;
     ...(hasFurniturePlaced(state, "furn_sofa") ? [{ label: "🛋️ 沙發休息", onClick: showLounge }] : []),
     {
       label: "🛡️ 強化據點",
-      hint: `：${cost}📦 / 體力-${actionStaminaCost(state, "reinforce")} / 強化據點：提升防禦力，抵擋夜襲傷害`,
+      hint: `花費 ${cost}📦 / 體力-${actionStaminaCost(state, "reinforce")} / 選擇要強化的設施`,
       disabled: lowHp || state.resources.scrap < cost,
       onClick: doReinforce
     },
@@ -3136,11 +3151,17 @@ const FACILITY_LABELS = {
   workshop: "🔧 工坊",
     radar: "📡 雷達站",
 };
+const FACILITY_LEVEL_TEXT = {
+  command: ["指揮核心啟動：防禦+2，夜襲更難得逞。", "指揮核心升級：資源上限+10，夜襲敵人HP-20%。", "指揮核心完全體：夜襲機率再降3%，也許有人願意加入你。"],
+  greenhouse: ["溫室運轉：每階段自動產出食物+1。", "溫室升級：每階段另外產出飲水+1。", "溫室完全體：休息時SAN額外回復+50%。"],
+  workshop: ["工坊架起來了：可重鍛裝備，前綴重抽費用-20%，並解鎖第一批加工配方。", "工坊升級：解鎖更多加工配方。", "工坊完全體：所有加工配方全開。"],
+  radar: ["雷達開始掃描：血月預警提前1天，探索遭遇戰機率-3%。", "雷達升級：預警提前2天，遭遇戰機率-6%。", "雷達完全體：預警提前3天，遭遇戰機率-9%。"],
+};
 const FACILITY_DESCS = {
   command: "每級防禦+2（降低夜襲機率）；Lv2 資源上限+10、夜襲敵人HP-20%；Lv3 夜襲機率再降3%，並解鎖阿卡（爆破手）同伴招募",
   greenhouse: "Lv1 每階段產出食物+1，Lv2 每階段產出飲水+1，Lv3 休息時SAN額外回復+50%",
     workshop: "Lv1 起可重鍛、前綴重抽費用-20%；Lv1/Lv2 各解鎖更多加工配方",
-    radar: "偵測設備（目前尚無實際加成，僅供展示）",
+    radar: "每級：血月預警提前1天、探索遭遇戰機率-3%",
 };
 // D: 入夜/破曉過場動畫
 function showNightTransition(callback, recapLine) {
@@ -3167,6 +3188,21 @@ function showDawnTransition(callback, recapLine) {
   setTimeout(() => { overlay.remove(); callback(); }, 2400);
 }
 
+function showLevelUpPanel(lines, lu, callback) {
+  const overlay = document.createElement("div");
+  overlay.className = "phaseTransition levelUpTransition";
+  overlay.innerHTML = `
+    <div class="ptIcon">🎉</div>
+    <div class="ptTitle">升　級</div>
+    <div class="ptSub">Lv.${lu.from} → Lv.${lu.to}</div>
+    <div class="luLines">${lines.map(l => `<div class="luLine">${l}</div>`).join("")}</div>
+    <div class="luTap">點擊任意處繼續</div>
+  `;
+  document.body.appendChild(overlay);
+  const close = () => { overlay.remove(); callback(); };
+  setTimeout(() => { overlay.onclick = close; }, 600); // 避免剛跳出就被殘留點擊關掉
+}
+
 // 任務系統：主線第7章「畢業」收尾（非遊戲結局，是無限模式下的引導結束提示）
 function showGraduationTransition(callback) {
   const overlay = document.createElement("div");
@@ -3188,7 +3224,7 @@ function doReinforce() {
     const label = `${FACILITY_LABELS[key]} Lv${lv}${lv >= 3 ? "（已達最高等級）" : ` →Lv${lv + 1}`}`;
     return {
       label,
-      hint: lv >= 3 ? "已達上限" : `：${cost}📦，${FACILITY_DESCS[key]}`,
+      hint: lv >= 3 ? "已達上限" : `花費 ${cost}📦｜${FACILITY_DESCS[key]}`,
       disabled: lv >= 3 || state.resources.scrap < cost,
       onClick: () => doReinforceFacility(key, cost),
     };
@@ -3209,7 +3245,8 @@ function doReinforceFacility(key, cost) {
   if (state.reinforceDiscount) consumeReinforceDiscount(state);
   reinforceFacility(state, key);
   const overdrawText = result.overdraw ? overdrawFlavor(result.streak) : "";
-  renderText(`你強化了${FACILITY_LABELS[key]}，現在是 Lv${state.facilities[key]}${overdrawText}`, { kind: "event" });
+  const lvNow = state.facilities[key];
+  renderText(`你強化了${FACILITY_LABELS[key]}，現在是 Lv${lvNow}\n\n${(FACILITY_LEVEL_TEXT[key] || [])[lvNow - 1] || ""}\n（小屋牆上的設施標誌已更新）${overdrawText}`, { kind: "event" });
   renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
 }
 
@@ -3511,7 +3548,7 @@ let lootText = "";
 🌿 苔蘚幾何外殼汲取荒野生機，回復HP+${healed}`;
     }
   }
-  renderBattle(`${extraText}${critText}你攻擊了${b.enemy.name}，造成${dmgToEnemy}點傷害${lifestealText}${counterText}${reviveText}${gaiaArmorText}`);
+  renderBattle(`${extraText}${critText}你攻擊了${b.enemy.name}，造成${dmgToEnemy}點傷害${lifestealText}\n${counterText}${reviveText}${gaiaArmorText}`);
   spawnDamagePopup("battleEnemyCard", `-${dmgToEnemy}`, crit ? "crit" : "dmg");
 }
 

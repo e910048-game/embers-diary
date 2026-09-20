@@ -3029,6 +3029,14 @@ const COMPANION_HOME_LINES = {
   "阿海": ["阿海把地圖攤在桌上，指著據點的位置說：「從現在起，所有路都從這裡出發。」", "阿海在屋頂看星星，回來時說：「今晚的天空，第一次沒讓我想逃。」"],
 };
 
+// 升級敘事(2026-09-20)：依等級區間挑一句，升級時的「你變強了」不只是數字跳一下
+const LEVEL_UP_LINES = [
+  { maxLevel: 3, lines: ["你逐漸適應了廢土的生存法則，腳步變得沉穩，不再像剛出門時那樣慌張。", "肌肉記住了每一次躲閃與揮擊，你比昨天的自己更像個倖存者。"] },
+  { maxLevel: 6, lines: ["你的名字開始在倖存者之間流傳，走在廢墟裡，連風都好像認得你。", "傷疤多了，動作卻更俐落。你已經不是那個只會躲的人了。"] },
+  { maxLevel: 9, lines: ["你能一眼看出哪扇門後有危險、哪片廢墟值得駐足——這是用血換來的直覺。", "體內有什麼東西被喚醒了。廢土不再只是威脅，也成了你的獵場。"] },
+  { maxLevel: 999, lines: ["站在灰燼之上，你已經是這座城市裡最強悍的存在之一。", "每一次呼吸都沉穩有力。你知道，真正的考驗還在前方。"] },
+];
+
 // 4) 短期因果鏈：先前的善意，2~5天後有回音(條件都是flag天數差，各只發生一次)
 const CONSEQUENCE_EVENTS = [
   {
@@ -3213,9 +3221,10 @@ const LORE_LOGS = [
 ];
 
 if (typeof module !== "undefined") {
-  module.exports = { LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
+  module.exports = { LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
+  window.LEVEL_UP_LINES = LEVEL_UP_LINES;
   window.LORE_LOGS = LORE_LOGS;
   window.RECAP_LINES = RECAP_LINES;
   window.LOCATION_MEMORY_LINES = LOCATION_MEMORY_LINES;

@@ -2524,5 +2524,56 @@ test("深淵日誌成就：集齊6篇才解鎖ach_lore_all；深淵先驅勝利(
 });
 
 
+// ---------- 玩家實測回饋修正(2026-09-20)：雷達效果/升級面板/戰報隱藏 ----------
+test("雷達站：每級血月預警+1天、探索遭遇戰機率-3%；Lv0無影響", () => {
+  const s = L.defaultState();
+  assert.strictEqual(L.threatLeadDays(s), L.THREAT_LEAD_DAYS);
+  assert.strictEqual(L.radarEncounterReduction(s), 0);
+  s.facilities.radar = 2;
+  assert.strictEqual(L.threatLeadDays(s), L.THREAT_LEAD_DAYS + 2);
+  assert.ok(Math.abs(L.radarEncounterReduction(s) - 0.06) < 1e-9);
+  s.facilities.radar = 99; // 上限3級
+  assert.strictEqual(L.radarLevel(s), 3);
+  // 遭遇率：encounterChance=0.5，rng剛好落在0.47(原本會遇敵)，雷達Lv1(-3%)後不再遇敵
+  const D = require("../js/data.js");
+  const loc = { ...D.LOCATIONS[0], encounterChance: 0.5, encounterEnemyIds: ["enemy_walker_weak"] };
+  const s0 = L.defaultState();
+  assert.strictEqual(L.resolveLocation(loc, () => 0.49, s0).type, "battle");
+  s0.facilities.radar = 1;
+  assert.notStrictEqual(L.resolveLocation(loc, () => 0.49, s0).type, "battle");
+});
+
+test("升級面板：gainExp記錄pendingLevelUp區間；getLevelUpSummary列出HP/攻擊/體力與跨tier、遠征體力、經驗鎖提示", () => {
+  const s = L.defaultState();
+  assert.strictEqual(s.pendingLevelUp, null);
+  L.gainExp(s, 100); // 1→2
+  assert.deepStrictEqual(s.pendingLevelUp, { from: 1, to: 2 });
+  L.gainExp(s, 100000); // 連升多級，from保持第一次的
+  assert.strictEqual(s.pendingLevelUp.from, 1);
+  assert.strictEqual(s.pendingLevelUp.to, s.level);
+  const lines = L.getLevelUpSummary(s, 1);
+  assert.ok(lines.some(t => t.includes("HP上限")) && lines.some(t => t.includes("攻擊")) && lines.some(t => t.includes("體力上限")));
+  assert.ok(lines.some(t => t.includes("敵人也變得更強悍")), "跨tier應提示");
+  assert.ok(lines.some(t => t.includes("遠征體力消耗降為")), "遠征消耗降低應提示");
+  assert.ok(lines.some(t => t.includes("已學不到新東西")), "超過地點levelCap應提示");
+  assert.ok(lines.every(t => typeof t === "string" && t.length > 0));
+});
+
+test("升級敘事文字：每個等級區間>=2句、每句<=100字", () => {
+  const D = require("../js/data.js");
+  assert.ok(D.LEVEL_UP_LINES.length >= 4);
+  D.LEVEL_UP_LINES.forEach(b => { assert.ok(b.lines.length >= 2); b.lines.forEach(t => assert.ok(t.length <= 100)); });
+});
+
+test("戰鬥畫面不再顯示綠色終端機戰報；戰鬥文字有換行分隔；設施強化清單無孤立冒號/僅供展示", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  const i = src.indexOf("function sysLogHtml(");
+  assert.ok(/return "";/.test(src.slice(i, i + 80)), "sysLogHtml應回空字串");
+  assert.ok(/\$\{lifestealText\}\\n\$\{counterText\}/.test(src), "攻擊文字與反擊文字之間要換行");
+  assert.ok(!/僅供展示/.test(src) && !/尚無實際加成/.test(src));
+  assert.ok(!/`：\$\{cost\}📦/.test(src), "強化清單hint不該以孤立冒號開頭");
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

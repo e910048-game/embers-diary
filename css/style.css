@@ -134,6 +134,11 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 }
 .nightTransition { background: linear-gradient(to bottom, #060916, #111828); }
 .dawnTransition  { background: linear-gradient(to bottom, #1a0e08, #2e1c0c); }
+.levelUpTransition { background: linear-gradient(to bottom, #1a1608, #2a2410); flex-direction: column; padding: 24px 20px; cursor: pointer; animation: none; pointer-events: auto; }
+.levelUpTransition .ptTitle { color: #ffd76a; text-shadow: 0 0 14px rgba(255,215,106,0.55); }
+.levelUpTransition .luLines { margin-top: 14px; max-width: 340px; font-size: 14px; line-height: 1.7; color: #e8dfc4; text-align: left; opacity: 0; animation: ptIconIn 0.6s ease 0.5s forwards; }
+.levelUpTransition .luLine { margin: 4px 0; }
+.levelUpTransition .luTap { margin-top: 16px; font-size: 12px; color: #9a927a; opacity: 0; animation: ptIconIn 0.6s ease 1.2s forwards; }
 .graduationTransition { background: linear-gradient(to bottom, #0a1410, #142a1e); }
 .graduationTransition .ptTitle { color: #7fe9a8; text-shadow: 0 0 14px rgba(127,233,168,0.55); }
 .phaseTransition .ptIcon {
@@ -692,6 +697,12 @@ body.blood-moon .panelCard { background: rgba(18,0,0,0.85); border-color: rgba(2
 .campProps { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .campProp { position: absolute; font-size: 15px; line-height: 1; transform: translateX(-50%); filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5)); }
 .campPropTop { top: 14px; }
+.facMark { position: absolute; top: 12px; font-size: 16px; line-height: 1; transform: translateX(-50%); }
+.facMark i { position: absolute; right: -7px; bottom: -6px; font-style: normal; font-size: 9px; font-weight: 700; color: #1c1c1c; background: #ffd76a; border-radius: 6px; padding: 0 3px; }
+.facMark-lv0 { opacity: 0.28; filter: grayscale(1); }
+.facMark-lv1 { filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5)); }
+.facMark-lv2 { filter: drop-shadow(0 0 3px rgba(255,215,106,0.75)); }
+.facMark-lv3 { filter: drop-shadow(0 0 5px rgba(255,215,106,1)); font-size: 18px; }
 .campPropBottom { bottom: 6px; font-size: 16px; }
 .campTitle { text-align: center; font-size: 22px; font-weight: 700; color: #ffd479; margin: 2px 0 6px; letter-spacing: 1px; }
 .campNext { margin-top: 10px; color: #cfd6dd; font-weight: 600; }
