@@ -3268,11 +3268,9 @@ function renderGameOver(isPrologue) {
 function startBattle(enemyId, onEnd, isPrologue, opts = {}) {
   battleSysLog = []; // v181：新戰鬥開始時清空上一場的副數據流紀錄
   if (!isPrologue) addNoise(state, NOISE_AMOUNTS.battle); // 噪音系統：戰鬥動靜大，序章教學戰不計入
-  const due = !isPrologue && isThreatDue(state);
   const { battleBonus, loc, bloodMoon, ...scaleOpts } = opts;
   const overpower = isPrologue ? null : getLocationOverpower(state, loc);
-  const enemyData = isPrologue ? ENEMIES[enemyId] : getScaledEnemy(enemyId, state, { ...scaleOpts, extraTier: (scaleOpts.extraTier || 0) + (due ? 1 : 0), enemyMult: overpower ? overpower.enemyMult : 1 });
-  if (due) clearUpcomingThreat(state);
+  const enemyData = isPrologue ? ENEMIES[enemyId] : getScaledEnemy(enemyId, state, { ...scaleOpts, extraTier: scaleOpts.extraTier || 0, enemyMult: overpower ? overpower.enemyMult : 1 });
   pendingBattle = {
     enemy: { ...enemyData, hpLeft: enemyData.hp },
     onEnd,
@@ -3372,7 +3370,7 @@ function battleAttack() {
       const extra = calcAttackDamage(b);
       b.enemy.hpLeft -= extra.dmg;
       extraText = `
-🩸 你吸取了敵人的生命力，回復HP+${extra.dmg}`;
+📿 內燃機核心吊墜迸出一股力量，額外造成${extra.dmg}點傷害！`;
       if (b.enemy.hpLeft <= 0) b.enemy.hpLeft = 0;
     }
   }

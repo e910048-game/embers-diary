@@ -2243,5 +2243,25 @@ test("side_repeat_kills：達標後counterField歸零、重抽下一輪target(�
   assert.strictEqual(r2.completedSide.some(x => x.id === "side_repeat_kills"), true);
 });
 
+// ---------- 稽核修正(2026-09-20) ----------
+test("鋼鐵T3：對機械系敵人(enemy.mechanical)傷害x1.5——不再讀不存在的factionTag", () => {
+  const D = require("../js/data.js");
+  const s = L.defaultState();
+  s.skills = { faction: "cyber", tiers: { cyber: 3 }, unlockOrder: ["cyber"] };
+  assert.strictEqual(L.getFactionDamageMultiplier(s, D.ENEMIES.enemy_cyborg_nemesis), 1.5);
+  assert.strictEqual(L.getFactionDamageMultiplier(s, D.ENEMIES.enemy_walker_weak), 1);
+  s.skills.tiers.cyber = 2;
+  assert.strictEqual(L.getFactionDamageMultiplier(s, D.ENEMIES.enemy_cyborg_nemesis), 1);
+});
+
+test("庭院野花花圃(returnSanBonus)：advancePhase時確實回SAN", () => {
+  const s = L.defaultState();
+  s.san = 50;
+  s.yardDecorSlots.decor_1 = { itemId: "yard_flower_bed" };
+  const before = s.san;
+  L.advancePhase(s, () => 0.99);
+  assert.ok(s.san >= before + 3, "SAN應至少+3，實際 " + (s.san - before));
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

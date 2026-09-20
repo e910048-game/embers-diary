@@ -680,7 +680,7 @@
       applyEffect(state, { resources: gatherYield(rng, state) });
     }
     // 27.2：返回據點(每階段結算)時，舊筆記本等家具回SAN（資料驅動 effects.returnSanBonus）
-    const returnSanBonus = sumFurnitureEffect(state, "returnSanBonus");
+    const returnSanBonus = sumFurnitureEffect(state, "returnSanBonus") + (state.yardDecorSlots ? getYardDecorEffect(state, "returnSanBonus") : 0);
     if (returnSanBonus > 0) {
       state.san = clamp(state.san + returnSanBonus, 0, getEffectiveSanMax(state));
     }
@@ -1035,9 +1035,9 @@
     return factionTier(state, "cyber") >= 4 ? 0.5 : 0;
   }
 
-  // 25.3 鋼鐵活化T3：對factionTag=cyber的敵人傷害+50%
+  // 25.3 鋼鐵活化T3：對機械系敵人(enemy.mechanical)傷害+50%（原讀不存在的factionTag，從未生效）
   function getFactionDamageMultiplier(state, enemy) {
-    return (factionTier(state, "cyber") >= 3 && enemy && enemy.factionTag === "cyber") ? 1.5 : 1;
+    return (factionTier(state, "cyber") >= 3 && enemy && enemy.mechanical) ? 1.5 : 1;
   }
 
   // 27.5：cyber_hammer對機械系敵人(enemy.mechanical)傷害+100%（與其他傷害乘數採乘法疊加，35.4）
