@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
+  const { RECAP_LINES, LOCATION_MEMORY_LINES, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -291,6 +291,7 @@
       noiseLevel: 0, // 噪音系統：0~100，製造/搜刮/戰鬥累加，每階段自然衰減，血月狂潮時每滿20點多一波敵人
       facilities: { command: 0, greenhouse: 0, workshop: 0, radar: 0 }, // 22.2
       farm: { plots: FARM_PLOT_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, crop: null }; return acc; }, {}) }, // 農場區(2026-07-02)：僅第一塊地預設解鎖
+      recap: {}, // 前情回顧(2026-09-20)：這個階段發生的事 {hpStart,wins,enemy,loc,gathers}，endPhase時消費並重置
       locationVisits: {}, // 回訪記憶(2026-09-20)：{locId: 造訪次數}，只影響文字
       projects: {}, // 營地成長(2026-09-20)：建造專案 {id: {status:"building"|"done", startedAtPhaseIndex}}，沒開工的專案不在這裡
       campLevelSeen: 1, // 營地等級「已慶祝過的最高級」，等級只升不降(見getCampLevel)，也用來偵測升級
@@ -1993,13 +1994,38 @@
     return state.locationVisits[locId];
   }
   // 回傳該造訪次數對應的「這裡你來過」迴響句；第1次或沒有對應門檻回空字串。rng可注入以便測試
-  function getVisitMemoryLine(count, rng) {
+  function getVisitMemoryLine(count, rng, locId) {
     if (!count || count < 2) return "";
+    const specific = locId && LOCATION_MEMORY_LINES[locId];
+    if (specific && (rng || Math.random)() < 0.5) return count >= 5 ? specific[5] : specific[2];
     const tiers = Object.keys(VISIT_MEMORY_LINES).map(Number).filter(t => t <= count).sort((a, b) => b - a);
     if (tiers.length === 0) return "";
     const pool = VISIT_MEMORY_LINES[tiers[0]];
     return pool[Math.floor((rng || Math.random)() * pool.length)];
   }
+  // 前情回顧：記錄這個階段發生的事(win=擊倒敵人/loc=去過的地點/gather=採集)，endPhase時由buildRecapLine消費
+  function noteRecap(state, key, val) {
+    if (!state.recap) state.recap = {};
+    if (key === "win") { state.recap.wins = (state.recap.wins || 0) + 1; state.recap.enemy = val; }
+    else if (key === "loc") state.recap.loc = val;
+    else if (key === "gather") state.recap.gathers = (state.recap.gathers || 0) + 1;
+  }
+  function resetRecap(state) { state.recap = { hpStart: state.hp }; }
+  // endedPhase：剛過完的階段("day"→入夜時顯示「今天…」，"night"→破曉時顯示「昨夜…」)。同一天同狀況結果穩定
+  function buildRecapLine(state, endedPhase) {
+    const r = state.recap || {};
+    const lines = RECAP_LINES[endedPhase === "day" ? "day" : "night"];
+    let cat = "quiet";
+    if (typeof r.hpStart === "number" && r.hpStart - state.hp >= 20) cat = "hurt";
+    else if ((r.wins || 0) >= 2) cat = "wins2";
+    else if ((r.wins || 0) === 1) cat = "win1";
+    else if (r.loc) cat = "loc";
+    else if ((r.gathers || 0) > 0) cat = "gather";
+    const pool = lines[cat];
+    const line = pool[(state.day + (r.wins || 0)) % pool.length];
+    return line.replace("{enemy}", r.enemy || "敵人").replace("{loc}", r.loc || "遠方");
+  }
+
   function recruitedCompanionNames(state) {
     return Object.keys(state.companions || {}).filter(n => state.companions[n] && state.companions[n] !== "locked");
   }
@@ -2552,7 +2578,7 @@
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
-    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, recordLocationVisit, getVisitMemoryLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
+    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, recordLocationVisit, getVisitMemoryLine, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,

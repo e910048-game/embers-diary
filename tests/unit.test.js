@@ -2414,5 +2414,85 @@ test("出門單一入口：小屋場景不再有採集門，showExploreChoice內
 });
 
 
+// ---------- 敘事連續性第二批：前情回顧/地點專屬回訪/更多因果鏈 ----------
+test("前情回顧：依記錄挑分類(hurt>wins2>win1>loc>gather>quiet)，佔位符被取代，日/夜用不同措辭", () => {
+  const D = require("../js/data.js");
+  const s = L.defaultState();
+  s.day = 5;
+  L.resetRecap(s);
+  const quiet = L.buildRecapLine(s, "day");
+  assert.ok(D.RECAP_LINES.day.quiet.includes(quiet));
+  L.noteRecap(s, "gather");
+  assert.ok(D.RECAP_LINES.day.gather.includes(L.buildRecapLine(s, "day")));
+  L.noteRecap(s, "loc", "醫院藥局");
+  assert.ok(/醫院藥局/.test(L.buildRecapLine(s, "day")) || D.RECAP_LINES.day.loc.some(t => !t.includes("{loc}") && t === L.buildRecapLine(s, "day")));
+  L.noteRecap(s, "win", "重裝感染者");
+  const w1 = L.buildRecapLine(s, "night");
+  assert.ok(!/\{enemy\}|\{loc\}/.test(w1));
+  L.noteRecap(s, "win", "重裝感染者");
+  assert.ok(D.RECAP_LINES.night.wins2.includes(L.buildRecapLine(s, "night")));
+  s.hp = s.hpMax; s.recap.hpStart = s.hp + 25; // 血量掉了25
+  s.hp = s.recap.hpStart - 25;
+  assert.ok(D.RECAP_LINES.night.hurt.includes(L.buildRecapLine(s, "night")));
+  L.resetRecap(s);
+  assert.strictEqual(s.recap.hpStart, s.hp);
+  assert.strictEqual(s.recap.wins, undefined);
+});
+
+test("前情回顧文字：每種分類都有>=2句、日夜皆備、每句<=100字", () => {
+  const D = require("../js/data.js");
+  for (const ph of ["day", "night"]) {
+    for (const cat of ["hurt", "wins2", "win1", "loc", "gather", "quiet"]) {
+      const pool = D.RECAP_LINES[ph][cat];
+      assert.ok(pool && pool.length >= 2, ph + "/" + cat);
+      pool.forEach(t => assert.ok(t.length <= 100, ph + "/" + cat + " 過長: " + t));
+    }
+  }
+});
+
+test("地點專屬回訪：21個地點都登記了第2/5次句子；getVisitMemoryLine帶locId時可回傳專屬句", () => {
+  const D = require("../js/data.js");
+  for (const loc of D.LOCATIONS) {
+    const m = D.LOCATION_MEMORY_LINES[loc.id];
+    assert.ok(m && m[2] && m[5], "缺專屬回訪句: " + loc.id);
+    assert.ok(m[2].length <= 100 && m[5].length <= 100);
+  }
+  const id = D.LOCATIONS[0].id;
+  assert.strictEqual(L.getVisitMemoryLine(2, () => 0, id), D.LOCATION_MEMORY_LINES[id][2]);
+  assert.strictEqual(L.getVisitMemoryLine(6, () => 0, id), D.LOCATION_MEMORY_LINES[id][5]);
+  assert.ok(D.VISIT_MEMORY_LINES[2].includes(L.getVisitMemoryLine(2, () => 0.99, id)));
+});
+
+test("因果鏈第二批：5條起點選項有旗標、回饋事件只在天數差達標且未完成時出現", () => {
+  const D = require("../js/data.js");
+  const find = id => D.EVENTS.find(e => e.id === id);
+  const chains = [
+    ["evt_childrens_drawing", "駐足看了一會兒", "drawing_seen", "evt_drawing_reply", "drawing_reply_done", 3],
+    ["evt_kids_treasure_map", "按圖索驥", "treasure_map_followed", "evt_treasure_found", "treasure_found_done", 1],
+    ["evt_pigeon_flock", "安靜地看著牠們", "pigeons_watched", "evt_pigeons_nest", "pigeons_nest_done", 3],
+    ["evt_scavenger_trade", "用廢料交換物資", "trader_traded", "evt_trader_returns", "trader_return_done", 4],
+    ["evt_community_garden", "採收剩餘的作物", "garden_harvested", "evt_garden_regrowth", "garden_regrowth_done", 5],
+  ];
+  for (const [startId, label, flag, retId, doneFlag, days] of chains) {
+    const opt = find(startId).options.find(o => o.label === label);
+    assert.ok(opt && opt.effect.setFlag === flag, startId);
+    const ret = find(retId);
+    assert.ok(ret && ret.weight > 0);
+    assert.ok(ret.options.every(o => o.effect && o.effect.setFlag === doneFlag), retId + " 每個選項都要設完成旗標");
+    const s = L.defaultState();
+    s.day = 20;
+    assert.strictEqual(ret.condition(s), false);
+    s.flags[flag] = 20;
+    if (days > 0) assert.strictEqual(ret.condition(s), false);
+    s.day = 20 + days;
+    assert.strictEqual(ret.condition(s), true, retId);
+    s.flags[doneFlag] = s.day;
+    assert.strictEqual(ret.condition(s), false);
+  }
+  const all = D.CONSEQUENCE_EVENTS_2.flatMap(e => [e.text, ...e.options.map(o => o.resultText)]);
+  assert.deepStrictEqual(all.filter(t => t.length > 100), []);
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

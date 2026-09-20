@@ -3088,10 +3088,112 @@ EVENTS.push(...CONSEQUENCE_EVENTS);
   if (camp) camp.options.unshift({ label: "走近，分一份食物給他們", requiresResource: { food: 1 }, effect: { resources: { food: -1 }, san: 3, setFlag: "campfire_shared" }, resultText: "你把食物放在火堆旁。他們愣了一下，隨即讓出位置請你坐下。這個晚上沒有人說話，卻比任何時候都暖。" });
 })();
 
+// ============ 敘事連續性第二批(2026-09-20)：前情回顧 / 地點專屬回訪 / 更多因果鏈 ============
+// A) 前情回顧：入夜/破曉的過場副標題與主畫面會帶一句「這一段時間發生的事」，依 state.recap 的記錄挑選
+//    分類優先序：hurt > wins2 > win1 > loc > gather > quiet；day=剛過完的是白天(入夜時顯示)，night=剛過完的是夜晚(破曉時顯示)
+//    佔位符：{loc}=最近去過的地點、{enemy}=最近擊倒的敵人
+const RECAP_LINES = {
+  day: {
+    hurt: ["今天傷得不輕，包紮的布條下還隱隱發燙。夜裡得小心點。", "白天的傷口一直提醒你：外頭比想像中更不留情。"],
+    wins2: ["今天連著打退了好幾波，手臂到現在還在微微發抖。", "一整天都在揮武器，耳朵裡還殘留著金屬撞擊的嗡鳴。"],
+    win1: ["今天撂倒了{enemy}，血腥味還黏在衣角，怎麼撣都撣不掉。", "白天的那場交鋒你贏了，但{enemy}倒下前的眼神一直在腦子裡打轉。"],
+    loc: ["你還想著今天在{loc}看到的景象，那裡的空氣和別處不一樣。", "{loc}的塵土還沾在鞋底，明天大概還得再去一趟。"],
+    gather: ["今天只是在附近撿撿東西，平靜得讓人有點不真實。", "白天在據點周圍轉了轉，能平安回來就是好日子。"],
+    quiet: ["今天沒發生什麼大事。在這個世界，沒事就是最大的事。", "日子就這樣過去了一天，據點的燈依舊亮著。"],
+  },
+  night: {
+    hurt: ["昨夜的傷讓你沒睡好，天亮時傷口還在抽痛。", "熬過了昨夜，但身上的痛提醒你這一夜有多凶險。"],
+    wins2: ["昨夜的廝殺一波接一波，天亮了你才發現手還握得死緊。", "昨夜的槍聲與嘶吼漸漸遠去，晨光落在滿地狼藉上。"],
+    win1: ["昨夜{enemy}倒下的畫面反覆出現在夢裡，天亮後你才緩過神來。", "解決掉{enemy}之後，昨夜難得安靜了下來。"],
+    loc: ["昨夜夢到了{loc}，醒來時你還在想那裡究竟藏著什麼。", "昨天在{loc}的所見所聞，讓你翻來覆去了大半夜。"],
+    gather: ["昨夜睡得還算安穩，晨光透過窗縫，落在你昨天帶回的東西上。", "昨天的收穫還堆在牆角，新的一天又開始了。"],
+    quiet: ["昨夜無事，只有風聲。你伸了個懶腰，迎接新的一天。", "一夜安眠。在這個世界，這已經是難得的奢侈。"],
+  },
+};
+
+// B) 地點專屬回訪句：第2次(來過)與第5次(熟到發膩)各一句，取代通用池的同門檻(沒有登記的地點退回VISIT_MEMORY_LINES)
+const LOCATION_MEMORY_LINES = {
+  loc_residential: { 2: "門牌號碼你還記得：上次翻的是三樓左邊那戶，這次換右邊。", 5: "這一整排住宅你幾乎逛遍了，連哪扇門會吱嘎響都記得。" },
+  loc_park: { 2: "長椅上還有你上次坐過的凹痕，公園依然安靜得不像末日。", 5: "公園的每棵樹你都認得，只是它們長得越來越怪了。" },
+  loc_gas_station: { 2: "加油機的殘骸還立在原地，你上次撬開的那個櫃子門還敞著。", 5: "加油站被你翻得底朝天，剩下的只有鏽跡和回音。" },
+  loc_store: { 2: "貨架上有些位置是你上次翻亂的，其他人似乎沒來過。", 5: "便利商店的每個抽屜你都拉開過了，這裡真的沒什麼新東西。" },
+  loc_school: { 2: "教室黑板上的字跡還在，是你上次沒讀完的那段。", 5: "走廊的迴音你都聽膩了，可每次踏進來還是會起雞皮疙瘩。" },
+  loc_hospital: { 2: "藥局的玻璃櫃碎片還躺在地上，你上次為了找藥留下的腳印還在。", 5: "這裡的藥櫃你來回翻了太多次，這回幾乎是碰運氣。" },
+  loc_factory: { 2: "輸送帶依舊停在原地，你上次撬下來的螺絲還在那堆零件裡。", 5: "工廠的每個角落你都摸過了，機械的影子在牆上越拉越長。" },
+  loc_warehouse: { 2: "貨箱堆成的迷宮你還記得走法，只是總覺得有什麼在暗處盯著你。", 5: "倉庫的箱子你早已開過一遍，再來只能靠新長出的東西了。" },
+  loc_military: { 2: "崗哨的鐵門還是半掩著，上次的血跡已經乾成褐色。", 5: "軍警設施被你搜過太多次，剩下的都是別人不要的破銅爛鐵。" },
+  loc_camp: { 2: "營地的篝火餘燼還溫著，看來上次的人還沒走遠。", 5: "營地的人開始認得你了，有人朝你點了點頭。" },
+  loc_ruins_lab: { 2: "研究所的警示燈依舊在閃，你上次沒敢碰的那扇門還鎖著。", 5: "你對這座遺址的每一條走廊都熟了，卻仍看不透它的秘密。" },
+  loc_sunken_subway: { 2: "地鐵站的水位似乎比上次更高了，牆上的靈光更亮了些。", 5: "在水裡走了這麼多回，你已能分辨哪一階台階是安全的。" },
+  loc_cyber_factory: { 2: "機械臂還停在半空中，就像上次你離開時的姿勢，一動不動。", 5: "自動機廠的噪音成了背景音，你甚至能預判它下一次啟動的時間。" },
+  loc_flooded_hospital: { 2: "積水裡的倒影依舊扭曲，你上次踩過的痕跡被水抹平了。", 5: "水底那些發光的東西，你已經懶得再多看一眼了。" },
+  loc_aero_broadcasting: { 2: "電塔的高頻嗡鳴一如既往，你耳裡還殘留著上回的耳鳴。", 5: "你聽慣了電塔的雜音，甚至能從中分辨出某種規律。" },
+  loc_parking_garage: { 2: "停車場的柱子上有你上次留的粉筆記號，還好沒被人擦掉。", 5: "這座立體停車場你走了好幾遍，連每層的風向都摸清了。" },
+  loc_flea_market: { 2: "攤販們還記得你上次殺價的樣子，有人遠遠朝你揮手。", 5: "跳蚤市場的老面孔都認得你了，價格也不再像第一次那麼離譜。" },
+  loc_farmstead: { 2: "農莊的稻草人還立在原處，只是姿勢似乎和你上次看見時不同。", 5: "你對這片荒田已經熟得像自家後院，只是後院裡不該長出會發光的東西。" },
+  loc_greenhouse_ruins: { 2: "藤蔓比上次更茂密了，你上次剪開的那條路已經被重新蓋住。", 5: "溫室裡的植物彷彿認得你，你一靠近，葉片就輕輕擺動。" },
+  loc_church: { 2: "教堂的長椅上還留著你上次坐過的灰塵印子，彩窗投下的光依舊斑駁。", 5: "你在這裡待過太多次，連神像的沉默都成了熟悉的陪伴。" },
+  loc_bunker: { 2: "避難所深處的通風聲一如既往，你上次撬開的門仍沒人再關上。", 5: "越往下走越熟悉，你開始分不清這裡究竟是墳墓，還是另一個家。" },
+};
+
+// C) 更多短期因果鏈(5條)：善意/好奇心的選擇，數日後有回音
+const CONSEQUENCE_EVENTS_2 = [
+  {
+    id: "evt_drawing_reply", phase: ["day"], weight: 60, minDay: 1,
+    condition: (state) => daysSinceFlagAtLeast(state, "drawing_seen", 3) && !(state.flags && state.flags.drawing_reply_done),
+    text: "你再次經過那面畫著太陽與房子的牆。塗鴉旁多了一個新的小人——歪歪扭扭，卻明顯是在牽著其中一隻手。有人在這裡留了話。",
+    options: [{ label: "在旁邊畫上自己", effect: { san: 6, exp: 3, setFlag: "drawing_reply_done" }, resultText: "你用撿來的粉筆補上一個小小的自己。世界很大，但這一刻你不孤單。" }],
+  },
+  {
+    id: "evt_treasure_found", phase: ["day", "night"], weight: 60, minDay: 1,
+    condition: (state) => daysSinceFlagAtLeast(state, "treasure_map_followed", 1) && !(state.flags && state.flags.treasure_found_done),
+    text: "你循著孩子的手繪地圖走到畫著紅叉的地方——一棵倒下的老樹底下，埋著一個生鏽的餅乾盒。",
+    options: [{ label: "打開餅乾盒", effect: { resources: { scrap: 3, food: 2 }, san: 4, setFlag: "treasure_found_done" }, resultText: "裡面是彈珠、糖果紙，還有幾樣孩子珍藏的『寶物』。你把糖果紙撫平，收進口袋，心裡軟軟的。" }],
+  },
+  {
+    id: "evt_pigeons_nest", phase: ["day"], weight: 60, minDay: 1,
+    condition: (state) => daysSinceFlagAtLeast(state, "pigeons_watched", 3) && !(state.flags && state.flags.pigeons_nest_done),
+    text: "據點屋簷下傳來輕輕的咕咕聲。那群羽毛帶著微光的鴿子，竟在你的屋簷下築了巢，窩裡有幾枚小小的蛋。",
+    options: [{ label: "輕輕取走一枚", effect: { resources: { food: 2 }, san: 3, setFlag: "pigeons_nest_done" }, resultText: "你只拿了一枚，把其他的留給牠們。牠們似乎默許了，這個屋簷成了牠們的家。" }],
+  },
+  {
+    id: "evt_trader_returns", phase: ["day"], weight: 60, minDay: 1,
+    condition: (state) => daysSinceFlagAtLeast(state, "trader_traded", 4) && !(state.flags && state.flags.trader_return_done),
+    text: "熟悉的輪子聲由遠而近——上次那位推著手推車的商人又來了，遠遠就朝你揮手：「老主顧！這次我給你好價錢！」",
+    options: [
+      { label: "以2廢料換一大包物資", requiresResource: { scrap: 2 }, effect: { resources: { scrap: -2, food: 3, water: 3, medicine: 1 }, exp: 3, setFlag: "trader_return_done" }, resultText: "他把整包東西塞給你，眨眨眼：「只給熟人的價。」" },
+      { label: "婉拒，聊聊近況", effect: { san: 3, setFlag: "trader_return_done" }, resultText: "你們在門口聊了幾句外頭的路況。他離開前壓低聲音：「保重，這世道，熟人不多了。」" },
+    ],
+  },
+  {
+    id: "evt_garden_regrowth", phase: ["day"], weight: 60, minDay: 1,
+    condition: (state) => daysSinceFlagAtLeast(state, "garden_harvested", 5) && !(state.flags && state.flags.garden_regrowth_done),
+    text: "你路過那座荒廢的社區菜園，發現上次留下的幾株作物竟然重新結了果，比上次更飽滿，葉緣的螢光也更亮了。",
+    options: [{ label: "小心採收", effect: { resources: { food: 4 }, exp: 3, setFlag: "garden_regrowth_done" }, resultText: "你這次只摘熟透的，留下了根莖。也許下次來，它還會再長。" }],
+  },
+];
+EVENTS.push(...CONSEQUENCE_EVENTS_2);
+(function attachConsequenceFlags2() {
+  const patch = (id, label, flag) => {
+    const e = EVENTS.find(x => x.id === id);
+    const o = e && e.options.find(x => x.label === label);
+    if (o) o.effect = { ...(o.effect || {}), setFlag: flag };
+    else console.warn && console.warn("attachConsequenceFlags2 找不到", id, label);
+  };
+  patch("evt_childrens_drawing", "駐足看了一會兒", "drawing_seen");
+  patch("evt_kids_treasure_map", "按圖索驥", "treasure_map_followed");
+  patch("evt_pigeon_flock", "安靜地看著牠們", "pigeons_watched");
+  patch("evt_scavenger_trade", "用廢料交換物資", "trader_traded");
+  patch("evt_community_garden", "採收剩餘的作物", "garden_harvested");
+})();
+
 if (typeof module !== "undefined") {
-  module.exports = { VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
+  module.exports = { RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
+  window.RECAP_LINES = RECAP_LINES;
+  window.LOCATION_MEMORY_LINES = LOCATION_MEMORY_LINES;
+  window.CONSEQUENCE_EVENTS_2 = CONSEQUENCE_EVENTS_2;
   window.VISIT_MEMORY_LINES = VISIT_MEMORY_LINES;
   window.COMPANION_THREAT_LINES = COMPANION_THREAT_LINES;
   window.COMPANION_HOME_LINES = COMPANION_HOME_LINES;

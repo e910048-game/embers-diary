@@ -1817,6 +1817,7 @@ function showAppearancePicker() {
 
 let homeOpenPanel = null;
 // 任務系統：finishAction/endPhase呼叫checkQuestsAndAchievements後的結果暫存，供renderMain消費顯示一次性通知，不寫入存檔
+let pendingRecap = null; // 前情回顧：endPhase算出的一句話，主畫面顯示一次後清空
 let pendingQuestNotice = null;
 function runQuestCheck() {
   const result = checkQuestsAndAchievements(state);
@@ -1860,6 +1861,8 @@ function renderMain() {
   let extra = "";
   // 營地成長(2026-09-20)：專案是惰性計算的，回到主畫面時結算「這段時間完工了什麼」與「營地有沒有升級」，通知併入主畫面文字。
   // 有變動(專案定案/升級獎勵發放)就存檔，避免重整後重複領獎
+  if (pendingRecap) { extra += `
+📖 ${pendingRecap}`; pendingRecap = null; }
   const finishedProjects = settleProjects(state);
   const campUps = checkCampLevelUp(state);
   if (finishedProjects.length || campUps.length) {
@@ -2787,7 +2790,8 @@ function resolveLocationCore(loc) {
 function visitLocation(loc) {
   const core = resolveLocationCore(loc);
   if (!core) return;
-  const visitMemory = getVisitMemoryLine(recordLocationVisit(state, loc.id));
+  const visitMemory = getVisitMemoryLine(recordLocationVisit(state, loc.id), undefined, loc.id);
+  noteRecap(state, "loc", loc.name);
   const { stResult, travelText, travelChips, locModifierFlavor, result } = core;
   renderExploreProgress(result.type === "battle", () => {
     if (result.type === "battle") {
@@ -2872,6 +2876,7 @@ function doGather() {
   state.questFlags.gatherTodayCount = (state.questFlags.gatherTodayCount || 0) + 1; // 任務系統：side_explore_daily_gather計數
   state.questFlags.repeatGatherCount = (state.questFlags.repeatGatherCount || 0) + 1; // 任務系統：side_repeat_gather計數(2026-07-06)
   const gain = gatherYield(Math.random, state);
+  noteRecap(state, "gather");
   if (result.overdraw) {
     for (const k in gain) gain[k] = Math.floor(gain[k] * result.resourceMultiplier);
   }
@@ -3118,25 +3123,25 @@ const FACILITY_DESCS = {
     radar: "偵測設備（目前尚無實際加成，僅供展示）",
 };
 // D: 入夜/破曉過場動畫
-function showNightTransition(callback) {
+function showNightTransition(callback, recapLine) {
   const overlay = document.createElement("div");
   overlay.className = "phaseTransition nightTransition";
   overlay.innerHTML = `
     <div class="ptIcon">🌙</div>
     <div class="ptTitle">入　夜</div>
-    <div class="ptSub">夜幕低垂，危機四伏</div>
+    <div class="ptSub">${recapLine || "夜幕低垂，危機四伏"}</div>
   `;
   document.body.appendChild(overlay);
   setTimeout(() => { overlay.remove(); callback(); }, 2400);
 }
 
-function showDawnTransition(callback) {
+function showDawnTransition(callback, recapLine) {
   const overlay = document.createElement("div");
   overlay.className = "phaseTransition dawnTransition";
   overlay.innerHTML = `
     <div class="ptIcon">🌅</div>
     <div class="ptTitle">破　曉</div>
-    <div class="ptSub">Day ${state.day} — 新的開始</div>
+    <div class="ptSub">${recapLine ? `Day ${state.day}<br>${recapLine}` : `Day ${state.day} — 新的開始`}</div>
   `;
   document.body.appendChild(overlay);
   setTimeout(() => { overlay.remove(); callback(); }, 2400);
@@ -3211,6 +3216,9 @@ function endPhase(opts = {}) {
   const prevPhase = state.phase;
   advancePhase(state);
   if (opts.restless === true) state.stamina = Math.max(1, Math.ceil(state.staminaMax / 2));
+  const recapLine = buildRecapLine(state, prevPhase); // 前情回顧：先消費這個階段的記錄再重置
+  resetRecap(state);
+  pendingRecap = recapLine;
   if (state.day !== prevDay) {
     addDiaryEntry();
     state.questFlags.gatherTodayCount = 0; // 任務系統：每日重置型支線計數器，跨日清零
@@ -3223,9 +3231,9 @@ function endPhase(opts = {}) {
   if (qr.graduated) { showGraduationTransition(() => renderMain()); return; }
   // D: phase transition animation
   if (prevPhase === "day" && state.phase !== "day") {
-    showNightTransition(() => renderMain());
+    showNightTransition(() => renderMain(), recapLine);
   } else if (prevPhase !== "day" && state.phase === "day") {
-    showDawnTransition(() => renderMain());
+    showDawnTransition(() => renderMain(), recapLine);
   } else {
     renderMain();
   }
@@ -3401,6 +3409,7 @@ function battleAttack() {
   pushSysLog(`[T${b.turn}] PLAYER_ATK dmg=${dmgToEnemy}${crit ? " crit=1" : ""} enemy.hp=${Math.max(0, b.enemy.hpLeft)}/${b.enemy.hp}`);
 
   if (b.enemy.hpLeft <= 0) {
+    noteRecap(state, "win", b.enemy.name);
     state.questFlags.totalKills = (state.questFlags.totalKills || 0) + 1; // 任務系統：ach_kills_50計數
     state.questFlags.repeatKillCount = (state.questFlags.repeatKillCount || 0) + 1; // 任務系統：side_repeat_kills計數(2026-07-06)
 let lootText = "";
