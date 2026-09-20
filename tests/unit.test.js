@@ -2263,5 +2263,46 @@ test("庭院野花花圃(returnSanBonus)：advancePhase時確實回SAN", () => {
   assert.ok(s.san >= before + 3, "SAN應至少+3，實際 " + (s.san - before));
 });
 
+
+// ---------- 審查回饋補強(2026-09-20) ----------
+test("特攻倍率上限：鋼鐵T3(x1.5)疊cyber_hammer(x2)不超過x2.0，Boss反制x0.8仍套用；單項不受影響", () => {
+  assert.strictEqual(L.SPECIAL_DAMAGE_MULT_CAP, 2.0);
+  assert.strictEqual(L.combineSpecialDamageMultipliers(1.5, 2, 0.8), 1.6);   // 原本會是2.4
+  assert.ok(Math.abs(L.combineSpecialDamageMultipliers(1.5, 1, 0.8) - 1.2) < 1e-9);
+  assert.strictEqual(L.combineSpecialDamageMultipliers(1, 2, 1), 2);
+  assert.strictEqual(L.combineSpecialDamageMultipliers(1, 1, 1), 1);
+});
+
+test("K1回歸防護：startBattle不得再消耗血月預告(clearUpcomingThreat只能出現在startBloodMoonNight等血月流程)", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  const start = src.indexOf("function startBattle(");
+  const end = src.indexOf("\nfunction ", start + 10);
+  const body = src.slice(start, end);
+  assert.ok(start > 0 && end > start);
+  assert.ok(!/clearUpcomingThreat|isThreatDue/.test(body), "startBattle不該讀/清血月預告，否則白天遭遇戰會吃掉血月");
+  const bm = src.indexOf("function startBloodMoonNight(");
+  assert.ok(/clearUpcomingThreat/.test(src.slice(bm, bm + 200)), "血月預告應在startBloodMoonNight開頭清除");
+});
+
+test("快取版本一致：index.html的5處?v=N(css+4個js)必須是同一個整數", () => {
+  const html = require("fs").readFileSync(require("path").join(__dirname, "../index.html"), "utf8");
+  const found = [...html.matchAll(/(css\/style\.css|js\/(?:data|story|logic|game)\.js)\?v=(\d+)/g)];
+  assert.strictEqual(found.length, 5, "應有5處帶版本號的資源");
+  assert.strictEqual(new Set(found.map(m => m[2])).size, 1, "5處版本號不一致: " + found.map(m => m[1] + "=" + m[2]).join(", "));
+});
+
+test("存檔相容防護：defaultState()裡每個巢狀物件欄位都必須登記在game.js的NESTED_STATE_FIELDS", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  const m = src.match(/const NESTED_STATE_FIELDS = \[([^\]]*)\]/);
+  assert.ok(m, "找不到NESTED_STATE_FIELDS");
+  const registered = new Set([...m[1].matchAll(/"([^"]+)"/g)].map(x => x[1]));
+  const s = L.defaultState();
+  const missing = Object.keys(s).filter(k => s[k] && typeof s[k] === "object" && !Array.isArray(s[k]) && Object.keys(s[k]).length > 0 && !registered.has(k)); // 預設為空字典(flags/itemUseCount/durability)沒有子欄位可補，不需深合併
+  // 刻意不進深合併的欄位(整塊以存檔為準)須在此明列並附理由
+  const EXEMPT = {};
+  const real = missing.filter(k => !(k in EXEMPT));
+  assert.deepStrictEqual(real, [], "這些巢狀欄位未登記NESTED_STATE_FIELDS，舊存檔缺新子欄位時會掉值: " + real.join(","));
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

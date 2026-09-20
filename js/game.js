@@ -3107,10 +3107,10 @@ const FACILITY_LABELS = {
     radar: "📡 雷達站",
 };
 const FACILITY_DESCS = {
-  command: "Lv1 解鎖指揮中心，Lv2 夜襲機率-20%，Lv3 解鎖阿卡（爆破手）同伴招募",
+  command: "每級防禦+2（降低夜襲機率）；Lv2 資源上限+10、夜襲敵人HP-20%；Lv3 夜襲機率再降3%，並解鎖阿卡（爆破手）同伴招募",
   greenhouse: "Lv1 每階段產出食物+1，Lv2 每階段產出飲水+1，Lv3 休息時SAN額外回復+50%",
-    workshop: "降低裝備強化所需的廢料消耗",
-    radar: "提升遠方地點的偵測範圍",
+    workshop: "Lv1 起可重鍛、前綴重抽費用-20%；Lv1/Lv2 各解鎖更多加工配方",
+    radar: "偵測設備（目前尚無實際加成，僅供展示）",
 };
 // D: 入夜/破曉過場動畫
 function showNightTransition(callback) {
@@ -3352,7 +3352,7 @@ function calcAttackDamage(b) {
     dmg = Math.round(dmg * getCritMultiplier(state));
     crit = true;
   }
-  dmg = Math.round(dmg * getFactionDamageMultiplier(state, b.enemy) * getMechanicalDamageMultiplier(state, b.enemy) * getBossFactionCounterMult(state, b.enemy));
+  dmg = Math.round(dmg * combineSpecialDamageMultipliers(getFactionDamageMultiplier(state, b.enemy), getMechanicalDamageMultiplier(state, b.enemy), getBossFactionCounterMult(state, b.enemy)));
   if (b.overpower && b.overpower.dmgMult !== 1) dmg = Math.round(dmg * b.overpower.dmgMult); // v1.7 #19：背水一戰傷害加成
   return { dmg, crit };
 }

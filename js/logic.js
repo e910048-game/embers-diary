@@ -1055,6 +1055,13 @@
     return (state.skills && state.skills.faction && factionTier(state, state.skills.faction) >= 1) ? 0.8 : 1;
   }
 
+  // 特攻倍率(鋼鐵T3對機械系x1.5、cyber_hammer對機械系x2)相乘後上限x2.0，再乘Boss反制減益——
+  // 避免兩者疊到x3把血月Boss秒殺(2026-09-20審查建議)；單獨一項(最大x2)不受影響
+  const SPECIAL_DAMAGE_MULT_CAP = 2.0;
+  function combineSpecialDamageMultipliers(factionMult, mechanicalMult, bossCounterMult) {
+    return Math.min(SPECIAL_DAMAGE_MULT_CAP, factionMult * mechanicalMult) * bossCounterMult;
+  }
+
   // 25.3 心靈晶格T4：戰鬥受到傷害-25%；27.1：深淵黑血外皮+15%（兩者加總）
   function getBattleDamageReductionRatio(state) {
     let ratio = factionTier(state, "mind") >= 4 ? 0.25 : 0;
@@ -2505,7 +2512,7 @@
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
-    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult,
+    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,
