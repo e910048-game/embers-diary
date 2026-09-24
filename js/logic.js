@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { WEATHER_TYPES, WEATHER_EVENT_LINES, LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
+  const { SAN_HALLUCINATION_LINES, WEATHER_TYPES, WEATHER_EVENT_LINES, LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -601,6 +601,61 @@
     return pickWeighted(BLOOD_MOON_MODIFIERS, rng);
   }
 
+  // ---------- 精神值(SAN)後果(2026-09-25) ----------
+  // 原本SAN掉到0也不會發生任何事，「+SAN」的選項永遠輸給「+資源」。現在SAN分五階，低SAN有代價、高SAN有小獎勵：
+  //  清明(>=80)：行動被動回血 +1→+2；穩定(50~79)：無；動搖(25~49)：遭遇率+3%、事件常有幻覺句；
+  //  崩潰邊緣(1~24)：遭遇率+6%、行動不再被動回血、幻覺句更頻繁；歸零：階段結束時精神崩潰(扣血/資源，SAN回15)。
+  // 消耗來源：擊殺敵人(SAN-4)、高危地點遠征(危險度3/4/5 → -2/-3/-4)、每個夜晚(基礎-3，舒適度3/6/10 → -2/-1/0)；恢復：睡覺(+10起)/沙發/家具/事件
+  const SAN_COST_PER_KILL = 4;
+  const SAN_TIERS = [
+    { id: "clear", min: 80, icon: "✨", name: "清明", effectText: "行動時被動回血 +2（原本 +1）。" },
+    { id: "steady", min: 50, icon: "🧠", name: "穩定", effectText: "沒有特別影響。" },
+    { id: "shaken", min: 25, icon: "😰", name: "動搖", effectText: "遭遇敵人的機率 +3%，事件裡偶爾出現幻覺。" },
+    { id: "critical", min: 1, icon: "😵", name: "崩潰邊緣", effectText: "遭遇敵人的機率 +6%，行動不再被動回血，幻覺頻繁。歸零會精神崩潰！" },
+    { id: "broken", min: 0, icon: "💀", name: "精神崩潰", effectText: "階段結束時會昏厥：損失 HP 與物資。" },
+  ];
+  function getSanTier(state) {
+    const san = (state && typeof state.san === "number") ? state.san : 100;
+    return SAN_TIERS.find(t => san >= t.min) || SAN_TIERS[SAN_TIERS.length - 1];
+  }
+  function sanEncounterDelta(state) {
+    const id = getSanTier(state).id;
+    return id === "shaken" ? 0.03 : (id === "critical" || id === "broken") ? 0.06 : 0;
+  }
+  // 事件開頭的幻覺句：動搖35%、崩潰邊緣/崩潰70%；rng可注入
+  function getSanHallucinationLine(state, rng) {
+    const id = getSanTier(state).id;
+    const chance = id === "shaken" ? 0.35 : (id === "critical" || id === "broken") ? 0.7 : 0;
+    if (!chance) return "";
+    const r = rng || Math.random;
+    if (r() >= chance) return "";
+    return SAN_HALLUCINATION_LINES[Math.floor(r() * SAN_HALLUCINATION_LINES.length)];
+  }
+  // 睡覺恢復的SAN：夜晚完整(restSanRegen)，白天只是小憩(30%)；精神低於50時睡得更沉(x1.6)，避免掉進低SAN就爬不出來
+  function sanRestRegen(state, phase) {
+    let regen = phase === "day" ? Math.round(restSanRegen(state) * 0.3) : restSanRegen(state);
+    if (state.san < 50) regen = Math.round(regen * 1.6);
+    return regen;
+  }
+  // 夜晚壓力：舒適的家能撫平它
+  function nightSanPressure(state) {
+    const comfort = getComfortLevel(state);
+    return comfort >= 10 ? 0 : comfort >= 6 ? 1 : comfort >= 3 ? 2 : 3;
+  }
+  // 高危地點遠征的精神消耗(危險度3/4/5 → 2/3/4)
+  function locationSanCost(loc) {
+    return loc && loc.riskLevel >= 3 ? loc.riskLevel - 1 : 0;
+  }
+  // SAN歸零時階段結束的精神崩潰：扣HP、損失少量物資，SAN回到15。回傳{text}或null
+  function applySanCollapse(state) {
+    if (!(state.san <= 0)) return null;
+    const lostFood = Math.min(1, state.resources.food), lostScrap = Math.min(2, state.resources.scrap);
+    state.hp = Math.max(1, state.hp - 8); // 崩潰本身不致死，但會很痛
+    state.resources.food -= lostFood; state.resources.scrap -= lostScrap;
+    state.san = 15;
+    return { text: "💀 你的精神撐到了極限，在黑暗中昏厥過去。醒來時渾身是傷，身邊的東西也散落了一些。（HP-8" + (lostFood ? "、食物-" + lostFood : "") + (lostScrap ? "、廢料-" + lostScrap : "") + "，SAN回到15）" };
+  }
+
   // 記錄剛看過的事件(供pickEvent降權)，只留最近10個
   function noteEventSeen(state, id) {
     if (!id) return;
@@ -670,6 +725,7 @@
       waterDecay = Math.max(0, waterDecay - 1);
     }
     applyEffect(state, { resources: { food: -base, water: -waterDecay } });
+    if (state.phase === "night") { const p = nightSanPressure(state); if (p > 0) applyEffect(state, { san: -p }); } // 夜晚的壓迫感
     if (state.resources.food <= 0 || state.resources.water <= 0) {
       let penalty = -5;
       if (factionTier(state, "ocean") >= 3) penalty = Math.round(penalty * 0.7); // 25.3 洋流寄生T3：環境負面傷害-30%
@@ -680,8 +736,10 @@
 
   // 一個phase內每完成一次行動，若食物與飲水都還有餘裕，被動恢復少量HP（緩解戰鬥/趕路造成的HP耗損）
   function applyActionRegen(state) {
+    const tier = getSanTier(state).id;
+    if (tier === "critical" || tier === "broken") return; // 精神崩潰邊緣：無法被動恢復
     if (state.resources.food > 0 && state.resources.water > 0) {
-      applyEffect(state, { hp: 1 });
+      applyEffect(state, { hp: tier === "clear" ? 2 : 1 });
     }
   }
 
@@ -1231,7 +1289,8 @@
     const modifierEncounterDelta = (modifier && modifier.encounterChanceDelta) || 0;
     const radarDelta = state ? radarEncounterReduction(state) : 0;
     const weatherDelta = state ? weatherEncounterDelta(state) : 0;
-    if (rng() < Math.max(0, location.encounterChance + encounterBonus + modifierEncounterDelta - radarDelta + weatherDelta)) {
+    const sanDelta = state ? sanEncounterDelta(state) : 0;
+    if (rng() < Math.max(0, location.encounterChance + encounterBonus + modifierEncounterDelta - radarDelta + weatherDelta + sanDelta)) {
       const ids = location.encounterEnemyIds;
       let enemyId;
       if (state && state.day >= 15 && ids.length > 1 && rng() < 0.5) {
@@ -2731,7 +2790,7 @@
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
-    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, encodeSave, decodeSave, SAVE_EXPORT_PREFIX, defaultLegacy, updateLegacyOnDeath, legacyStartBonus, applyLegacyToNewState, LEGACY_BONUS_CAP, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, noteEventSeen, weatherForDay, getWeather, weatherEncounterDelta, getWeatherEventLine, EXP_CURVE_FACTOR, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
+    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, encodeSave, decodeSave, SAVE_EXPORT_PREFIX, defaultLegacy, updateLegacyOnDeath, legacyStartBonus, applyLegacyToNewState, LEGACY_BONUS_CAP, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, SAN_TIERS, SAN_COST_PER_KILL, sanRestRegen, getSanTier, sanEncounterDelta, getSanHallucinationLine, nightSanPressure, locationSanCost, applySanCollapse, noteEventSeen, weatherForDay, getWeather, weatherEncounterDelta, getWeatherEventLine, EXP_CURVE_FACTOR, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,

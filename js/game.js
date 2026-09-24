@@ -1947,6 +1947,7 @@ const badges = [`<span class="miniBadge">📦 ${state.resources.scrap}</span>`, 
   const moodSummary = state.dailyMoodDay === state.day ? `今日心情：${state.dailyMood}` : "今日尚未簽到心情";
   const heartTitle = ss.hasLinked
     ? `${moodSummary}、${ss.spouseName || "同伴"}已連結，相隔遙遠但心意相通` : "尚未與任何人連結";
+  { const t = getSanTier(state); if (t.id !== "steady") badges.push(`<span class="miniBadge" title="精神狀態：${t.name}（SAN ${state.san}）｜${t.effectText}">${t.icon}${t.name}</span>`); }
   { const w = getWeather(state); badges.push(`<span class="miniBadge" title="今日天氣：${w.name}｜${w.effectText}">${w.icon}${w.name}</span>`); }
   badges.push(`<span class="miniBadge heart${ss.hasLinked ? " linked" : ""}" title="${heartTitle}">${ss.hasLinked ? "💞" : "🤍"}</span>`);
   const facLine = `\n${badges.join(" ")}`;
@@ -2421,7 +2422,9 @@ function showEvent(evt, onDone, staminaResult) {
   // 天氣開頭句(晴天不加，其他約一半機率)：獨立成一段放在事件文字前，戰鬥/里程碑等大事件不加
   const wLine = (evt.id && !evt.milestone && !(evt.options || []).some(o => o.battle)) ? getWeatherEventLine(state) : "";
   const wText = wLine ? wLine + "\n" : "";
-  renderText(wText + text + overdrawText + firstText, { kind: "event" });
+  const hLine = (evt.id && !evt.milestone) ? getSanHallucinationLine(state) : "";
+  const hText = hLine ? `🌀 ${hLine}\n` : "";
+  renderText(wText + hText + text + overdrawText + firstText, { kind: "event" });
 
   if (!evt.options || evt.options.length === 0) {
     renderOptions([{ label: "繼續", variant: "ghost", onClick: onDone }]);
@@ -2832,6 +2835,8 @@ function resolveLocationCore(loc) {
   const travelChips = staminaCostChip(stResult);
   if (loc.distance === "far") {
     const farCost = { resources: { food: -FAR_TRAVEL_COST.food, water: -FAR_TRAVEL_COST.water } };
+    const sanCost = locationSanCost(loc);
+    if (sanCost > 0) farCost.san = -sanCost; // 高危地點的壓迫感會消耗精神
     applyEffect(farCost);
     travelChips.push(...effectChips(farCost));
   }
@@ -2992,7 +2997,8 @@ function doRest() {
   }
   const gain = { hp: 15 + restHealAmount(state), resources: { food: -1, water: -1 } };
   applyEffect(gain);
-  const sanRegen = restSanRegen(state);
+  // 精神消耗機制(2026-09-25)：夜晚好好睡一覺才能完整恢復精神，白天只是小憩(30%)，精神低於50時睡得更沉(x1.6)
+  const sanRegen = sanRestRegen(state, state.phase);
   state.san = clamp(state.san + sanRegen, 0, getEffectiveSanMax(state));
   // 2026-07-04修正：支線「彼此照顧」(side_companion_care)要求careCompletedCount>=5，但這個計數器
   // 從未被累加過，任務永遠無法完成——改用通用的getCompanionTaskEffect()判斷是否有任何同伴正在
@@ -3305,6 +3311,7 @@ function endPhase(opts = {}) {
     renderGameOver();
     return;
   }
+  const sanCollapse = applySanCollapse(state); // SAN歸零：階段結束時精神崩潰(扣HP/物資，SAN回15)
   const prevDay = state.day;
   const prevPhase = state.phase;
   advancePhase(state);
@@ -3314,6 +3321,7 @@ function endPhase(opts = {}) {
   // 新的一天開始(破曉)時，前情回顧後面補上今天的天氣
   pendingRecap = state.day !== prevDay ? `${recapLine}
 ${getWeather(state).icon} 今天的天氣：${getWeather(state).name}——${getWeather(state).effectText}` : recapLine;
+  if (sanCollapse) pendingRecap = sanCollapse.text + "\n" + pendingRecap;
   if (state.day !== prevDay) {
     addDiaryEntry();
     state.questFlags.gatherTodayCount = 0; // 任務系統：每日重置型支線計數器，跨日清零
@@ -3508,6 +3516,7 @@ function battleAttack() {
 
   if (b.enemy.hpLeft <= 0) {
     noteRecap(state, "win", b.enemy.name);
+    if (!b.isPrologue) applyEffect({ san: -SAN_COST_PER_KILL }); // 精神消耗：殺戮會磨損心智
     state.questFlags.totalKills = (state.questFlags.totalKills || 0) + 1; // 任務系統：ach_kills_50計數
     state.questFlags.repeatKillCount = (state.questFlags.repeatKillCount || 0) + 1; // 任務系統：side_repeat_kills計數(2026-07-06)
 let lootText = "";
@@ -3535,7 +3544,9 @@ let lootText = "";
     const expLocked = b.overpower && b.overpower.expLocked;
     const expGain = expLocked ? 0 : (b.enemy.expReward || 0);
     const levelUps = gainExp(state, expGain);
+    const sanCostText = b.isPrologue ? "" : `\n🧠 精神消耗 SAN-${SAN_COST_PER_KILL}（現在 ${state.san}）`;
         let expText = expGain ? `\n✨經驗+${expGain}（${state.exp}/${state.expToNext}）` : (expLocked ? `\n等級已達上限，不再獲得經驗值` : "");
+    expText = sanCostText + expText;
     if (levelUps > 0) {
             expText += `\n🎉 升級了！目前 Lv.${state.level}，HP上限+${LEVEL_UP_HP_BONUS * levelUps}，攻擊+${LEVEL_UP_ATK_BONUS * levelUps}（已自動回滿HP）`;
       expText += `\n⭐ 獲得技能點 x${levelUps}，可在技能面板中使用`;

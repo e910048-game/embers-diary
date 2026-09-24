@@ -2973,5 +2973,71 @@ test("全部事件：任何選項的effect都不可有重複的setFlag鍵(以原
 });
 
 
+// ---------- 精神值(SAN)後果 ----------
+test("SAN分階：>=80清明/50穩定/25動搖/1崩潰邊緣/0崩潰，邊界值正確", () => {
+  const s = L.defaultState();
+  const at = v => { s.san = v; return L.getSanTier(s).id; };
+  assert.deepStrictEqual([100, 80, 79, 50, 49, 25, 24, 1, 0].map(at), ["clear", "clear", "steady", "steady", "shaken", "shaken", "critical", "critical", "broken"]);
+});
+
+test("SAN後果：遭遇率(+3%/+6%)、被動回血(清明+2/崩潰邊緣0)、幻覺句機率、夜晚壓力隨舒適度遞減", () => {
+  const D = require("../js/data.js");
+  const s = L.defaultState();
+  s.san = 90; assert.strictEqual(L.sanEncounterDelta(s), 0);
+  s.san = 40; assert.strictEqual(L.sanEncounterDelta(s), 0.03);
+  s.san = 10; assert.strictEqual(L.sanEncounterDelta(s), 0.06);
+  // 遭遇率：encounterChance=0.5，rng=0.52：SAN高不遇敵，SAN 10(+6%)遇敵
+  const loc = { ...D.LOCATIONS[0], encounterChance: 0.5, encounterEnemyIds: ["enemy_walker_weak"] };
+  s.san = 90; assert.notStrictEqual(L.resolveLocation(loc, () => 0.52, s).type, "battle");
+  s.san = 10; assert.strictEqual(L.resolveLocation(loc, () => 0.52, s).type, "battle");
+  // 被動回血
+  s.hp = 50; s.san = 90; L.applyActionRegen(s); assert.strictEqual(s.hp, 52);
+  s.hp = 50; s.san = 60; L.applyActionRegen(s); assert.strictEqual(s.hp, 51);
+  s.hp = 50; s.san = 10; L.applyActionRegen(s); assert.strictEqual(s.hp, 50);
+  // 幻覺句
+  s.san = 90; assert.strictEqual(L.getSanHallucinationLine(s, () => 0), "");
+  s.san = 40; assert.ok(D.SAN_HALLUCINATION_LINES.includes(L.getSanHallucinationLine(s, () => 0)));
+  assert.strictEqual(L.getSanHallucinationLine(s, () => 0.9), "", "動搖時rng大於35%不出現");
+  s.san = 10; assert.ok(D.SAN_HALLUCINATION_LINES.includes(L.getSanHallucinationLine(s, () => 0.6)));
+  // 夜晚壓力：舒適度越高越小
+  const c = L.defaultState();
+  c.placedFurniture = []; assert.strictEqual(L.nightSanPressure(c), 3);
+  const withComfort = n => { const t = L.defaultState(); t.placedFurniture = []; for (let i = 0; i < n; i++) t.placedFurniture.push({ itemId: "furn_sofa", gx: i, gy: 1 }); return L.nightSanPressure(t); };
+  assert.ok(withComfort(1) <= 3 && withComfort(3) <= withComfort(1) && withComfort(6) <= withComfort(3) && withComfort(12) === 0);
+});
+
+test("SAN歸零：階段結束精神崩潰(HP-8、食物-1、廢料-2、SAN回15)，不致死；SAN>0不觸發；夜晚結算扣SAN、白天不扣", () => {
+  const s = L.defaultState();
+  s.hp = 50; s.resources.food = 5; s.resources.scrap = 5; s.san = 30;
+  assert.strictEqual(L.applySanCollapse(s), null);
+  s.san = 0;
+  const r = L.applySanCollapse(s);
+  assert.ok(r && /昏厥/.test(r.text));
+  assert.deepStrictEqual([s.hp, s.resources.food, s.resources.scrap, s.san], [42, 4, 3, 15]);
+  const low = L.defaultState(); low.hp = 3; low.san = 0; low.resources.food = 0; low.resources.scrap = 0;
+  L.applySanCollapse(low); assert.strictEqual(low.hp, 1, "崩潰本身不會讓人死亡");
+  // 夜晚結算 vs 白天結算
+  const n = L.defaultState(); n.phase = "night"; n.placedFurniture = []; n.san = 100; L.applyPhaseDecay(n);
+  assert.strictEqual(n.san, 100 - L.nightSanPressure(n));
+  const d = L.defaultState(); d.phase = "day"; d.san = 100; L.applyPhaseDecay(d); assert.strictEqual(d.san, 100);
+});
+
+test("SAN消耗來源：高危遠征(危險度3/4/5→2/3/4)、擊殺敵人扣SAN、白天小憩只恢復30%(靜態檢查)", () => {
+  const D = require("../js/data.js");
+  assert.strictEqual(L.locationSanCost({ riskLevel: 2 }), 0);
+  assert.deepStrictEqual([3, 4, 5].map(r => L.locationSanCost({ riskLevel: r })), [2, 3, 4]);
+  assert.strictEqual(L.SAN_COST_PER_KILL, 4);
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  assert.ok(/applyEffect\(\{ san: -SAN_COST_PER_KILL \}\)/.test(src), "擊殺要扣SAN");
+  assert.ok(/locationSanCost\(loc\)/.test(src) && /applySanCollapse\(state\)/.test(src));
+  assert.ok(/sanRestRegen\(state, state\.phase\)/.test(src), "睡覺要走sanRestRegen");
+  const t = L.defaultState(); t.san = 90; const night = L.sanRestRegen(t, "night");
+  assert.strictEqual(L.sanRestRegen(t, "day"), Math.round(L.restSanRegen(t) * 0.3), "白天小憩30%");
+  t.san = 40; assert.strictEqual(L.sanRestRegen(t, "night"), Math.round(night * 1.6), "低SAN睡得更沉");
+  D.SAN_HALLUCINATION_LINES.forEach(t => assert.ok(t.length <= 100));
+  assert.ok(D.SAN_HALLUCINATION_LINES.length >= 10);
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
