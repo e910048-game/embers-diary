@@ -46,6 +46,23 @@ function sysLogHtml() {
   return "";
 }
 
+// ---------- 傳承(跨局，存在獨立的localStorage欄位，死亡刪存檔時不受影響) ----------
+const LEGACY_KEY = "embers_diary_legacy_v1";
+function loadLegacy() {
+  try { return { ...defaultLegacy(), ...JSON.parse(localStorage.getItem(LEGACY_KEY) || "{}") }; } catch (_) { return defaultLegacy(); }
+}
+function saveLegacy(l) { try { localStorage.setItem(LEGACY_KEY, JSON.stringify(l)); } catch (_) {} }
+// 開新遊戲的統一入口：套用傳承晶燼，並留一則「前人足跡」的一次性提示
+function freshState() {
+  const s = defaultState();
+  const legacy = loadLegacy();
+  const bonus = applyLegacyToNewState(s, legacy);
+  if (legacy.runs > 0) {
+    pendingRecap = "📜 你在角落找到一本沾滿灰塵的日記。上一位倖存者撐到了第" + legacy.lastDay + "天，最遠的一位撐到了第" + legacy.bestDay + "天。" + (bonus > 0 ? "（傳承晶燼 🔥+" + bonus + "）" : "");
+  }
+  return s;
+}
+
 function saveGame() {
   localStorage.setItem(SAVE_KEY, JSON.stringify(state));
 }
@@ -2285,6 +2302,7 @@ function showDiary() {
   if (!todayEntry) {
     opts.push({ label: "✏️ 写下今日感受", onClick: () => showDiaryWrite() });
   }
+  opts.push({ label: "💾 存檔備份", onClick: () => showSaveBackup(showDiary) });
   if ((state.loreFound || []).length > 0) {
     opts.push({ label: `📜 深淵日誌 (${state.loreFound.length}/${LORE_LOGS.length})`, onClick: showLoreArchive });
   }
@@ -3328,30 +3346,33 @@ function renderGameOver(isPrologue) {
     btn.className = "choiceBtn primary";
     btn.textContent = "重新開始";
     btn.onclick = () => {
-      state = defaultState();
+      state = freshState();
       startPrologue();
     };
     box.appendChild(btn);
     screen.appendChild(box);
     return;
   }
-  screen.innerHTML = `<div class="storyCard gameover"><h1>你已死亡</h1>第${state.day}天，你的旅程在此結束……</div>`;
+  // 傳承(2026-09-24)：死亡時記錄這一局，並立刻刪掉存檔(避免重整後「繼續旅程」讀到已死亡的存檔、也避免重複記錄)
+  const legacyBefore = loadLegacy();
+  const legacyAfter = updateLegacyOnDeath(legacyBefore, state);
+  saveLegacy(legacyAfter);
+  try { localStorage.removeItem(SAVE_KEY); sessionStorage.removeItem("embers_battle_snap"); } catch (_) {}
+  const nextBonus = legacyStartBonus(legacyAfter);
+  screen.innerHTML = `<div class="storyCard gameover"><h1>你已死亡</h1>第${state.day}天，等級 Lv.${state.level}，你的旅程在此結束……<br><br>🕯️ 你留下的足跡：下一位倖存者會找到你的日記${nextBonus > 0 ? "，並獲得傳承晶燼 🔥+" + nextBonus : ""}。</div>`;
   const box = document.createElement("div");
   box.className = "optionBox";
   const btn = document.createElement("button");
   btn.className = "choiceBtn primary";
   btn.textContent = "重新挑戰";
   btn.onclick = () => {
-    if (confirm("確定要放棄目前進度重新開始嗎？此動作無法復原。")) {
-      localStorage.removeItem(SAVE_KEY);
-      state = defaultState();
-      startPrologue();
-    }
+    state = freshState();
+    startPrologue();
   };
   box.appendChild(btn);
   screen.appendChild(box);
   statusBar.innerHTML = "";
-  saveGame();
+  // 注意：這裡不能再saveGame()——死亡時已刪除存檔，再存一次會把「已死亡」的存檔寫回去，重整頁面「繼續旅程」就會讀到血量0的角色
 }
 
 // ---------- 戰鬥 ----------
@@ -4151,12 +4172,63 @@ function renderTitle() {
     newGame.textContent = hasSave() ? "⚠️ 開始新遊戲（將覆蓋進度）" : "開始新遊戲";
   newGame.onclick = () => {
         if (hasSave() && !confirm("確定要放棄目前進度開始新遊戲嗎？此動作無法復原。")) return;
-    state = defaultState();
+    state = freshState();
         const name = prompt("請輸入你的名字（將顯示在遊戲中）：", "旅人");
     if (name && name.trim()) state.playerName = name.trim();
     chooseStartAppearance();
   };
   box.appendChild(newGame);
+  const backup = document.createElement("button");
+  backup.className = "choiceBtn ghost";
+  backup.textContent = "💾 存檔備份（匯出／匯入）";
+  backup.onclick = () => showSaveBackup(renderTitle);
+  box.appendChild(backup);
+  const lg = loadLegacy();
+  if (lg.runs > 0) {
+    const note = document.createElement("div");
+    note.style.cssText = "margin-top:14px;font-size:12px;color:#8a9099;text-align:center;line-height:1.6";
+    note.textContent = "🕯️ 曾有 " + lg.runs + " 位倖存者倒下，最遠撐到第 " + lg.bestDay + " 天（最高 Lv." + lg.bestLevel + "）";
+    box.appendChild(note);
+  }
+  screen.appendChild(box);
+}
+
+// 存檔備份(2026-09-24)：匯出=把目前存檔轉成一串文字(可貼到記事本/訊息軟體保存)；匯入=貼回文字還原。全程不連網
+function showSaveBackup(back) {
+  statusBar.innerHTML = "";
+  const raw = (() => { try { return localStorage.getItem(SAVE_KEY); } catch (_) { return null; } })();
+  let exportText = "";
+  if (raw) { try { exportText = encodeSave(JSON.parse(raw)); } catch (_) {} }
+  const ta = "width:100%;box-sizing:border-box;min-height:90px;background:#141820;color:#cfd6dc;border:1px solid #2c3440;border-radius:6px;padding:8px;font-size:12px;font-family:monospace;";
+  screen.innerHTML = `<div class="storyCard">
+    <h1>💾 存檔備份</h1>
+    <p style="font-size:13px;color:#8a9099;line-height:1.6">存檔只存在這支手機的瀏覽器裡。清除瀏覽器資料或換手機會消失，建議定期把下面的文字複製起來保存(例如貼到記事本)。</p>
+    ${exportText ? `<div style="margin-top:10px">📤 匯出（目前存檔）</div><textarea id="saveExportBox" readonly style="${ta}">${exportText}</textarea>` : `<div style="margin-top:10px;color:#8a9099">目前沒有存檔可匯出。</div>`}
+    <div style="margin-top:14px">📥 匯入（貼上先前備份的文字）</div>
+    <textarea id="saveImportBox" placeholder="貼上以 EMBERS1: 開頭的文字" style="${ta}"></textarea>
+    <div id="saveBackupMsg" style="margin-top:8px;font-size:13px;min-height:18px"></div>
+  </div>`;
+  const box = document.createElement("div");
+  box.className = "optionBox";
+  const addBtn = (label, cls, fn) => { const b = document.createElement("button"); b.className = "choiceBtn " + cls; b.textContent = label; b.onclick = fn; box.appendChild(b); };
+  const msg = (t, ok) => { const m = document.getElementById("saveBackupMsg"); if (m) { m.style.color = ok ? "#7fe9a8" : "#ff9a9a"; m.textContent = t; } };
+  if (exportText) {
+    addBtn("📋 複製匯出文字", "primary", () => {
+      const el = document.getElementById("saveExportBox");
+      const done = () => msg("已複製！請貼到記事本或訊息軟體保存。", true);
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(exportText).then(done, () => { el.select(); document.execCommand("copy"); done(); });
+      else { el.select(); try { document.execCommand("copy"); } catch (_) {} done(); }
+    });
+  }
+  addBtn("📥 匯入這段文字", exportText ? "ghost" : "primary", () => {
+    const r = decodeSave(document.getElementById("saveImportBox").value);
+    if (!r.ok) { msg("❌ " + r.error, false); return; }
+    if (raw && !confirm("匯入會覆蓋目前的存檔（第" + JSON.parse(raw).day + "天），確定嗎？")) return;
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(r.state)); } catch (e) { msg("❌ 寫入失敗：" + e.message, false); return; }
+    msg("✅ 匯入成功（第" + r.state.day + "天，Lv." + r.state.level + "），正在載入……", true);
+    setTimeout(() => { state = loadGame(); renderMain(); }, 700);
+  });
+  addBtn("返回", "ghost", () => back());
   screen.appendChild(box);
 }
 

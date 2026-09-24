@@ -3370,10 +3370,141 @@ const LATE_EVENTS = [
 ];
 EVENTS.push(...LATE_EVENTS);
 
+// ============ 內容精進第二批(2026-09-24)：基地連動事件(農場/牧場/工坊/營地/設施) + 第100~200天後期事件 ============
+// 基地連動事件：只有玩家真的蓋了對應設施才會出現，讓「自己養成的基地」被劇情看見(condition直接讀state，不依賴logic.js)
+const farmPlotsUnlocked = (s) => (s.farm && s.farm.plots) ? Object.values(s.farm.plots).filter(p => p.unlocked).length : 0;
+const penAnimalCount = (s) => (s.pens && s.pens.plots) ? Object.values(s.pens.plots).filter(p => p.animal).length : 0;
+const workshopStations = (s) => (s.processing && s.processing.stations) ? Object.values(s.processing.stations).filter(p => p.unlocked).length : 0;
+const BASE_LINKED_EVENTS = [
+  { id: "evt_base_farm_pests", minDay: 12, maxDay: null, phase: ["day"], weight: 8, condition: (s) => farmPlotsUnlocked(s) >= 3,
+    text: "清晨巡視農地時，你發現幾株作物的葉片被啃出了細細的缺口，泥土裡爬著一些會反光的小蟲。",
+    options: [
+      { label: "蹲下來一隻一隻捏掉", effect: { hp: -2, exp: 4 }, resultText: "腰痠背痛地忙了一上午，葉子保住了。你也漸漸摸清了這些小蟲的習性。" },
+      { label: "放著不管，作物自己會挺過去", effect: { resources: { food: -1 }, san: 1 }, resultText: "你安慰自己「大自然自有安排」。收成時果然少了一點。" } ] },
+  { id: "evt_base_farm_glow", minDay: 15, maxDay: null, phase: ["night"], weight: 7, condition: (s) => farmPlotsUnlocked(s) >= 2,
+    text: "深夜，農地那邊透出淡淡的螢光。你披衣出門一看，是成熟的作物在夜風裡輕輕發亮，像一片小小的星空。",
+    options: [
+      { label: "摘一把，趁新鮮吃掉", effect: { resources: { food: 2 }, san: 3 }, resultText: "果實帶著微甜與淡淡的金屬味。你坐在田埂上吃完，難得覺得末日也有可愛的地方。" },
+      { label: "靜靜看著，不去打擾", effect: { san: 5, exp: 3 }, resultText: "你在田邊坐了很久。這片光是你親手種出來的，這個念頭讓你睡得很沉。" } ] },
+  { id: "evt_base_pen_restless", minDay: 12, maxDay: null, phase: ["night"], weight: 8, condition: (s) => penAnimalCount(s) >= 1,
+    text: "牧場那邊傳來騷動，你的動物們躁動不安地來回踱步，眼睛盯著同一個方向。",
+    options: [
+      { label: "過去安撫牠們", effect: { san: 3, exp: 3 }, resultText: "你輕輕拍著牠們的背，低聲哼著不成調的曲子。牠們一隻接一隻安靜下來。" },
+      { label: "檢查圍欄有沒有破口", effect: { baseDefense: 1 }, resultText: "你在圍欄角落發現一處鬆動，趕緊用鐵絲加固。牠們似乎比你更早察覺到危險。" } ] },
+  { id: "evt_base_pen_gift", minDay: 15, maxDay: null, phase: ["day"], weight: 7, condition: (s) => penAnimalCount(s) >= 1,
+    text: "你的動物用嘴叼著什麼東西走到你面前，放在你腳邊，像在獻寶似的。",
+    options: [
+      { label: "收下禮物", effect: { resources: { scrap: 2 }, san: 2 }, resultText: "是一小塊閃閃發亮的金屬碎片。你誇了牠一句，牠得意地甩了甩尾巴。" },
+      { label: "先摸摸牠，再收下", effect: { san: 5, resources: { scrap: 1 } }, resultText: "牠瞇起眼睛蹭著你的手。你不確定是牠在被人養，還是你在被牠養。" } ] },
+  { id: "evt_base_workshop_night", minDay: 15, maxDay: null, phase: ["night"], weight: 7, condition: (s) => workshopStations(s) >= 2,
+    text: "工坊裡傳來一陣輕輕的叩響，像是有人在敲打金屬。你確定自己睡前把爐火熄了。",
+    options: [
+      { label: "提著燈過去查看", effect: { resources: { scrap: 2 }, exp: 4 }, resultText: "只是冷卻中的零件在收縮發出聲響。你順手整理了工作台，還撿回一顆滾落的螺絲。" },
+      { label: "確認門鎖好，回去睡", effect: { san: 2 }, resultText: "你把門閂拉緊，蒙頭睡了。第二天發現一切如常。" } ] },
+  { id: "evt_base_camp_visitors", minDay: 20, maxDay: null, phase: ["day", "night"], weight: 7, condition: (s) => (s.campLevelSeen || 1) >= 2,
+    text: "你據點外的燈火吸引了一個陌生的倖存者，他在幾步之外停下，眼裡帶著一點不敢期待的光。",
+    options: [
+      { label: "遞上一份食物，請他坐下", requiresResource: { food: 1 }, effect: { resources: { food: -1 }, san: 4, exp: 5 }, resultText: "他吃得很慢，一邊吃一邊說起北邊的路況。天亮前他道謝離開，留下一句「這裡像個家」。" },
+      { label: "點頭示意，讓他自己離開", effect: { san: -1 }, resultText: "他默默轉身走進夜色。你關上門，心裡卻有點不是滋味。" } ] },
+  { id: "evt_base_camp_market", minDay: 30, maxDay: null, phase: ["day"], weight: 6, condition: (s) => (s.campLevelSeen || 1) >= 3,
+    text: "幾個攤子悄悄在你營地外圍擺了起來，有人用舊物換食物，有人在交換各自見過的路況。",
+    options: [
+      { label: "用3廢料換食物與飲水", requiresResource: { scrap: 3 }, effect: { resources: { scrap: -3, food: 2, water: 2 } }, resultText: "攤主熟練地稱重，笑著說：「營地的人，總是最好說話。」" },
+      { label: "打聽最近外面的消息", effect: { exp: 6 }, resultText: "你從三個攤子聽來的消息互相印證，大概拼出了哪條路最近最危險。" } ] },
+  { id: "evt_base_command_map", minDay: 15, maxDay: null, phase: ["day"], weight: 7, condition: (s) => ((s.facilities && s.facilities.command) || 0) >= 2,
+    text: "指揮核心的桌上攤著一張你手繪的周邊地圖，上面被你畫滿了紅圈與箭頭。今天終於有空重新整理它。",
+    options: [
+      { label: "沙盤推演夜襲路線", effect: { exp: 6 }, resultText: "你把每條可能的來路都推演了一遍，心裡踏實不少。" },
+      { label: "重新安排巡邏與崗哨", effect: { baseDefense: 1 }, resultText: "你調整了崗哨的位置，補上一處視野死角。防線比昨天嚴密了一點。" } ] },
+  { id: "evt_base_greenhouse_bloom", minDay: 20, maxDay: null, phase: ["day"], weight: 7, condition: (s) => ((s.facilities && s.facilities.greenhouse) || 0) >= 2,
+    text: "溫室裡一株不起眼的植物開花了，淡紫色的花瓣沾著水珠，散發著清淡的香氣。",
+    options: [
+      { label: "小心採收，帶回廚房", effect: { resources: { food: 2 }, san: 2 }, resultText: "花瓣拿來泡水居然很好喝，你多灌了一壺，靠著它撐過了一個悶熱的午後。" },
+      { label: "留下它，讓它結種", effect: { san: 5 }, resultText: "你替它擋掉了門口的風。也許明年，溫室會長滿這種花。" } ] },
+  { id: "evt_base_radar_ping", minDay: 20, maxDay: null, phase: ["night"], weight: 7, condition: (s) => ((s.facilities && s.facilities.radar) || 0) >= 1,
+    text: "雷達站的螢幕在深夜閃出一個不規則的訊號點，移動得很慢，像是有人正在壓低身體潛行。",
+    options: [
+      { label: "只記錄，不採取行動", effect: { exp: 5 }, resultText: "你把訊號的軌跡抄下來。它繞了一圈，最後消失在城市的另一頭。" },
+      { label: "帶上武器去偵查", effect: { hp: -3, resources: { ammo: 1 } }, resultText: "你在巷口撿到一個被丟棄的彈匣，而那個訊號早已不見蹤影。" } ] },
+  { id: "evt_base_all_lit", minDay: 60, maxDay: null, phase: ["night"], weight: 6, condition: (s) => (s.campLevelSeen || 1) >= 4,
+    text: "夜晚，你站在營地中央環顧四周：農地的螢光、工坊的爐火、牆上的探照燈……這一切，都是你們一點一點蓋起來的。",
+    options: [
+      { label: "深吸一口氣，記住這個畫面", effect: { san: 6 }, resultText: "你把這一刻收進心裡。無論之後發生什麼，你們曾經這樣活過。" },
+      { label: "巡視一圈，順手加固", effect: { baseDefense: 1, exp: 4 }, resultText: "你檢查了每個接縫。安全感，是被一遍一遍摸出來的。" } ] },
+];
+EVENTS.push(...BASE_LINKED_EVENTS);
+
+// 第100~200天後期事件：呼應深淵日誌的世界觀(母體、同化、回家)與長期生存者的心境
+const LATE_EVENTS_2 = [
+  { id: "evt_late2_ruined_library", minDay: 100, maxDay: null, phase: ["day"], weight: 6,
+    text: "一座半塌的圖書館裡，書架整齊地倒向同一個方向，像是被同一陣風吹倒的。角落的閱讀桌上，還攤開著一本沒讀完的書。",
+    options: [
+      { label: "把書合上，放回書架", effect: { san: 4 }, resultText: "你替它找到原本的位置。有人曾經在這裡好好地讀書，這件事本身就值得尊重。" },
+      { label: "翻看讀到一半的那一頁", effect: { exp: 7, san: -2 }, resultText: "頁邊有一行小字：「如果聽見有人喊你回家，不要應。」你把書放下，背後一陣發涼。" } ] },
+  { id: "evt_late2_hollow_choir", minDay: 100, maxDay: null, phase: ["night"], weight: 6,
+    text: "遠處的城區傳來低低的合唱聲，聽不清歌詞，卻整齊得像有人在指揮。血月的顏色在夜空裡隱隱透出。",
+    options: [
+      { label: "堵住耳朵，等它結束", effect: { san: 2 }, resultText: "你數著自己的心跳，直到聲音散去。天亮後，窗台上多了一層細細的灰。" },
+      { label: "側耳細聽，試著分辨旋律", effect: { exp: 8, san: -4 }, resultText: "那旋律你聽過，是舊世界某首兒歌的變調。你不敢再往下想。" } ] },
+  { id: "evt_late2_market_return", minDay: 100, maxDay: null, phase: ["day"], weight: 6,
+    text: "一個推著貨車的商人出現在你的據點門口，貨車上掛著一塊手寫牌子：『以物易物，不收晶燼』。",
+    options: [
+      { label: "用5廢料換一份醫療與彈藥", requiresResource: { scrap: 5 }, effect: { resources: { scrap: -5, medicine: 1, ammo: 2 } }, resultText: "他把東西包好遞給你：「留著命，比留著錢重要。」" },
+      { label: "聊聊各地的近況", effect: { exp: 6 }, resultText: "他說南邊的橋垮了，北邊的水質變了，東邊的天空比以前更紅。你把這些都記進日記。" } ] },
+  { id: "evt_late2_rusted_gate", minDay: 130, maxDay: null, phase: ["day"], weight: 6,
+    text: "城區邊緣有一道鏽蝕的大門，門後是被藤蔓覆蓋的柏油路，路的盡頭有什麼在發亮。",
+    options: [
+      { label: "推門進去看看", effect: { hp: -4, exp: 8, resources: { scrap: 2 } }, resultText: "門後是一片被遺忘的停機坪，直升機的殘骸還在。你拆下幾樣零件，也被鏽刺劃了手。" },
+      { label: "在門邊做個記號，改天再來", effect: { san: 3, exp: 3 }, resultText: "你用石頭畫下記號。未知的東西，有時留著就是一種希望。" } ] },
+  { id: "evt_late2_mother_signal", minDay: 130, maxDay: null, phase: ["night"], weight: 6,
+    text: "收音機在無人調頻的深夜自己響了，一個平靜的聲音重複著：『歸一，就不會痛。』",
+    options: [
+      { label: "砸掉收音機", effect: { resources: { scrap: 2 }, san: 2 }, resultText: "你把它砸成碎片。房間安靜了，但那句話彷彿還留在牆縫裡。" },
+      { label: "回一句「我還想再痛一會兒」", effect: { exp: 9, san: -3 }, resultText: "電流聲忽然亂成一團，然後歸於寂靜。你不確定自己是不是贏了什麼。" } ] },
+  { id: "evt_late2_survivor_child", minDay: 130, maxDay: null, phase: ["day"], weight: 5,
+    text: "一個小孩子站在據點的院牆外，手裡抱著一隻破舊的布偶。他說：「大哥哥，我迷路了，可以在你這裡待一下嗎？」",
+    options: [
+      { label: "讓他進來，給他水和食物", requiresResource: { food: 1, water: 1 }, effect: { resources: { food: -1, water: -1 }, san: 6, exp: 5 }, resultText: "他睡了一下午，醒來後對你笑了笑，然後獨自朝東邊走去——彷彿他知道路。" },
+      { label: "隔著牆給他一份食物，讓他離開", effect: { resources: { food: -1 }, san: 2 }, resultText: "他接過食物，用力點了點頭，抱著布偶消失在街角。你懷疑他是不是真的迷路了。" } ] },
+  { id: "evt_late2_ash_shelter", minDay: 160, maxDay: null, phase: ["day", "night"], weight: 5,
+    text: "天邊壓來一堵灰黑色的雲牆，風裡全是細碎的灰燼。看樣子是一場不小的灰燼風暴。",
+    options: [
+      { label: "把門窗全部封死，躲過風暴", effect: { resources: { water: -1 }, san: 3 }, resultText: "你在黑暗中聽著灰燼打在牆上的沙沙聲。風暴過後，一切安好，只是整個世界又白了一層。" },
+      { label: "趁風暴前收集散落的物資", effect: { hp: -5, resources: { scrap: 4 }, exp: 5 }, resultText: "你搶在風暴前抱回一堆零件，咳了半晌的灰，才把喉嚨裡的苦味壓下去。" } ] },
+  { id: "evt_late2_old_researcher", minDay: 160, maxDay: null, phase: ["night"], weight: 5,
+    text: "你在廢墟牆縫裡發現一張被防水袋包好的紙條，字跡潦草：『如果你讀到這個，代表我沒能回去。母體不是敵人，是被污染的求救。』",
+    options: [
+      { label: "把紙條收進日記本", effect: { exp: 9, san: -2 }, resultText: "你把它夾進日記，和其他的碎片放在一起。世界的真相像拼圖，一片一片浮現。" },
+      { label: "燒掉它，不想被影響", effect: { san: 3 }, resultText: "火光映在你臉上。有些真相，也許不知道，才能繼續活下去。" } ] },
+  { id: "evt_late2_bridge_toll", minDay: 160, maxDay: null, phase: ["day"], weight: 5,
+    text: "一座還算完整的橋上，有個男人坐在路中央，面前擺著一塊木牌：『過橋費一份食物』。他身後沒有任何武器。",
+    options: [
+      { label: "付一份食物過橋", requiresResource: { food: 1 }, effect: { resources: { food: -1 }, exp: 6 }, resultText: "他收下食物，點點頭讓開。過橋後你回頭，他把食物分成兩半，一半留給了自己身後的小狗。" },
+      { label: "繞道，另找路走", effect: { hp: -3, exp: 3 }, resultText: "你多走了很遠的路，鞋底磨破了一層。至少，你的食物還在。" } ] },
+  { id: "evt_late2_starless_night", minDay: 200, maxDay: null, phase: ["night"], weight: 5,
+    text: "這一夜，天上沒有星星，也沒有血月，只有一片濃稠的黑。整座城市安靜得像已經睡著。",
+    options: [
+      { label: "點亮據點的燈，讓它成為光點", effect: { san: 6, exp: 4 }, resultText: "你把所有的燈都點亮。遠處有人回了你三下閃光。原來你不是唯一還醒著的人。" },
+      { label: "關燈，靜靜聽夜的聲音", effect: { san: 4, hp: 4 }, resultText: "黑暗不再讓你害怕。你聽見自己的呼吸，聽見很遠處的水聲，然後安然睡去。" } ] },
+  { id: "evt_late2_reunion", minDay: 200, maxDay: null, phase: ["day"], weight: 5,
+    text: "一個背著舊帆布包的人站在據點外，遠遠朝你揮手。你花了好一會兒才認出——是很久以前分別的那位旅人。",
+    options: [
+      { label: "笑著迎上去，煮一鍋熱湯", requiresResource: { food: 1, water: 1 }, effect: { resources: { food: -1, water: -1 }, san: 7, exp: 6 }, resultText: "你們聊了一整夜。有人記得你走過的路，這件事比任何補給都珍貴。" },
+      { label: "保持距離，先確認他是不是真的", effect: { san: -1, exp: 3 }, resultText: "他理解地點點頭，遞給你一件只有你們才知道的舊物。你放下了戒心。" } ] },
+  { id: "evt_late2_lighthouse", minDay: 200, maxDay: null, phase: ["day", "night"], weight: 5,
+    text: "有人在遠處的高樓頂上寫下：『那盞燈，是我們的燈塔。』箭頭指向的，正是你的據點。",
+    options: [
+      { label: "把燈調得更亮一些", effect: { san: 5, baseDefense: 1 }, resultText: "你多添了一盞燈。你不再只是為自己活著，這件事讓你的肩膀挺得更直了。" },
+      { label: "默默承受，繼續做該做的事", effect: { exp: 6, san: 3 }, resultText: "你沒有回應，只是每天照常點燈。也許，這就是燈塔該有的樣子。" } ] },
+];
+EVENTS.push(...LATE_EVENTS_2);
+
 if (typeof module !== "undefined") {
-  module.exports = { WEATHER_TYPES, WEATHER_EVENT_LINES, SECOND_OPTIONS, LATE_EVENTS, LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
+  module.exports = { BASE_LINKED_EVENTS, LATE_EVENTS_2, WEATHER_TYPES, WEATHER_EVENT_LINES, SECOND_OPTIONS, LATE_EVENTS, LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
+  window.BASE_LINKED_EVENTS = BASE_LINKED_EVENTS;
+  window.LATE_EVENTS_2 = LATE_EVENTS_2;
   window.WEATHER_TYPES = WEATHER_TYPES;
   window.WEATHER_EVENT_LINES = WEATHER_EVENT_LINES;
   window.SECOND_OPTIONS = SECOND_OPTIONS;

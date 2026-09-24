@@ -1,6 +1,6 @@
 // 餘燼日記 Service Worker(2026-09-20)：第一次載入後把整個遊戲存進手機，之後斷網也能開，更新時不會卡在半途。
 // ⚠️ 改 js/css 時，index.html 的 ?v=N 與這裡的 VERSION 必須一起 +1(單元測試會檢查一致)；assets/ 新增/刪除檔案要同步更新 ASSETS(單元測試會檢查)。
-const VERSION = 265;
+const VERSION = 267;
 const CACHE = "embers-v" + VERSION;
 const CORE = ["./", "index.html", "css/style.css?v=" + VERSION, "js/data.js?v=" + VERSION, "js/story.js?v=" + VERSION, "js/logic.js?v=" + VERSION, "js/game.js?v=" + VERSION];
 const ASSETS = [

@@ -2741,5 +2741,96 @@ test("天氣文字：每種天氣>=3句開頭句、每句<=100字", () => {
 });
 
 
+// ---------- 存檔備份/傳承/基地連動事件/後期事件第二批 ----------
+test("存檔匯出匯入：來回一致(含中文)、亂貼/截斷/改動/已死亡存檔都被擋", () => {
+  const s = L.defaultState();
+  s.playerName = "旅人小明🔥"; s.day = 42; s.level = 7;
+  const text = L.encodeSave(s);
+  assert.ok(text.startsWith(L.SAVE_EXPORT_PREFIX));
+  const r = L.decodeSave(text);
+  assert.ok(r.ok);
+  assert.deepStrictEqual(r.state, JSON.parse(JSON.stringify(s)));
+  // 貼上時常帶空白/換行，應仍可解析
+  assert.ok(L.decodeSave("  " + text.slice(0, 20) + "\n" + text.slice(20) + " \n").ok);
+  assert.strictEqual(L.decodeSave("hello").ok, false);
+  assert.strictEqual(L.decodeSave("").ok, false);
+  assert.strictEqual(L.decodeSave(text.slice(0, text.length - 12)).ok, false, "截斷應被校驗碼擋下");
+  const tampered = text.slice(0, -4) + (text.slice(-4) === "AAAA" ? "BBBB" : "AAAA");
+  assert.strictEqual(L.decodeSave(tampered).ok, false);
+  const dead = L.defaultState(); dead.hp = 0;
+  assert.strictEqual(L.decodeSave(L.encodeSave(dead)).ok, false, "已死亡存檔不可匯入");
+  assert.strictEqual(L.decodeSave(L.encodeSave({ foo: 1 })).ok, false, "不像存檔的物件不可匯入");
+});
+
+test("傳承：死亡更新紀錄(次數/最遠天數/最高等級)、開局晶燼=最遠天數的一半上限60、首次無加成", () => {
+  assert.strictEqual(L.legacyStartBonus(null), 0);
+  assert.strictEqual(L.legacyStartBonus(L.defaultLegacy()), 0);
+  let lg = L.updateLegacyOnDeath(null, { day: 30, level: 4 });
+  assert.deepStrictEqual([lg.runs, lg.bestDay, lg.bestLevel, lg.lastDay], [1, 30, 4, 30]);
+  assert.strictEqual(L.legacyStartBonus(lg), 15);
+  lg = L.updateLegacyOnDeath(lg, { day: 12, level: 2 });
+  assert.deepStrictEqual([lg.runs, lg.bestDay, lg.lastDay, lg.totalDays], [2, 30, 12, 42]);
+  lg = L.updateLegacyOnDeath(lg, { day: 500, level: 15 });
+  assert.strictEqual(L.legacyStartBonus(lg), L.LEGACY_BONUS_CAP);
+  const s = L.defaultState(); const before = s.currency.embers;
+  assert.strictEqual(L.applyLegacyToNewState(s, lg), 60);
+  assert.strictEqual(s.currency.embers, before + 60);
+});
+
+test("死亡流程與備份UI：死亡時記錄傳承並立刻刪存檔；新遊戲一律走freshState；標題與日記有備份入口", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  const i = src.indexOf("function renderGameOver(");
+  const body = src.slice(i, src.indexOf("\nfunction ", i + 10));
+  assert.ok(/updateLegacyOnDeath/.test(body) && /localStorage\.removeItem\(SAVE_KEY\)/.test(body));
+  assert.ok(!/確定要放棄目前進度重新開始嗎/.test(body), "死亡後不該再問「放棄進度」");
+  assert.ok(!/state = defaultState\(\)/.test(body), "重新挑戰要走freshState");
+  assert.ok(/onClick: \(\) => showSaveBackup\(showDiary\)/.test(src) && /showSaveBackup\(renderTitle\)/.test(src));
+  assert.ok(/function showSaveBackup\(/.test(src) && /decodeSave\(/.test(src));
+});
+
+test("基地連動事件：沒蓋對應設施不會出現，蓋了才出現；每個有>=2選項、文字<=100字", () => {
+  const D = require("../js/data.js");
+  assert.ok(D.BASE_LINKED_EVENTS.length >= 10);
+  D.BASE_LINKED_EVENTS.forEach(e => {
+    assert.ok(typeof e.condition === "function" && e.options.length >= 2, e.id);
+    assert.ok(e.text.length <= 100 && e.options.every(o => o.label && o.resultText && o.resultText.length <= 100), e.id);
+  });
+  const s = L.defaultState(); s.day = 100;
+  const blank = D.BASE_LINKED_EVENTS.filter(e => e.id !== "evt_base_camp_visitors" ? e.condition(s) : e.condition(s));
+  assert.deepStrictEqual(blank.map(e => e.id), [], "全新存檔不該符合任何基地連動條件");
+  const f = e => D.BASE_LINKED_EVENTS.find(x => x.id === e);
+  s.farm.plots.plot_2.unlocked = true; s.farm.plots.plot_3.unlocked = true;
+  assert.ok(f("evt_base_farm_pests").condition(s) && f("evt_base_farm_glow").condition(s));
+  s.pens.plots.pen_1.animal = { speciesId: "hen" };
+  assert.ok(f("evt_base_pen_restless").condition(s) && f("evt_base_pen_gift").condition(s));
+  s.processing.stations.station_2.unlocked = true;
+  assert.ok(f("evt_base_workshop_night").condition(s));
+  s.campLevelSeen = 4; assert.ok(f("evt_base_camp_visitors").condition(s) && f("evt_base_camp_market").condition(s) && f("evt_base_all_lit").condition(s));
+  s.facilities.command = 2; s.facilities.greenhouse = 2; s.facilities.radar = 1;
+  assert.ok(f("evt_base_command_map").condition(s) && f("evt_base_greenhouse_bloom").condition(s) && f("evt_base_radar_ping").condition(s));
+});
+
+test("後期事件第二批：12個以上、minDay落在100~200、選項與文字合規、第90天前不會出現", () => {
+  const D = require("../js/data.js");
+  assert.ok(D.LATE_EVENTS_2.length >= 12);
+  D.LATE_EVENTS_2.forEach(e => {
+    assert.ok(e.minDay >= 100 && e.minDay <= 200, e.id);
+    assert.ok(e.options.length >= 2 && e.options.every(o => o.label && o.resultText && o.resultText.length <= 100) && e.text.length <= 100, e.id);
+  });
+  const s = L.defaultState(); s.day = 90; const seen = new Set();
+  for (let i = 0; i < 4000; i++) { s.phase = i % 2 ? "day" : "night"; seen.add(L.pickEvent(s, Math.random).id); }
+  D.LATE_EVENTS_2.forEach(e => assert.ok(!seen.has(e.id), e.id));
+});
+
+
+test("死亡後不可把已死亡角色寫回存檔(renderGameOver不得在刪存檔後再saveGame)", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  const i = src.indexOf("function renderGameOver(");
+  const body = src.slice(i, src.indexOf("\nfunction ", i + 10));
+  const afterRemove = body.slice(body.indexOf("localStorage.removeItem(SAVE_KEY)"));
+  assert.ok(!/saveGame\(\)/.test(afterRemove.replace(/\/\/.*$/gm, "")), "刪存檔之後不能再saveGame()");
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

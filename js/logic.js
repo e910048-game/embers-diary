@@ -2105,6 +2105,56 @@
     return lines;
   }
 
+  // ---------- 存檔匯出/匯入(2026-09-24)：把存檔轉成一串文字備份，不需伺服器 ----------
+  // 格式 "EMBERS1:<校驗碼>:<base64(JSON)>"；校驗碼偵測複製時被截斷/改動；只接受活著的、看起來像餘燼日記的存檔
+  const SAVE_EXPORT_PREFIX = "EMBERS1:";
+  function b64encode(str) { return typeof btoa === "function" ? btoa(unescape(encodeURIComponent(str))) : Buffer.from(str, "utf8").toString("base64"); }
+  function b64decode(b) { return typeof atob === "function" ? decodeURIComponent(escape(atob(b))) : Buffer.from(b, "base64").toString("utf8"); }
+  function saveChecksum(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0; return h.toString(36); }
+  function encodeSave(state) {
+    const json = JSON.stringify(state);
+    return SAVE_EXPORT_PREFIX + saveChecksum(json) + ":" + b64encode(json);
+  }
+  function decodeSave(text) {
+    try {
+      const t = String(text || "").replace(/[^A-Za-z0-9+/=:_-]/g, "");
+      if (!t.startsWith(SAVE_EXPORT_PREFIX)) return { ok: false, error: "格式不對（應以 EMBERS1: 開頭）" };
+      const rest = t.slice(SAVE_EXPORT_PREFIX.length);
+      const i = rest.indexOf(":");
+      if (i < 0) return { ok: false, error: "存檔文字不完整" };
+      const json = b64decode(rest.slice(i + 1));
+      if (saveChecksum(json) !== rest.slice(0, i)) return { ok: false, error: "存檔內容不完整或被改動（校驗碼不符），請重新複製完整文字" };
+      const obj = JSON.parse(json);
+      if (!obj || typeof obj !== "object" || typeof obj.day !== "number" || typeof obj.level !== "number" || !obj.resources) return { ok: false, error: "這不是有效的餘燼日記存檔" };
+      if (!(obj.hp > 0)) return { ok: false, error: "這份存檔的角色已經死亡，無法匯入" };
+      return { ok: true, state: obj };
+    } catch (e) {
+      return { ok: false, error: "存檔文字不完整或格式錯誤，請重新複製完整文字" };
+    }
+  }
+
+  // ---------- 傳承(2026-09-24)：死亡後留下的東西，跨局保存(存在獨立的legacy欄位，不隨存檔刪除) ----------
+  const LEGACY_BONUS_CAP = 60;
+  function defaultLegacy() { return { runs: 0, bestDay: 0, bestLevel: 0, totalDays: 0, lastDay: 0, lastLevel: 0 }; }
+  function updateLegacyOnDeath(legacy, state) {
+    const l = { ...defaultLegacy(), ...(legacy || {}) };
+    l.runs += 1;
+    l.lastDay = state.day; l.lastLevel = state.level;
+    l.bestDay = Math.max(l.bestDay, state.day); l.bestLevel = Math.max(l.bestLevel, state.level);
+    l.totalDays += state.day;
+    return l;
+  }
+  // 新一局開局的「傳承晶燼」：撐得越久越多(最遠天數的一半)，上限60；第一次玩(沒有死亡紀錄)為0
+  function legacyStartBonus(legacy) {
+    if (!legacy || !legacy.runs) return 0;
+    return Math.min(LEGACY_BONUS_CAP, Math.floor((legacy.bestDay || 0) / 2));
+  }
+  function applyLegacyToNewState(state, legacy) {
+    const bonus = legacyStartBonus(legacy);
+    if (bonus > 0) state.currency.embers += bonus;
+    return bonus;
+  }
+
   function noteRecap(state, key, val) {
     if (!state.recap) state.recap = {};
     if (key === "win") { state.recap.wins = (state.recap.wins || 0) + 1; state.recap.enemy = val; }
@@ -2681,7 +2731,7 @@
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
-    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, noteEventSeen, weatherForDay, getWeather, weatherEncounterDelta, getWeatherEventLine, EXP_CURVE_FACTOR, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
+    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, encodeSave, decodeSave, SAVE_EXPORT_PREFIX, defaultLegacy, updateLegacyOnDeath, legacyStartBonus, applyLegacyToNewState, LEGACY_BONUS_CAP, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, noteEventSeen, weatherForDay, getWeather, weatherEncounterDelta, getWeatherEventLine, EXP_CURVE_FACTOR, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,
