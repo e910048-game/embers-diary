@@ -2656,5 +2656,90 @@ test("Service Worker註冊：index.html有註冊碼、localhost不註冊、失�
 });
 
 
+// ---------- 內容精進(2026-09-24)：事件降權/天氣/經驗曲線/補選項/後期事件 ----------
+test("事件近期降權：最近出現過的事件被抽中的機率大幅下降，沒看過的事件略微加權", () => {
+  const s = L.defaultState();
+  s.day = 10; s.phase = "day";
+  const count = (state, id) => { let n = 0; for (let i = 0; i < 4000; i++) if (L.pickEvent(state, Math.random).id === id) n++; return n; };
+  const base = count(s, "evt_found_supplies");
+  s.recentEvents = ["evt_found_supplies"];
+  const damped = count(s, "evt_found_supplies");
+  assert.ok(base > 20 && damped < base * 0.4, "降權後應明顯變少: base=" + base + " damped=" + damped);
+  L.noteEventSeen(s, "x1"); for (let i = 0; i < 20; i++) L.noteEventSeen(s, "x" + i);
+  assert.strictEqual(s.recentEvents.length, 10, "只保留最近10個");
+});
+
+test("天氣：day<=2固定晴朗、同一天結果穩定、長期分佈接近權重；下雨採集水+1、霧遭遇+5%、風-3%、酷熱白天多耗水", () => {
+  const D = require("../js/data.js");
+  assert.strictEqual(L.weatherForDay(1).id, "clear");
+  assert.strictEqual(L.weatherForDay(2).id, "clear");
+  assert.strictEqual(L.weatherForDay(37).id, L.weatherForDay(37).id);
+  const cnt = {}; for (let d = 3; d < 3003; d++) { const id = L.weatherForDay(d).id; cnt[id] = (cnt[id] || 0) + 1; }
+  const totalW = Object.values(D.WEATHER_TYPES).reduce((a, w) => a + w.weight, 0);
+  Object.values(D.WEATHER_TYPES).forEach(w => assert.ok(Math.abs(cnt[w.id] / 3000 - w.weight / totalW) < 0.06, w.id + " 佔比偏離: " + cnt[w.id] / 3000));
+  const dayOf = id => { for (let d = 3; d < 500; d++) if (L.weatherForDay(d).id === id) return d; throw new Error("找不到" + id); };
+  const mk = id => { const s = L.defaultState(); s.day = dayOf(id); return s; };
+  assert.strictEqual(L.weatherEncounterDelta(mk("fog")), 0.05);
+  assert.strictEqual(L.weatherEncounterDelta(mk("wind")), -0.03);
+  assert.strictEqual(L.weatherEncounterDelta(mk("clear")), 0);
+  const rain = mk("rain"), clear = mk("clear");
+  let wr = 0, wc = 0; for (let i = 0; i < 500; i++) { wr += L.gatherYield(() => 0.3, rain).water; wc += L.gatherYield(() => 0.3, clear).water; }
+  assert.strictEqual(wr - wc, 500, "下雨每次採集水+1");
+  const heat = mk("heat"); heat.phase = "day"; const h0 = heat.resources.water; L.applyPhaseDecay(heat);
+  const c0 = clear.resources.water; clear.phase = "day"; L.applyPhaseDecay(clear);
+  assert.strictEqual((h0 - heat.resources.water) - (c0 - clear.resources.water), 1, "酷熱白天多耗1水");
+  heat.phase = "night"; const hn = heat.resources.water; L.applyPhaseDecay(heat);
+  assert.strictEqual(hn - heat.resources.water, 1, "酷熱只影響白天階段");
+});
+
+test("經驗曲線：每級x1.35；敵人經驗隨tier成長(每tier+50%，最多算到tier5)", () => {
+  const D = require("../js/data.js");
+  assert.strictEqual(L.EXP_CURVE_FACTOR, 1.35);
+  const s = L.defaultState(); L.gainExp(s, 100);
+  assert.strictEqual(s.expToNext, 135);
+  const st = L.defaultState();
+  assert.strictEqual(L.getScaledEnemy("enemy_walker_weak", st, {}).expReward, D.ENEMIES.enemy_walker_weak.expReward);
+  assert.strictEqual(L.getScaledEnemy("enemy_walker_weak", st, { extraTier: 2 }).expReward, D.ENEMIES.enemy_walker_weak.expReward * 2);
+  assert.strictEqual(L.getScaledEnemy("enemy_walker_weak", st, { extraTier: 10 }).expReward, Math.round(D.ENEMIES.enemy_walker_weak.expReward * 3.5));
+});
+
+test("單選項事件補齊：無條件的一般事件都至少2個選項；第二個選項有效果與結果文字", () => {
+  const D = require("../js/data.js");
+  Object.keys(D.SECOND_OPTIONS).forEach(id => {
+    const e = D.EVENTS.find(x => x.id === id);
+    assert.ok(e && e.options.length >= 2, id);
+    const o = D.SECOND_OPTIONS[id];
+    assert.ok(e.options.includes(o) && o.effect && o.resultText && o.resultText.length <= 100 && o.label);
+  });
+  const single = D.EVENTS.filter(e => e.weight > 0 && !e.condition && !/arc|recruit|epilogue|faction_static/.test(e.id) && (e.options || []).length === 1);
+  assert.deepStrictEqual(single.map(e => e.id), [], "仍有單選項一般事件");
+});
+
+test("後期分批事件：15個以上、minDay落在35~90、各有>=2選項與結果文字、每段<=100字，且在minDay之前不會被抽到", () => {
+  const D = require("../js/data.js");
+  assert.ok(D.LATE_EVENTS.length >= 15);
+  D.LATE_EVENTS.forEach(e => {
+    assert.ok(e.minDay >= 35 && e.minDay <= 90, e.id);
+    assert.ok(e.options.length >= 2 && e.options.every(o => o.label && o.resultText && o.resultText.length <= 100), e.id);
+    assert.ok(e.text.split("\n").every(p => p.length <= 100), e.id);
+    assert.ok(D.EVENTS.includes(e));
+  });
+  const s = L.defaultState(); s.day = 20;
+  const early = new Set(); for (let i = 0; i < 3000; i++) { s.phase = i % 2 ? "day" : "night"; early.add(L.pickEvent(s, Math.random).id); }
+  D.LATE_EVENTS.forEach(e => assert.ok(!early.has(e.id), e.id + " 不該在第20天出現"));
+  const s2 = L.defaultState(); s2.day = 95; const late = new Set();
+  for (let i = 0; i < 6000; i++) { s2.phase = i % 2 ? "day" : "night"; late.add(L.pickEvent(s2, Math.random).id); }
+  assert.ok(D.LATE_EVENTS.filter(e => late.has(e.id)).length >= 12, "第95天應能遇到大部分後期事件");
+});
+
+test("天氣文字：每種天氣>=3句開頭句、每句<=100字", () => {
+  const D = require("../js/data.js");
+  Object.keys(D.WEATHER_TYPES).filter(k => k !== "clear").forEach(k => {
+    assert.ok(D.WEATHER_EVENT_LINES[k] && D.WEATHER_EVENT_LINES[k].length >= 3, k);
+    D.WEATHER_EVENT_LINES[k].forEach(t => assert.ok(t.length <= 100 && /[。！]$/.test(t), k + ": " + t));
+  });
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

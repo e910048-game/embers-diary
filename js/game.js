@@ -1930,6 +1930,7 @@ const badges = [`<span class="miniBadge">📦 ${state.resources.scrap}</span>`, 
   const moodSummary = state.dailyMoodDay === state.day ? `今日心情：${state.dailyMood}` : "今日尚未簽到心情";
   const heartTitle = ss.hasLinked
     ? `${moodSummary}、${ss.spouseName || "同伴"}已連結，相隔遙遠但心意相通` : "尚未與任何人連結";
+  { const w = getWeather(state); badges.push(`<span class="miniBadge" title="今日天氣：${w.name}｜${w.effectText}">${w.icon}${w.name}</span>`); }
   badges.push(`<span class="miniBadge heart${ss.hasLinked ? " linked" : ""}" title="${heartTitle}">${ss.hasLinked ? "💞" : "🤍"}</span>`);
   const facLine = `\n${badges.join(" ")}`;
   const peepsLine = "";
@@ -2386,6 +2387,7 @@ function showEvent(evt, onDone, staminaResult) {
       ? evt.textPool[Math.floor(Math.random() * evt.textPool.length)]
       : evt.text;
   const overdrawText = staminaResult && staminaResult.overdraw ? overdrawFlavor(staminaResult.streak) : "";
+  noteEventSeen(state, evt.id); // 事件近期降權用
   // #22-3：首次觸發事件額外給予獎勵晶燼（鼓勵探索新事件而非重複熟悉劇情）
   let firstText = "";
   if (evt.id) {
@@ -2398,7 +2400,10 @@ function showEvent(evt, onDone, staminaResult) {
 ✨ 初次遇見此事件，額外獲得晶燼+2`;
     }
   }
-  renderText(text + overdrawText + firstText, { kind: "event" });
+  // 天氣開頭句(晴天不加，其他約一半機率)：獨立成一段放在事件文字前，戰鬥/里程碑等大事件不加
+  const wLine = (evt.id && !evt.milestone && !(evt.options || []).some(o => o.battle)) ? getWeatherEventLine(state) : "";
+  const wText = wLine ? wLine + "\n" : "";
+  renderText(wText + text + overdrawText + firstText, { kind: "event" });
 
   if (!evt.options || evt.options.length === 0) {
     renderOptions([{ label: "繼續", variant: "ghost", onClick: onDone }]);
@@ -3288,7 +3293,9 @@ function endPhase(opts = {}) {
   if (opts.restless === true) state.stamina = Math.max(1, Math.ceil(state.staminaMax / 2));
   const recapLine = buildRecapLine(state, prevPhase); // 前情回顧：先消費這個階段的記錄再重置
   resetRecap(state);
-  pendingRecap = recapLine;
+  // 新的一天開始(破曉)時，前情回顧後面補上今天的天氣
+  pendingRecap = state.day !== prevDay ? `${recapLine}
+${getWeather(state).icon} 今天的天氣：${getWeather(state).name}——${getWeather(state).effectText}` : recapLine;
   if (state.day !== prevDay) {
     addDiaryEntry();
     state.questFlags.gatherTodayCount = 0; // 任務系統：每日重置型支線計數器，跨日清零

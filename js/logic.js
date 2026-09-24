@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
+  const { WEATHER_TYPES, WEATHER_EVENT_LINES, LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -292,6 +292,7 @@
       noiseLevel: 0, // 噪音系統：0~100，製造/搜刮/戰鬥累加，每階段自然衰減，血月狂潮時每滿20點多一波敵人
       facilities: { command: 0, greenhouse: 0, workshop: 0, radar: 0 }, // 22.2
       farm: { plots: FARM_PLOT_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, crop: null }; return acc; }, {}) }, // 農場區(2026-07-02)：僅第一塊地預設解鎖
+      recentEvents: [], // 事件近期降權(2026-09-24)：最近出現過的事件id(最多10個)，pickEvent對它們降權
       pendingLevelUp: null, // 升級回饋(2026-09-20)：{from,to}，回主畫面時顯示升級面板後清空
       loreFound: [], // 深淵日誌(2026-09-20)：已取得的LORE_LOGS id，依序掉落
       recap: {}, // 前情回顧(2026-09-20)：這個階段發生的事 {hpStart,wins,enemy,loc,gathers}，endPhase時消費並重置
@@ -600,6 +601,37 @@
     return pickWeighted(BLOOD_MOON_MODIFIERS, rng);
   }
 
+  // 記錄剛看過的事件(供pickEvent降權)，只留最近10個
+  function noteEventSeen(state, id) {
+    if (!id) return;
+    if (!state.recentEvents) state.recentEvents = [];
+    state.recentEvents.push(id);
+    if (state.recentEvents.length > 10) state.recentEvents.shift();
+  }
+
+  // ---------- 天氣(2026-09-24)：由day決定，確定性、不存檔，日夜相同 ----------
+  function weatherForDay(day) {
+    if (!day || day <= 2) return WEATHER_TYPES.clear; // 新手前兩天固定晴朗，先熟悉基本循環
+    const x = Math.sin((day || 1) * 12.9898 + 78.233) * 43758.5453;
+    let r = (x - Math.floor(x)) * Object.values(WEATHER_TYPES).reduce((s, w) => s + w.weight, 0);
+    for (const w of Object.values(WEATHER_TYPES)) { if (r < w.weight) return w; r -= w.weight; }
+    return WEATHER_TYPES.clear;
+  }
+  function getWeather(state) { return weatherForDay(state && state.day); }
+  // 探索遭遇敵人機率的天氣修正：霧+5%、風-3%、灰燼雨+3%
+  function weatherEncounterDelta(state) {
+    const id = getWeather(state).id;
+    return id === "fog" ? 0.05 : id === "wind" ? -0.03 : id === "ashfall" ? 0.03 : 0;
+  }
+  // 事件開頭的天氣句：晴天不加，其他天氣約一半機率加。rng可注入；同一天同個rng值結果相同
+  function getWeatherEventLine(state, rng) {
+    const w = getWeather(state);
+    const pool = WEATHER_EVENT_LINES[w.id];
+    if (!pool) return "";
+    if ((rng || Math.random)() >= 0.5) return "";
+    return pool[Math.floor((rng || Math.random)() * pool.length)];
+  }
+
   function pickEvent(state, rng = Math.random) {
     const pool = EVENTS.filter(e =>
       e.minDay <= state.day &&
@@ -608,10 +640,15 @@
       (!e.condition || e.condition(state))
     );
     // 依玩家當下狀態（HP/資源/等級/夥伴等）動態調整事件權重，讓同情境產生不同結果
-    const adjusted = pool.map(e => ({
-      ...e,
-      weight: Math.max(0, e.weight + (e.weightModifier ? e.weightModifier(state) : 0))
-    }));
+    // 2026-09-24：最近10次內出現過的事件權重x0.15(減少重複感)，從沒看過的事件x1.6(讓新解鎖的內容更快被遇到)
+    const recent = state.recentEvents || [];
+    const seen = state.seenEvents || [];
+    const adjusted = pool.map(e => {
+      let w = Math.max(0, e.weight + (e.weightModifier ? e.weightModifier(state) : 0));
+      if (w > 0 && recent.includes(e.id)) w *= 0.15;
+      else if (w > 0 && e.id && !seen.includes(e.id)) w *= 1.6;
+      return { ...e, weight: w };
+    });
     return pickWeighted(adjusted, rng);
   }
 
@@ -628,6 +665,7 @@
     const extraWater = getAccessoryEffect(state, "extraWaterDecay"); // 27.1：洋流寄生蛭，每階段水消耗額外+1
     // v117：巨型地脈藤蔓標本(furn_vines)——已陳列時，每階段50%機率水消耗-1（最低0）
     let waterDecay = base + extraWater;
+    if (state.phase === "day" && getWeather(state).id === "heat") waterDecay += 1; // 天氣：酷熱，白天階段多耗1份水
     if (hasFurniturePlaced(state, "furn_vines") && rng() < 0.5) {
       waterDecay = Math.max(0, waterDecay - 1);
     }
@@ -1094,6 +1132,8 @@
   const LEVEL_UP_ATK_BONUS = 1;
 
   // 取得經驗值，可能連續升級；回傳升級次數
+  // 2026-09-24：原本每級x1.5，中後期升級所需經驗暴增到敵人(固定10~80)根本打不完；改x1.35，並讓敵人經驗隨tier成長(見getScaledEnemy)
+  const EXP_CURVE_FACTOR = 1.35;
   function gainExp(state, amount) {
     state.exp += amount;
     const fromLevel = state.level;
@@ -1101,7 +1141,7 @@
     while (state.exp >= state.expToNext) {
       state.exp -= state.expToNext;
       state.level += 1;
-      state.expToNext = Math.floor(state.expToNext * 1.5);
+      state.expToNext = Math.floor(state.expToNext * EXP_CURVE_FACTOR);
       state.hpMax += LEVEL_UP_HP_BONUS;
       state.stats.atk += LEVEL_UP_ATK_BONUS;
       state.hp = state.hpMax; // 升級時HP全滿
@@ -1142,7 +1182,12 @@
         base[k] = whole + (rng() < v - whole ? 1 : 0);
       });
     }
-    if (state) addNoise(state, NOISE_AMOUNTS.gather);
+    if (state) {
+      const wid = getWeather(state).id;
+      if (wid === "rain") base.water += 1; // 天氣：下雨採集飲水+1
+      if (wid === "ashfall") base.scrap += 1; // 天氣：灰燼雨採集廢料+1
+      addNoise(state, NOISE_AMOUNTS.gather);
+    }
     return base;
   }
 
@@ -1185,7 +1230,8 @@
     const encounterBonus = (state && state.flags && state.flags.weak) ? 0.05 : 0;
     const modifierEncounterDelta = (modifier && modifier.encounterChanceDelta) || 0;
     const radarDelta = state ? radarEncounterReduction(state) : 0;
-    if (rng() < Math.max(0, location.encounterChance + encounterBonus + modifierEncounterDelta - radarDelta)) {
+    const weatherDelta = state ? weatherEncounterDelta(state) : 0;
+    if (rng() < Math.max(0, location.encounterChance + encounterBonus + modifierEncounterDelta - radarDelta + weatherDelta)) {
       const ids = location.encounterEnemyIds;
       let enemyId;
       if (state && state.day >= 15 && ids.length > 1 && rng() < 0.5) {
@@ -2543,7 +2589,9 @@
     if (tier > 0) {
       name = TIER_PREFIXES[Math.min(tier, TIER_PREFIXES.length - 1)] + enemyData.name;
     }
-    return { ...enemyData, name, hp, atk, tier };
+    // 經驗獎勵隨tier成長(每tier+50%，最多算到tier5)，否則後期敵人變強了、經驗卻一樣，升級追不上曲線
+    const expReward = Math.round((enemyData.expReward || 0) * (1 + 0.5 * Math.min(tier, 5)));
+    return { ...enemyData, name, hp, atk, tier, expReward };
   }
 
   // ---------- 任務與成就系統（規格文件/任務與成就系統_設計規格.md）----------
@@ -2633,7 +2681,7 @@
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
-    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
+    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, noteEventSeen, weatherForDay, getWeather, weatherEncounterDelta, getWeatherEventLine, EXP_CURVE_FACTOR, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,

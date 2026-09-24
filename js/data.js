@@ -818,7 +818,7 @@ const LOCATIONS = [
 const EVENTS = [
   {
     id: "evt_quiet_day", title: "平靜的時刻",
-    minDay: 1, maxDay: null, phase: ["day", "night"], weight: 30,
+    minDay: 1, maxDay: null, phase: ["day", "night"], weight: 15,
     text: "今天沒有發生什麼大事。陽光（或月光）斜斜地照進據點，空氣中懸浮的細塵泛著一絲若有若無的螢光，緩緩飄著。你靠著牆坐了一會兒，聽著自己的呼吸聲——在這個世界，「無聊」反而是種奢侈。",
     textPool: [
       "今天沒有發生什麼大事。陽光（或月光）斜斜地照進據點，空氣中懸浮的細塵泛著一絲若有若無的螢光，緩緩飄著。你靠著牆坐了一會兒，聽著自己的呼吸聲——在這個世界，「無聊」反而是種奢侈。",
@@ -3242,10 +3242,142 @@ const LORE_LOGS = [
     text: "我不知道這頁會不會有人讀。如果是你，請記得：他們曾經是人，是我們的同事、朋友、家人。\n至於你要怎麼面對每一個血月……我留給你決定。" },
 ];
 
+// ============ 內容精進(2026-09-24)：天氣層 / 單選項事件補第二個選擇 / 第30~100天分階段解鎖的新事件 ============
+// A) 天氣：由 day 決定(logic.js weatherForDay，確定性，不存檔)，同一天日夜相同。效果很小但能讓同一批事件與行動有不同「手感」
+const WEATHER_TYPES = {
+  clear:   { id: "clear",   icon: "☀️", name: "晴朗", weight: 38, effectText: "沒有特別影響。" },
+  rain:    { id: "rain",    icon: "🌧️", name: "下雨", weight: 20, effectText: "採集時飲水+1。" },
+  fog:     { id: "fog",     icon: "🌫️", name: "濃霧", weight: 15, effectText: "探索遭遇敵人的機率+5%。" },
+  heat:    { id: "heat",    icon: "🥵", name: "酷熱", weight: 12, effectText: "白天階段多消耗1份飲水。" },
+  wind:    { id: "wind",    icon: "💨", name: "強風", weight: 10, effectText: "風聲掩蓋腳步，探索遭遇敵人的機率-3%。" },
+  ashfall: { id: "ashfall", icon: "🌑", name: "灰燼雨", weight: 5, effectText: "採集時廢料+1，但遭遇敵人的機率+3%。" },
+};
+// 天氣事件開頭句(約一半的事件會加上)：讓同一個事件在不同天氣下讀起來不同
+const WEATHER_EVENT_LINES = {
+  rain: ["雨水順著屋簷成串滴落。", "雨聲淹沒了大部分聲響。", "潮濕的空氣帶著鐵鏽味。"],
+  fog: ["濃霧籠罩著街道，十步之外一片模糊。", "霧氣像一層濕冷的布蓋在廢墟上。", "能見度低得可憐。"],
+  heat: ["熱浪讓空氣微微扭曲。", "毒辣的日頭曬得瓦礫發燙。", "汗水沿著背脊往下流。"],
+  wind: ["強風呼嘯著捲過空蕩的街道。", "風把碎紙與灰塵吹得滿天飛。", "遠處的鐵皮被風吹得哐啷作響。"],
+  ashfall: ["細碎的灰燼像雪一樣緩緩飄落。", "天空落著灰白色的雨。", "灰燼沾在睫毛上。"],
+};
+
+// B) 單選項事件補第二個選擇(合併進既有事件的options)：每個都是「不同取向」的取捨，不是純獎勵
+const SECOND_OPTIONS = {
+  evt_found_supplies: { label: "只取一半，留一半給下一個人", effect: { resources: { food: 1 }, san: 3 }, resultText: "你把剩下的放回原處。不知道下一個人是誰，但你希望他也能撿到這份運氣。" },
+  evt_scrap_pile_gear: { label: "只拆零件，不碰那件裝備", effect: { resources: { scrap: 4 } }, resultText: "你用撬棍卸下能用的金屬片。那件裝備看起來有點不對勁，你決定別惹它。" },
+  evt_old_memory: { label: "凝視相片，回想那個下午", effect: { san: 4 }, resultText: "你看了很久。照片裡的人笑得那麼自然，你努力記住那個表情，才慢慢把它收進口袋。" },
+  evt_old_radio_song: { label: "循著聲音找到那台收音機", effect: { exp: 4, resources: { scrap: 1 } }, resultText: "你在一間空屋找到還在轉動的收音機，電池是被人特地換過的。你順手拆了些零件，把音量留給整條街。" },
+  evt_tool_found: { label: "小心撬開，不損壞裡面的東西", effect: { resources: { ammo: 1 }, exp: 2 }, resultText: "你花了點時間耐心開鎖。工具箱底層藏著幾發沒被翻過的彈藥。" },
+  evt_childrens_drawing: { label: "用粉筆在旁邊補畫一顆星星", effect: { san: 3 }, resultText: "你摸出半截粉筆，畫下一顆歪歪的星星。走遠後回頭一看，牆上的世界似乎熱鬧了一點。" },
+  evt_home_chores: { label: "檢查門窗，加固一下", effect: { baseDefense: 1 }, resultText: "你換了新的門栓，窗縫也塞緊。夜襲來時應該能多撐一會兒。" },
+  evt_abandoned_bicycle: { label: "把腳踏車推回據點慢慢研究", effect: { resources: { scrap: 1 }, exp: 3 }, resultText: "雖然不能騎，但拆下的鏈條和齒輪很有用，你也學到了不少機械的門道。" },
+  evt_bookstore_relic: { label: "把書放回原處，保持原樣", effect: { san: 3 }, resultText: "你把書輕輕放回書架。有些東西不需要帶走，看過就足夠了。" },
+  evt_community_garden: { label: "留下根與種子，只採熟的", effect: { resources: { food: 1 }, san: 3, setFlag: "garden_harvested" }, resultText: "你摘了熟的，把根和幾粒種子埋回土裡。也許下次來會更豐盛。" },
+  evt_solar_panel: { label: "修好它，接回據點試試", effect: { resources: { scrap: 1 }, exp: 4 }, resultText: "你花了不少功夫接線，面板總算吐出微弱的電流。雖然不夠供電，但你學到了很多。" },
+  evt_toolshed_find: { label: "只拿最需要的，其餘留給別人", effect: { exp: 2, san: 2 }, resultText: "你挑了最順手的一把，其餘原樣放好。這種默契在末日裡比工具還稀罕。" },
+  evt_greenhouse_seed_gaia: { label: "不碰，任它自然成熟", effect: { san: 3 }, resultText: "你決定不摘。也許下次來的時候，它會長成更驚人的樣子。" },
+  evt_flickering_streetlight: { label: "直視光影，弄清楚那是什麼", effect: { hp: -3, exp: 4 }, resultText: "你盯著牆上的影子看到眼睛發痠。原來只是燈絲接觸不良——但你的心跳還是慢了好幾拍。" },
+  evt_scrap_windfall: { label: "仔細分揀，挑出最好的", effect: { resources: { scrap: 1, ammo: 1 } }, resultText: "你在一堆破銅爛鐵裡挑出幾件真正能用的，還有幾發卡在縫裡的子彈。" },
+  evt_quiet_hope: { label: "蹲下來，把周圍的碎石清開", effect: { san: 2, exp: 3 }, resultText: "你替那株小草清出一小圈空地。沒什麼實際用處，卻讓你忙碌的手停下來想了很多。" },
+};
+Object.entries(SECOND_OPTIONS).forEach(([id, opt]) => {
+  const e = EVENTS.find(x => x.id === id);
+  if (e && e.options && e.options.length === 1) e.options.push(opt);
+});
+
+// C) 第30~100天才解鎖的新事件(分階段)：後期的城市/人物/世界觀氛圍，每個都有真正的兩難
+const LATE_EVENTS = [
+  { id: "evt_late_lantern_walker", minDay: 35, maxDay: null, phase: ["night"], weight: 8,
+    text: "深夜裡，遠處有一盞提燈沿著街道緩緩移動。提燈的人走走停停，像在尋找什麼，也像在等什麼。",
+    options: [
+      { label: "熄燈躲好，等他走遠", effect: { san: 2 }, resultText: "提燈的光在窗外停了一會兒，又慢慢遠去。你不確定自己躲過的是什麼。" },
+      { label: "在窗口點亮小燈回應", effect: { resources: { food: 1 }, exp: 3 }, resultText: "提燈的人朝你點了點頭，放下半罐罐頭後才離開。他沒說一句話。" } ] },
+  { id: "evt_late_wall_writing", minDay: 35, maxDay: null, phase: ["day"], weight: 7,
+    text: "外牆上多了一行新的粉筆字：『這裡有人活著』。不是你寫的。",
+    options: [
+      { label: "擦掉它，避免招來注意", effect: { baseDefense: 1 }, resultText: "你把字擦得乾乾淨淨。安全是安全了，心裡卻空了一塊。" },
+      { label: "在旁邊補上「歡迎」", effect: { san: 4, exp: 3 }, resultText: "你補了兩個字。也許有人會因此多撐一天。" } ] },
+  { id: "evt_late_lost_courier", minDay: 35, maxDay: null, phase: ["day"], weight: 7,
+    text: "一個背著郵包的人倒在街角，郵包裡是一疊沒有收件地址的信。他還有氣，但很虛弱。",
+    options: [
+      { label: "給他水和食物，扶他休息", requiresResource: { food: 1, water: 1 }, effect: { resources: { food: -1, water: -1 }, san: 5, exp: 4 }, resultText: "他醒來後把一封信塞給你：「不知道給誰的，但也許是給你的。」信上只有一行字：『別停下』。" },
+      { label: "拿走一疊信，不打擾他", effect: { resources: { scrap: 2 } }, resultText: "你翻了翻，多半是泡爛的紙。你只帶走了能當引火材料的那幾張。" } ] },
+  { id: "evt_late_wandering_band", minDay: 45, maxDay: null, phase: ["day"], weight: 7,
+    text: "一小隊拾荒者出現在街口，領頭的打量你的據點，開口就是：「借點水，我們可以換情報。」",
+    options: [
+      { label: "給他們2份水，換情報", requiresResource: { water: 2 }, effect: { resources: { water: -2 }, exp: 6 }, resultText: "他們告訴你哪幾條路最近有大型生物出沒。你把它們記進腦子裡。" },
+      { label: "婉拒，並保持距離", effect: { }, resultText: "領頭的聳聳肩，一行人繼續往前走。你的水保住了，但也少了一次認識世界的機會。" } ] },
+  { id: "evt_late_broken_drone", minDay: 45, maxDay: null, phase: ["day", "night"], weight: 6,
+    text: "一架舊世界的無人機卡在屋簷上，外殼裂開，還在斷續閃著綠燈。",
+    options: [
+      { label: "拆下零件", effect: { resources: { scrap: 4 } }, resultText: "電路板已經燒焦，但外殼和馬達還能用。" },
+      { label: "試著讀取它的記憶體", effect: { exp: 6, san: -3 }, resultText: "螢幕閃出幾秒模糊的畫面：一座你沒見過的城市，燈火通明。你不確定那是回憶還是誘餌。" } ] },
+  { id: "evt_late_abandoned_shelter", minDay: 45, maxDay: null, phase: ["day"], weight: 6,
+    text: "巷底有一間用鐵皮與門板搭成的簡易避難所，裡面還有沒熄滅的爐火餘溫，但主人不在。",
+    options: [
+      { label: "在爐邊休息片刻", effect: { hp: 8, san: 3 }, resultText: "爐子的餘溫讓你緊繃的肩膀放鬆下來。離開前你添了一根柴。" },
+      { label: "翻找他們留下的東西", effect: { resources: { scrap: 3, food: 1 } }, resultText: "你找到一些能用的東西。臨走前，你在門邊留了一張道歉的字條。" } ] },
+  { id: "evt_late_dream_of_home", minDay: 60, maxDay: null, phase: ["night"], weight: 7,
+    text: "你夢見一間亮著暖燈的房子，桌上擺著熱湯。醒來時，枕邊濕了一片。",
+    options: [
+      { label: "把夢寫進日記", effect: { san: 5 }, resultText: "你寫下每個細節，怕忘了。文字讓夢變得可以帶著走。" },
+      { label: "翻身繼續睡，別想太多", effect: { hp: 4 }, resultText: "你逼自己閉上眼。身體很累，能睡就先睡。" } ] },
+  { id: "evt_late_ash_bloom", minDay: 60, maxDay: null, phase: ["day"], weight: 6,
+    text: "一片灰燼堆裡冒出了細小的白花，花瓣邊緣泛著淡淡的螢光。像是灰燼在嘗試開花。",
+    options: [
+      { label: "摘下標本帶回據點", effect: { resources: { medicine: 1 }, exp: 3 }, resultText: "你把花壓在筆記裡，也許能入藥，也許只是好看。" },
+      { label: "不摘，替它擋住風", effect: { san: 5 }, resultText: "你用碎磚砌了個小小的擋風牆。至少今天，它能活著。" } ] },
+  { id: "evt_late_stray_signal", minDay: 60, maxDay: null, phase: ["night"], weight: 6,
+    text: "舊收音機在深夜自己亮了，傳出一段規律的電子聲：三長、兩短、三長。像是求救，又像是招手。",
+    options: [
+      { label: "記下頻率與節奏", effect: { exp: 6 }, resultText: "你把訊號抄在牆上。它每隔一小時重複一次，沒有停過。" },
+      { label: "關掉收音機，不去理會", effect: { san: 2 }, resultText: "你拔掉了電池。房間重歸寂靜，但那三長兩短的節奏還在你腦子裡響。" } ] },
+  { id: "evt_late_market_rumor", minDay: 75, maxDay: null, phase: ["day"], weight: 6,
+    text: "有人在黑市攤位低聲說：城市邊緣的某處，出現了一批從未見過的機械，正在整齊地朝同一個方向移動。",
+    options: [
+      { label: "花2廢料買下詳細情報", requiresResource: { scrap: 2 }, effect: { resources: { scrap: -2 }, exp: 7 }, resultText: "他畫了張簡略地圖。你知道下次血月，這件事會派上用場。" },
+      { label: "只當傳言，一笑置之", effect: { san: 2 }, resultText: "你搖搖頭走開。謠言太多，你選擇相信自己看得到的東西。" } ] },
+  { id: "evt_late_child_voice", minDay: 75, maxDay: null, phase: ["night"], weight: 6,
+    text: "門外傳來孩子的笑聲，清脆得不像這個世界的東西。你打開門縫，什麼都沒有。",
+    options: [
+      { label: "走出去看個仔細", effect: { hp: -4, exp: 6 }, resultText: "你在牆角發現一顆彈珠，還帶著溫度。你不知道那是誰的，只知道它讓你背後發涼。" },
+      { label: "關門上鎖，不去確認", effect: { san: -2 }, resultText: "你靠著門板坐了很久。笑聲沒有再出現，但你也睡不著了。" } ] },
+  { id: "evt_late_old_friend", minDay: 75, maxDay: null, phase: ["day"], weight: 5,
+    text: "街角一個模糊的背影讓你心頭一顫——那走路的姿勢，很像你曾經認識的一個人。",
+    options: [
+      { label: "追上去，看清楚", effect: { exp: 5, san: -3 }, resultText: "那只是陌生人。他回頭時眼裡的警戒讓你明白：你們都太想從彼此身上找到熟悉的東西。" },
+      { label: "站在原地，讓他走遠", effect: { san: 3 }, resultText: "你沒有追。有些人，記憶裡的樣子已經是最完整的了。" } ] },
+  { id: "evt_late_rising_water", minDay: 90, maxDay: null, phase: ["day", "night"], weight: 6,
+    text: "低窪處的積水悄悄漫上街面，水裡泛著淡淡的藍光。水位似乎比昨天又高了一點。",
+    options: [
+      { label: "收集乾淨的上層水", effect: { resources: { water: 3 }, hp: -2 }, resultText: "你小心地舀走上層的水，過濾了兩遍才敢裝瓶。手指一直發麻。" },
+      { label: "記下水位，評估路線", effect: { exp: 6 }, resultText: "你在牆上劃了刻度。那幾條路，之後要小心繞開。" } ] },
+  { id: "evt_late_last_broadcast", minDay: 90, maxDay: null, phase: ["night"], weight: 5,
+    text: "收音機裡傳來一段完整的舊世界播報：『……目前疏散已完成，請留在原地，等待救援。』重複了三遍後歸於沉寂。",
+    options: [
+      { label: "把它錄下來", effect: { exp: 7, san: -2 }, resultText: "你錄下這段話。它聽起來那麼平靜，彷彿沒人知道後來發生了什麼。" },
+      { label: "默默聽完，然後關機", effect: { san: 4 }, resultText: "你把旋鈕輕輕轉回原位。有些訊息不是要被解決的，是要被記得的。" } ] },
+  { id: "evt_late_returning_birds", minDay: 90, maxDay: null, phase: ["day"], weight: 6,
+    text: "天空中飛過一群鳥，翅膀在灰白的天光下劃出整齊的弧線。已經很久沒有見過鳥了。",
+    options: [
+      { label: "抬頭看到牠們消失", effect: { san: 6 }, resultText: "你站了很久，直到脖子發酸。世界還在運轉，這個念頭讓你有了力氣。" },
+      { label: "跟著牠們飛的方向走一段", effect: { exp: 5, resources: { water: 1 } }, resultText: "牠們在一處小水窪降落。你在那裡找到一點乾淨的水，和許多小小的腳印。" } ] },
+  { id: "evt_late_survivors_dispute", minDay: 90, maxDay: null, phase: ["day"], weight: 5,
+    text: "兩個倖存者為了半罐罐頭在街口吵了起來，聲音很大。你的據點就在附近。",
+    options: [
+      { label: "出面調解", effect: { exp: 6, san: -2 }, resultText: "你說了半天，最後他們各拿一半。兩人臨走前看你的眼神，多了一點敬意。" },
+      { label: "關上窗，別惹麻煩", effect: { baseDefense: 1 }, resultText: "你把窗簾拉好。別人的紛爭與你無關，你只需要守好自己的門。" } ] },
+];
+EVENTS.push(...LATE_EVENTS);
+
 if (typeof module !== "undefined") {
-  module.exports = { LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
+  module.exports = { WEATHER_TYPES, WEATHER_EVENT_LINES, SECOND_OPTIONS, LATE_EVENTS, LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
+  window.WEATHER_TYPES = WEATHER_TYPES;
+  window.WEATHER_EVENT_LINES = WEATHER_EVENT_LINES;
+  window.SECOND_OPTIONS = SECOND_OPTIONS;
+  window.LATE_EVENTS = LATE_EVENTS;
   window.LEVEL_UP_LINES = LEVEL_UP_LINES;
   window.LORE_LOGS = LORE_LOGS;
   window.RECAP_LINES = RECAP_LINES;
