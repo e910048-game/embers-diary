@@ -3039,5 +3039,30 @@ test("SAN消耗來源：高危遠征(危險度3/4/5→2/3/4)、擊殺敵人扣SA
 });
 
 
+// ---------- 戰鬥決策：重擊/防禦/醫療 ----------
+test("戰鬥決策數值：防禦-60%(最少1)、重擊反擊x1.5、醫療需有藥且未滿血", () => {
+  assert.strictEqual(L.guardedDamage(10), 4);
+  assert.strictEqual(L.guardedDamage(1), 1, "有傷害時至少1");
+  assert.strictEqual(L.guardedDamage(0), 0, "被擊暈/閃避時不變");
+  assert.strictEqual(L.heavyTakenDamage(10), 15);
+  assert.strictEqual(L.heavyTakenDamage(0), 0);
+  assert.ok(L.BATTLE_HEAVY_DMG_MULT > 1 && L.BATTLE_CHARGE_MULT > 1 && L.BATTLE_HEAL_AMOUNT > 0);
+  const s = L.defaultState();
+  s.resources.medicine = 0; s.hp = 50; let a = L.battleActionAvailability(s);
+  assert.strictEqual(a.heal, false); assert.ok(/沒有醫療/.test(a.healReason));
+  s.resources.medicine = 2; a = L.battleActionAvailability(s); assert.strictEqual(a.heal, true);
+  s.hp = s.hpMax; a = L.battleActionAvailability(s); assert.strictEqual(a.heal, false); assert.ok(/血量已滿/.test(a.healReason));
+});
+
+test("戰鬥選項接線：非序章戰鬥有重擊/防禦/醫療；battleAttack(重擊)、battleGuard、battleHeal存在且防禦會蓄力", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  assert.ok(/battleAttack\(\{ heavy: true \}\)/.test(src) && /onClick: battleGuard/.test(src) && /onClick: battleHeal/.test(src));
+  assert.ok(/b\.isPrologue \? \[\]/.test(src), "序章教學戰不出現進階選項");
+  const g = src.slice(src.indexOf("function battleGuard("), src.indexOf("function battleHeal("));
+  assert.ok(/b\.charged = true/.test(g) && /guardedDamage\(/.test(g));
+  assert.ok(/BATTLE_CHARGE_MULT/.test(src.slice(src.indexOf("function battleAttack("))) && /heavyTakenDamage\(/.test(src));
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

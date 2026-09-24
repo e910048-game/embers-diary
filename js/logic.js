@@ -631,6 +631,20 @@
     if (r() >= chance) return "";
     return SAN_HALLUCINATION_LINES[Math.floor(r() * SAN_HALLUCINATION_LINES.length)];
   }
+  // ---------- 戰鬥決策(2026-09-25)：除了攻擊/逃跑，新增重擊/防禦/醫療 ----------
+  // 重擊：傷害x1.8，但敵人這回合的反擊x1.5(賭一把)；防禦：這回合不攻擊，承受傷害-60%，下一次攻擊蓄力x1.5(穩紮穩打)；
+  // 醫療：消耗1醫療，HP+25，敵人照常反擊(危急時續命)
+  const BATTLE_HEAVY_DMG_MULT = 1.8, BATTLE_HEAVY_TAKEN_MULT = 1.5;
+  const BATTLE_GUARD_REDUCTION = 0.6, BATTLE_CHARGE_MULT = 1.5, BATTLE_HEAL_AMOUNT = 25;
+  function guardedDamage(rawDmg) { return rawDmg > 0 ? Math.max(1, Math.round(rawDmg * (1 - BATTLE_GUARD_REDUCTION))) : 0; }
+  function heavyTakenDamage(rawDmg) { return rawDmg > 0 ? Math.round(rawDmg * BATTLE_HEAVY_TAKEN_MULT) : 0; }
+  function battleActionAvailability(state) {
+    return {
+      heal: (state.resources.medicine || 0) >= 1 && state.hp < getEffectiveHpMax(state),
+      healReason: (state.resources.medicine || 0) < 1 ? "沒有醫療品" : (state.hp >= getEffectiveHpMax(state) ? "血量已滿" : ""),
+    };
+  }
+
   // 睡覺恢復的SAN：夜晚完整(restSanRegen)，白天只是小憩(30%)；精神低於50時睡得更沉(x1.6)，避免掉進低SAN就爬不出來
   function sanRestRegen(state, phase) {
     let regen = phase === "day" ? Math.round(restSanRegen(state) * 0.3) : restSanRegen(state);
@@ -2790,7 +2804,7 @@
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
-    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, encodeSave, decodeSave, SAVE_EXPORT_PREFIX, defaultLegacy, updateLegacyOnDeath, legacyStartBonus, applyLegacyToNewState, LEGACY_BONUS_CAP, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, SAN_TIERS, SAN_COST_PER_KILL, sanRestRegen, getSanTier, sanEncounterDelta, getSanHallucinationLine, nightSanPressure, locationSanCost, applySanCollapse, noteEventSeen, weatherForDay, getWeather, weatherEncounterDelta, getWeatherEventLine, EXP_CURVE_FACTOR, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
+    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, encodeSave, decodeSave, SAVE_EXPORT_PREFIX, defaultLegacy, updateLegacyOnDeath, legacyStartBonus, applyLegacyToNewState, LEGACY_BONUS_CAP, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, BATTLE_HEAVY_DMG_MULT, BATTLE_HEAVY_TAKEN_MULT, BATTLE_GUARD_REDUCTION, BATTLE_CHARGE_MULT, BATTLE_HEAL_AMOUNT, guardedDamage, heavyTakenDamage, battleActionAvailability, SAN_TIERS, SAN_COST_PER_KILL, sanRestRegen, getSanTier, sanEncounterDelta, getSanHallucinationLine, nightSanPressure, locationSanCost, applySanCollapse, noteEventSeen, weatherForDay, getWeather, weatherEncounterDelta, getWeatherEventLine, EXP_CURVE_FACTOR, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,

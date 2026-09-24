@@ -3435,7 +3435,12 @@ function renderBattle(message) {
     </div>
         ${message}${sysLogHtml()}`, { kind: "battle" });
   renderOptions([
-        { label: "⚔️ 攻擊" + (b.bloodMoon ? "（長按連擊）" : ""), variant: "danger", onClick: battleAttack, turbo: !!b.bloodMoon },
+        { label: "⚔️ 攻擊" + (b.bloodMoon ? "（長按連擊）" : ""), variant: "danger", onClick: () => battleAttack(), turbo: !!b.bloodMoon },
+    ...(b.isPrologue ? [] : [
+      { label: "💪 重擊", hint: `傷害×${BATTLE_HEAVY_DMG_MULT}，但反擊也×${BATTLE_HEAVY_TAKEN_MULT}`, variant: "danger", onClick: () => battleAttack({ heavy: true }) },
+      { label: "🛡️ 防禦", hint: `不攻擊，承受傷害-${Math.round(BATTLE_GUARD_REDUCTION * 100)}%，下一擊蓄力×${BATTLE_CHARGE_MULT}`, onClick: battleGuard },
+      { label: "💊 使用醫療", hint: battleActionAvailability(state).heal ? `HP+${BATTLE_HEAL_AMOUNT}（剩${state.resources.medicine}份），敵人照常反擊` : battleActionAvailability(state).healReason, disabled: !battleActionAvailability(state).heal, onClick: battleHeal },
+    ]),
     { label: "🏃 逃跑", variant: "ghost", onClick: battleFlee }
   ]);
 }
@@ -3476,7 +3481,8 @@ function calcAttackDamage(b) {
   return { dmg, crit };
 }
 
-function battleAttack() {
+function battleAttack(opts) {
+  const heavy = !!(opts && opts.heavy === true); // 事件物件沒有heavy屬性，故直接當onclick的參數也安全
   const b = pendingBattle;
   if (!b) { clearTurbo(); return; } // Turbo Click連擊時若戰鬥已結束，立即停止避免持續觸發
   b.turn = (b.turn || 0) + 1;
@@ -3505,6 +3511,9 @@ function battleAttack() {
   const myStats = getEffectiveStats(state);
   const { dmg: dmgToEnemyCalc, crit } = calcAttackDamage(b);
   let dmgToEnemy = dmgToEnemyCalc;
+  let styleText = "";
+  if (b.charged) { dmgToEnemy = Math.round(dmgToEnemy * BATTLE_CHARGE_MULT); b.charged = false; styleText += "🔥蓄力的一擊！"; }
+  if (heavy) { dmgToEnemy = Math.round(dmgToEnemy * BATTLE_HEAVY_DMG_MULT); styleText += "💪你全力揮出重擊，但露出了破綻！"; }
     const critText = crit ? "💥爆擊！" : "";
   b.enemy.hpLeft -= dmgToEnemy;
   applyDefShred(b.enemy, state); // 27.4
@@ -3576,6 +3585,7 @@ let lootText = "";
   }
 
   const hit = resolveEnemyHit(b, myStats);
+  if (heavy && hit.dmg > 0) hit.dmg = heavyTakenDamage(hit.dmg); // 重擊露出破綻：反擊更痛
   const reviveText = hit.dmg > 0 ? applyEnemyDamage(hit.dmg) : "";
   pushSysLog(`[T${b.turn}] ENEMY_ATK ${hit.stunned ? "stunned=1" : hit.dodged ? "dodged=1" : `dmg=${hit.dmg}`} player.hp=${Math.max(0, state.hp)}/${state.hpMax}`);
 
@@ -3600,8 +3610,50 @@ let lootText = "";
 🌿 苔蘚幾何外殼汲取荒野生機，回復HP+${healed}`;
     }
   }
-  renderBattle(`${extraText}${critText}你攻擊了${b.enemy.name}，造成${dmgToEnemy}點傷害${lifestealText}\n${counterText}${reviveText}${gaiaArmorText}`);
+  renderBattle(`${extraText}${styleText ? styleText + "\n" : ""}${critText}你攻擊了${b.enemy.name}，造成${dmgToEnemy}點傷害${lifestealText}\n${counterText}${reviveText}${gaiaArmorText}`);
   spawnDamagePopup("battleEnemyCard", `-${dmgToEnemy}`, crit ? "crit" : "dmg");
+}
+
+// 防禦：不攻擊，這回合承受傷害-60%，並蓄力(下一次攻擊x1.5)
+function battleGuard() {
+  const b = pendingBattle;
+  if (!b) return;
+  b.turn = (b.turn || 0) + 1;
+  const myStats = getEffectiveStats(state);
+  const hit = resolveEnemyHit(b, myStats);
+  if (hit.dmg > 0) hit.dmg = guardedDamage(hit.dmg);
+  const reviveText = hit.dmg > 0 ? applyEnemyDamage(hit.dmg) : "";
+  if (state.hp <= 0) {
+    const isPrologue = b.isPrologue;
+    pendingBattle = null;
+    sessionStorage.removeItem("embers_battle_snap");
+    renderGameOver(isPrologue);
+    return;
+  }
+  b.charged = true;
+  const counter = hit.stunned ? "敵人被擊暈，無法攻擊！" : hit.dodged ? "你閃避了敵人的攻擊！" : `你架起防禦，只承受了${hit.dmg}點傷害。`;
+  renderBattle(`🛡️ ${counter}\n🔥 你調整呼吸，下一次攻擊將蓄力！${reviveText}`);
+}
+
+// 使用醫療：消耗1份醫療，HP+25；這一回合不攻擊，敵人照常反擊
+function battleHeal() {
+  const b = pendingBattle;
+  if (!b || !battleActionAvailability(state).heal) return;
+  b.turn = (b.turn || 0) + 1;
+  const healed = Math.min(BATTLE_HEAL_AMOUNT, getEffectiveHpMax(state) - state.hp);
+  applyEffect({ hp: BATTLE_HEAL_AMOUNT, resources: { medicine: -1 } });
+  const myStats = getEffectiveStats(state);
+  const hit = resolveEnemyHit(b, myStats);
+  const reviveText = hit.dmg > 0 ? applyEnemyDamage(hit.dmg) : "";
+  if (state.hp <= 0) {
+    const isPrologue = b.isPrologue;
+    pendingBattle = null;
+    sessionStorage.removeItem("embers_battle_snap");
+    renderGameOver(isPrologue);
+    return;
+  }
+  const counter = hit.stunned ? "敵人被擊暈，無法攻擊！" : hit.dodged ? "你閃避了敵人的攻擊！" : `敵人趁機攻擊，造成${hit.dmg}點傷害！`;
+  renderBattle(`💊 你迅速處理傷口，HP+${healed}。\n${counter}${reviveText}`);
 }
 
 function battleFlee() {
