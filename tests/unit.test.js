@@ -2832,5 +2832,29 @@ test("死亡後不可把已死亡角色寫回存檔(renderGameOver不得在刪�
 });
 
 
+// ---------- 內容驗證器(給其他AI產的事件批次用) ----------
+test("內容驗證器：範例批次通過；故意寫錯的批次被擋下且列出各種錯誤", () => {
+  const { spawnSync } = require("child_process");
+  const path = require("path");
+  const run = f => spawnSync(process.execPath, [path.join(__dirname, "validate_content.js"), path.join(__dirname, "fixtures", f)], { encoding: "utf8" });
+  const ok = run("content_batch_ok.js");
+  assert.strictEqual(ok.status, 0, ok.stdout);
+  assert.ok(/通過/.test(ok.stdout));
+  const bad = run("content_batch_bad.js");
+  assert.strictEqual(bad.status, 1);
+  ["options必須有2~3個", "hp=99", "skillPoint", "gold", "gaia_whip", "id與現有事件重複", "phase必須是", "weight必須是", "超過100字", "roll"].forEach(k => assert.ok(bad.stdout.includes(k), "驗證器應報出：" + k));
+});
+
+test("內容需求單存在且包含關鍵章節(格式/effect範圍/因果鏈/condition資料/附錄)", () => {
+  const fs = require("fs"), path = require("path");
+  const p = path.join(__dirname, "../../規格文件/內容擴充需求單_給其他AI.md");
+  if (!fs.existsSync(p)) return; // 規格文件不在git內，CI環境可能沒有
+  const t = fs.readFileSync(p, "utf8");
+  ["事件格式", "effect", "因果鏈", "daysSinceFlagAtLeast", "showIf", "附錄 A", "附錄 D"].forEach(k => assert.ok(t.includes(k), "需求單缺少：" + k));
+  const D = require("../js/data.js");
+  assert.ok(t.includes("evt_found_supplies") && D.EVENTS.every(e => t.includes(e.id)), "附錄A應涵蓋所有現有事件(事件新增後要重新產生需求單)");
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
