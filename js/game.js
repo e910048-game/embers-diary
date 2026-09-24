@@ -2303,12 +2303,30 @@ function showDiary() {
   if (!todayEntry) {
     opts.push({ label: "✏️ 写下今日感受", onClick: () => showDiaryWrite() });
   }
+  { const sm = threadSummary(state); opts.push({ label: `📖 因果簿（完成${sm.done}／進行${sm.waiting}／共${sm.total}）`, onClick: showThreadBook }); }
   opts.push({ label: "💾 存檔備份", onClick: () => showSaveBackup(showDiary) });
   if ((state.loreFound || []).length > 0) {
     opts.push({ label: `📜 深淵日誌 (${state.loreFound.length}/${LORE_LOGS.length})`, onClick: showLoreArchive });
   }
   opts.push({ label: "返回", variant: "ghost", onClick: renderMain });
   renderOptions(opts);
+}
+
+// 因果簿：列出每條「選擇→回音」的線索目前的狀態。沒遇過的顯示？？？保留懸念
+function showThreadBook() {
+  renderStatusBar();
+  const icon = { done: "✅", waiting: "⏳", passed: "🚶", unknown: "❔" };
+  const rows = STORY_THREADS.map(th => {
+    const st = getThreadStatus(state, th);
+    if (st.status === "unknown") return `<div class="diaryEntry"><div class="diaryEntryDate">❔ ？？？</div><div class="diaryEntryBody" style="color:#8a9099">還沒遇到的故事……</div></div>`;
+    const extra = st.status === "done" && st.branchText ? `<div style="color:#8a9099;font-size:12px;margin-bottom:2px">${st.branchText}</div>` : "";
+    const wait = st.status === "waiting" ? `<div style="color:#8a9099;font-size:12px;margin-top:2px">回音還沒有出現，過幾天再看看。</div>` : "";
+    return `<div class="diaryEntry"><div class="diaryEntryDate">${icon[st.status]} ${th.title}</div><div class="diaryEntryBody">${extra}${st.text}${wait}</div></div>`;
+  }).join("");
+  const sm = threadSummary(state);
+  const seenN = (state.seenEvents || []).length;
+  renderText(`<div class="diaryPanel"><div class="diaryEntry"><div class="diaryEntryBody">你做過的選擇，世界都記得。<br>✅ 已有回音 ${sm.done}　⏳ 等待回音 ${sm.waiting}　🚶 沒有插手 ${sm.passed}<br>📚 已遇見過 ${seenN} / ${EVENTS.length} 種事件</div></div>${rows}</div>`);
+  renderOptions([{ label: "返回", variant: "ghost", onClick: showDiary }]);
 }
 
 // 深淵日誌閱覽：依取得順序列出已拿到的篇章，沒拿到的顯示「？？？」保留懸念

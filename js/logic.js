@@ -3,7 +3,7 @@
 (function (root) {
   const isNode = typeof module !== "undefined" && module.exports;
   const data = isNode ? require("./data.js") : root;
-  const { SAN_HALLUCINATION_LINES, WEATHER_TYPES, WEATHER_EVENT_LINES, LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
+  const { STORY_THREADS, SAN_HALLUCINATION_LINES, WEATHER_TYPES, WEATHER_EVENT_LINES, LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, COMPANIONS_REGISTRY, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, PROJECTS, CAMP_LEVELS } = data;
   const story = isNode ? require("./story.js") : root;
   const { MILESTONE_EVENTS } = story;
 
@@ -631,6 +631,23 @@
     if (r() >= chance) return "";
     return SAN_HALLUCINATION_LINES[Math.floor(r() * SAN_HALLUCINATION_LINES.length)];
   }
+  // ---------- 因果簿(2026-09-25)：把「你做過的選擇→之後的回音」攤開給玩家看 ----------
+  // 狀態：unknown=還沒遇到起點事件(顯示???)；passed=遇到了但沒選會設旗標的選項(沒插手)；waiting=已埋下因果、回音還沒發生；done=回音已發生
+  function getThreadStatus(state, th) {
+    const flags = state.flags || {};
+    const seen = (state.seenEvents || []).includes(th.startEvent);
+    const branch = (th.branches || []).find(b => flags[b.flag]);
+    if (th.doneFlag && flags[th.doneFlag]) return { status: "done", text: branch ? branch.done : th.done, branchText: branch ? branch.waiting : "" };
+    if (flags[th.startFlag]) return { status: "waiting", text: branch ? branch.waiting : th.waiting };
+    if (seen) return { status: "passed", text: "你遇到了這件事，但沒有插手。" };
+    return { status: "unknown", text: "" };
+  }
+  function threadSummary(state) {
+    const c = { unknown: 0, passed: 0, waiting: 0, done: 0, total: STORY_THREADS.length };
+    STORY_THREADS.forEach(th => { c[getThreadStatus(state, th).status]++; });
+    return c;
+  }
+
   // ---------- 戰鬥決策(2026-09-25)：除了攻擊/逃跑，新增重擊/防禦/醫療 ----------
   // 重擊：傷害x1.8，但敵人這回合的反擊x1.5(賭一把)；防禦：這回合不攻擊，承受傷害-60%，下一次攻擊蓄力x1.5(穩紮穩打)；
   // 醫療：消耗1醫療，HP+25，敵人照常反擊(危急時續命)
@@ -2804,7 +2821,7 @@
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
-    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, encodeSave, decodeSave, SAVE_EXPORT_PREFIX, defaultLegacy, updateLegacyOnDeath, legacyStartBonus, applyLegacyToNewState, LEGACY_BONUS_CAP, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, BATTLE_HEAVY_DMG_MULT, BATTLE_HEAVY_TAKEN_MULT, BATTLE_GUARD_REDUCTION, BATTLE_CHARGE_MULT, BATTLE_HEAL_AMOUNT, guardedDamage, heavyTakenDamage, battleActionAvailability, SAN_TIERS, SAN_COST_PER_KILL, sanRestRegen, getSanTier, sanEncounterDelta, getSanHallucinationLine, nightSanPressure, locationSanCost, applySanCollapse, noteEventSeen, weatherForDay, getWeather, weatherEncounterDelta, getWeatherEventLine, EXP_CURVE_FACTOR, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
+    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, encodeSave, decodeSave, SAVE_EXPORT_PREFIX, defaultLegacy, updateLegacyOnDeath, legacyStartBonus, applyLegacyToNewState, LEGACY_BONUS_CAP, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, getThreadStatus, threadSummary, BATTLE_HEAVY_DMG_MULT, BATTLE_HEAVY_TAKEN_MULT, BATTLE_GUARD_REDUCTION, BATTLE_CHARGE_MULT, BATTLE_HEAL_AMOUNT, guardedDamage, heavyTakenDamage, battleActionAvailability, SAN_TIERS, SAN_COST_PER_KILL, sanRestRegen, getSanTier, sanEncounterDelta, getSanHallucinationLine, nightSanPressure, locationSanCost, applySanCollapse, noteEventSeen, weatherForDay, getWeather, weatherEncounterDelta, getWeatherEventLine, EXP_CURVE_FACTOR, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,

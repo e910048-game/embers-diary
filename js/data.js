@@ -4638,14 +4638,46 @@ const GEMINI_BATCH_2 = [
 ];
 EVENTS.push(...GEMINI_BATCH_2);
 
+// ============ 因果簿(2026-09-25)：讓玩家看見「世界記得自己做過的事」 ============
+// 每條線索：startEvent=起點事件、startFlag=選了會設的旗標、doneFlag=回饋發生後設的旗標；
+// branches=三段式分支(中段選擇設的路線旗標)，每個分支各有自己的說明與結局文字
+const STORY_THREADS = [
+  { id: "th_neighbor", title: "敲門的鄰居", startEvent: "evt_neighbor_knock", startFlag: "neighbor_helped", doneFlag: "neighbor_return_done", waiting: "你曾用一份食物換過他的鐵罐。也許他還記得你。", done: "他留下了一個小布包當作回禮，然後消失在街角。" },
+  { id: "th_cat", title: "窗台上的貓", startEvent: "evt_stray_cat", startFlag: "cat_fed", doneFlag: "cat_return_done", waiting: "你餵過一隻橘貓。牠似乎還沒忘記。", done: "牠叼來一塊發光的零件放在窗台，像是在說謝謝。" },
+  { id: "th_campfire", title: "營火旁的陌生人", startEvent: "evt_campfire_stranger", startFlag: "campfire_shared", doneFlag: "campfire_return_done", waiting: "你分了食物給營火旁的人。他們大概還記得。", done: "其中一人帶著補給回來，說「這份食物我們一直記著」。" },
+  { id: "th_drawing", title: "牆上的塗鴉", startEvent: "evt_childrens_drawing", startFlag: "drawing_seen", doneFlag: "drawing_reply_done", waiting: "你在那面塗鴉前駐足過。過些日子也許會有新的變化。", done: "塗鴉旁多了一個新的小人，你在旁邊補上了自己。" },
+  { id: "th_treasure", title: "孩子的寶藏地圖", startEvent: "evt_kids_treasure_map", startFlag: "treasure_map_followed", doneFlag: "treasure_found_done", waiting: "你循著地圖出發了，紅叉就在前方。", done: "老樹下的餅乾盒裡，是孩子們珍藏的寶物。" },
+  { id: "th_pigeons", title: "屋簷下的鴿子", startEvent: "evt_pigeon_flock", startFlag: "pigeons_watched", doneFlag: "pigeons_nest_done", waiting: "你安靜地看過那群發光的鴿子。牠們也許會記得你。", done: "牠們在你的屋簷下築了巢，你取走了一枚蛋。" },
+  { id: "th_trader", title: "推車的商人", startEvent: "evt_scavenger_trade", startFlag: "trader_traded", doneFlag: "trader_return_done", waiting: "你和推車商人做過一筆交易。老主顧總會再見面。", done: "商人回來了，給了你「只給熟人的價」。" },
+  { id: "th_garden", title: "社區菜園", startEvent: "evt_community_garden", startFlag: "garden_harvested", doneFlag: "garden_regrowth_done", waiting: "你採收過荒廢菜園裡的作物。根還留在土裡。", done: "作物重新結了果，比上次更飽滿。" },
+  { id: "th_fox", title: "木雕狐狸", startEvent: "evt_chain_fox_carving", startFlag: "fox_carving_honored", doneFlag: "fox_carving_done", waiting: "你把木狐狸擦乾淨擺好。它似乎在替誰守著路。", done: "狐狸周圍多了一圈小石子，旁邊還壓著草藥與硬糖。" },
+  { id: "th_musicbox", title: "卡住的八音盒", startEvent: "evt_chain_music_box", startFlag: "music_box_repaired", doneFlag: "music_box_done", waiting: "你修好了那個八音盒。旋律飄得很遠，也許有人聽見。", done: "牆上有人留言謝謝你，還掛著一壺淨水與彈藥。" },
+  { id: "th_gull", title: "鐵絲網上的白鳥", startEvent: "evt_chain_trapped_gull", startFlag: "gull_freed", doneFlag: "gull_return_done", waiting: "你放走了被鐵絲網纏住的白鳥。牠飛向了塵霧深處。", done: "深夜，窗台上落下一束野生根莖和幾根幽藍的羽毛。" },
+  { id: "th_grave", title: "防空壕旁的石塚", startEvent: "evt_chain_nameless_grave", startFlag: "grave_built", doneFlag: "grave_tribute_done", waiting: "你為無名的遺骸堆了石塚。也許有人在找他。", done: "一位旅人在石塚前哀悼，那是他找了三年的兄弟。" },
+  { id: "th_sapling", title: "岩縫間的種子", startEvent: "evt_long_sapling_plant", startFlag: "sapling_planted_deep", doneFlag: "sapling_bloom_done", waiting: "你把種子埋進了土裡。要很久很久才會知道結果。", done: "泥坑裡長出了一株齊腰高的灌木，結出油亮的野果。" },
+  { id: "th_wallcode", title: "防空洞的求生標記", startEvent: "evt_long_wall_code_mark", startFlag: "wall_code_marked", doneFlag: "wall_code_return_done", waiting: "你在磚牆上補全了求生標記，還留了繃帶。", done: "磚縫裡多了一個油紙包，是流民留下的回禮。" },
+  { id: "th_rail", title: "鐵軌旁的手記", startEvent: "evt_long_rail_message_start", startFlag: "rail_message_signed", doneFlag: "rail_message_done", waiting: "你在手記上寫下了今天的日期。不知道下一位讀者是誰。", done: "手記多了一整頁回信，還夾著幾枚晶燼。" },
+  { id: "th_watertower", title: "搖晃的水塔", startEvent: "evt_chain_watertower_start", startFlag: "chain1_tower_checked", doneFlag: "chain1_tower_end_done", waiting: "你檢查過那座搖晃的水塔。它撐不了太久，得做決定。",
+    branches: [
+      { flag: "chain1_path_repaired", waiting: "你決定加固水塔，保護底下的水井。", done: "水井重新運作，木牌寫著「路過者皆可取用」。" },
+      { flag: "chain1_path_scrapped", waiting: "你拆走了水塔換取廢料，水井被碎石掩埋。", done: "凹坑積滿死水，變異苔蘚在裡面瘋長。" },
+    ] },
+  { id: "th_hunter", title: "捕獸夾上的獵人", startEvent: "evt_chain_wounded_hunter_start", startFlag: "chain2_hunter_bandaged", doneFlag: "chain2_hunter_end_done", waiting: "你替一位受傷的獵人包紮過。後來他發起了高燒。",
+    branches: [
+      { flag: "chain2_path_healed", waiting: "你用抗生素救了他。他握著你的手腕，記住了你。", done: "門外掛著一隻剛剝皮的野鹿腿，署名是「康復的瘸子」。" },
+      { flag: "chain2_path_robbed", waiting: "你拿走了他的獵槍與彈藥，把他留在破廟裡。", done: "林間響起一聲冷槍。他活了下來，也記住了你。" },
+    ] },
+];
+
 if (typeof module !== "undefined") {
-  module.exports = { SAN_HALLUCINATION_LINES, GEMINI_BATCH_2, GEMINI_BATCH_1, BASE_LINKED_EVENTS, LATE_EVENTS_2, WEATHER_TYPES, WEATHER_EVENT_LINES, SECOND_OPTIONS, LATE_EVENTS, LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
+  module.exports = { STORY_THREADS, SAN_HALLUCINATION_LINES, GEMINI_BATCH_2, GEMINI_BATCH_1, BASE_LINKED_EVENTS, LATE_EVENTS_2, WEATHER_TYPES, WEATHER_EVENT_LINES, SECOND_OPTIONS, LATE_EVENTS, LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
   window.GEMINI_BATCH_2 = GEMINI_BATCH_2;
   window.GEMINI_BATCH_1 = GEMINI_BATCH_1;
   window.BASE_LINKED_EVENTS = BASE_LINKED_EVENTS;
   window.LATE_EVENTS_2 = LATE_EVENTS_2;
+  window.STORY_THREADS = STORY_THREADS;
   window.SAN_HALLUCINATION_LINES = SAN_HALLUCINATION_LINES;
   window.WEATHER_TYPES = WEATHER_TYPES;
   window.WEATHER_EVENT_LINES = WEATHER_EVENT_LINES;

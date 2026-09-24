@@ -3064,5 +3064,45 @@ test("戰鬥選項接線：非序章戰鬥有重擊/防禦/醫療；battleAttack
 });
 
 
+// ---------- 因果簿 ----------
+test("因果簿登記表完整性：每條線索的起點事件存在、起點旗標由起點事件的選項設定、完成旗標/分支旗標都真的有事件會設定", () => {
+  const D = require("../js/data.js");
+  const setBy = flag => D.EVENTS.filter(e => (e.options || []).some(o => o.effect && o.effect.setFlag === flag)).map(e => e.id);
+  assert.ok(D.STORY_THREADS.length >= 17);
+  const ids = new Set();
+  D.STORY_THREADS.forEach(th => {
+    assert.ok(!ids.has(th.id), "id重複 " + th.id); ids.add(th.id);
+    const start = D.EVENTS.find(e => e.id === th.startEvent);
+    assert.ok(start, th.id + " 起點事件不存在");
+    assert.ok(setBy(th.startFlag).includes(th.startEvent), th.id + " 起點旗標" + th.startFlag + "不是由起點事件設定");
+    assert.ok(th.doneFlag ? setBy(th.doneFlag).length > 0 : true, th.id + " 完成旗標沒有事件會設定");
+    (th.branches || []).forEach(b => { assert.ok(setBy(b.flag).length > 0, th.id + " 分支旗標" + b.flag + "沒人設定"); assert.ok(b.waiting && b.done); });
+    assert.ok(th.title && (th.branches ? true : th.waiting && th.done));
+  });
+  D.STORY_THREADS.forEach(th => { [th.waiting, th.done].filter(Boolean).forEach(t => assert.ok(t.length <= 100)); });
+});
+
+test("因果簿狀態：unknown→passed→waiting→done；分支線索顯示對應路線文字", () => {
+  const D = require("../js/data.js");
+  const th = D.STORY_THREADS.find(t => t.id === "th_cat");
+  const s = L.defaultState();
+  assert.strictEqual(L.getThreadStatus(s, th).status, "unknown");
+  s.seenEvents.push(th.startEvent);
+  assert.strictEqual(L.getThreadStatus(s, th).status, "passed");
+  s.flags[th.startFlag] = 5;
+  assert.strictEqual(L.getThreadStatus(s, th).status, "waiting");
+  s.flags[th.doneFlag] = 9;
+  const done = L.getThreadStatus(s, th); assert.strictEqual(done.status, "done"); assert.strictEqual(done.text, th.done);
+  const tower = D.STORY_THREADS.find(t => t.id === "th_watertower");
+  const t = L.defaultState(); t.seenEvents.push(tower.startEvent); t.flags[tower.startFlag] = 3;
+  assert.strictEqual(L.getThreadStatus(t, tower).text, tower.waiting);
+  t.flags.chain1_path_scrapped = 8; assert.strictEqual(L.getThreadStatus(t, tower).text, tower.branches[1].waiting);
+  t.flags[tower.doneFlag] = 20; const d2 = L.getThreadStatus(t, tower); assert.strictEqual(d2.text, tower.branches[1].done); assert.ok(d2.branchText);
+  const sum = L.threadSummary(t); assert.strictEqual(sum.done, 1); assert.strictEqual(sum.total, D.STORY_THREADS.length);
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  assert.ok(/function showThreadBook\(/.test(src) && /onClick: showThreadBook/.test(src));
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
