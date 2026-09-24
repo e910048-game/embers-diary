@@ -293,6 +293,7 @@
       facilities: { command: 0, greenhouse: 0, workshop: 0, radar: 0 }, // 22.2
       farm: { plots: FARM_PLOT_LAYOUT.reduce((acc, p, idx) => { acc[p.id] = { unlocked: idx === 0, crop: null }; return acc; }, {}) }, // 農場區(2026-07-02)：僅第一塊地預設解鎖
       recentEvents: [], // 事件近期降權(2026-09-24)：最近出現過的事件id(最多10個)，pickEvent對它們降權
+      telemetry: {}, // 本機統計(2026-09-25)：{group:{key:次數}}，只存在本機，供「回報資訊」使用
       pendingLevelUp: null, // 升級回饋(2026-09-20)：{from,to}，回主畫面時顯示升級面板後清空
       loreFound: [], // 深淵日誌(2026-09-20)：已取得的LORE_LOGS id，依序掉落
       recap: {}, // 前情回顧(2026-09-20)：這個階段發生的事 {hpStart,wins,enemy,loc,gathers}，endPhase時消費並重置
@@ -631,6 +632,29 @@
     if (r() >= chance) return "";
     return SAN_HALLUCINATION_LINES[Math.floor(r() * SAN_HALLUCINATION_LINES.length)];
   }
+  // ---------- 本機統計(不上傳，只用於玩家自己複製「回報資訊」給開發者) ----------
+  function bumpTelemetry(state, group, key, n) {
+    if (!state.telemetry) state.telemetry = {};
+    const g = state.telemetry[group] || (state.telemetry[group] = {});
+    g[key] = (g[key] || 0) + (n === undefined ? 1 : n);
+  }
+  // 回報資訊文字：版本/進度/資源/設施/最近事件/統計/死亡紀錄，方便玩家貼給開發者
+  function buildReportText(state, legacy, version, errorLog) {
+    const lines = [];
+    const t = state.telemetry || {};
+    const grp = k => t[k] ? Object.entries(t[k]).map(([a, b]) => a + ":" + b).join(" ") : "-";
+    lines.push("【餘燼日記 回報資訊】");
+    lines.push("版本 v" + (version || "?") + "｜第" + state.day + "天(" + (state.phase === "day" ? "白天" : "夜晚") + ")｜Lv." + state.level + "｜HP " + state.hp + "/" + state.hpMax + "｜SAN " + state.san + "(" + getSanTier(state).name + ")｜體力 " + state.stamina + "/" + state.staminaMax);
+    lines.push("資源 食" + state.resources.food + " 水" + state.resources.water + " 醫" + state.resources.medicine + " 彈" + state.resources.ammo + " 廢" + state.resources.scrap + "｜晶燼 " + (state.currency && state.currency.embers));
+    lines.push("設施 指揮" + state.facilities.command + " 溫室" + state.facilities.greenhouse + " 工坊" + state.facilities.workshop + " 雷達" + state.facilities.radar + "｜營地Lv" + (state.campLevelSeen || 1) + "｜天氣 " + getWeather(state).name);
+    lines.push("最近事件：" + ((state.recentEvents || []).join(", ") || "-"));
+    lines.push("行動統計：" + grp("actions") + "｜戰鬥：" + grp("battles") + "｜精神：" + grp("sanity"));
+    lines.push("因果簿：完成" + threadSummary(state).done + " 等待" + threadSummary(state).waiting + "｜已見事件 " + (state.seenEvents || []).length);
+    if (legacy && legacy.runs) lines.push("過去 " + legacy.runs + " 局，最遠第" + legacy.bestDay + "天；最近死亡：" + ((legacy.deaths || []).slice(-5).map(d => "第" + d.day + "天 Lv" + d.level + " " + d.cause).join("；") || "-"));
+    if (errorLog && errorLog.length) lines.push("最近錯誤：" + errorLog.slice(-3).join(" | "));
+    return lines.join("\n");
+  }
+
   // ---------- 因果簿(2026-09-25)：把「你做過的選擇→之後的回音」攤開給玩家看 ----------
   // 狀態：unknown=還沒遇到起點事件(顯示???)；passed=遇到了但沒選會設旗標的選項(沒插手)；waiting=已埋下因果、回音還沒發生；done=回音已發生
   function getThreadStatus(state, th) {
@@ -2225,9 +2249,10 @@
 
   // ---------- 傳承(2026-09-24)：死亡後留下的東西，跨局保存(存在獨立的legacy欄位，不隨存檔刪除) ----------
   const LEGACY_BONUS_CAP = 60;
-  function defaultLegacy() { return { runs: 0, bestDay: 0, bestLevel: 0, totalDays: 0, lastDay: 0, lastLevel: 0 }; }
-  function updateLegacyOnDeath(legacy, state) {
+  function defaultLegacy() { return { runs: 0, bestDay: 0, bestLevel: 0, totalDays: 0, lastDay: 0, lastLevel: 0, deaths: [] }; }
+  function updateLegacyOnDeath(legacy, state, cause) {
     const l = { ...defaultLegacy(), ...(legacy || {}) };
+    l.deaths = (Array.isArray(l.deaths) ? l.deaths : []).concat([{ day: state.day, level: state.level, cause: cause || "未知" }]).slice(-10);
     l.runs += 1;
     l.lastDay = state.day; l.lastLevel = state.level;
     l.bestDay = Math.max(l.bestDay, state.day); l.bestLevel = Math.max(l.bestLevel, state.level);
@@ -2821,7 +2846,7 @@
     addStatusEffect, tickStatusEffects, maybeGenerateShield, absorbShield, maybeStunEnemy,
     applyDefShred, getShreddedDef, getDefShredPerHit,
     applyAtkShred, getShreddedAtk, getAtkShredPerHit,
-    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, encodeSave, decodeSave, SAVE_EXPORT_PREFIX, defaultLegacy, updateLegacyOnDeath, legacyStartBonus, applyLegacyToNewState, LEGACY_BONUS_CAP, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, getThreadStatus, threadSummary, BATTLE_HEAVY_DMG_MULT, BATTLE_HEAVY_TAKEN_MULT, BATTLE_GUARD_REDUCTION, BATTLE_CHARGE_MULT, BATTLE_HEAL_AMOUNT, guardedDamage, heavyTakenDamage, battleActionAvailability, SAN_TIERS, SAN_COST_PER_KILL, sanRestRegen, getSanTier, sanEncounterDelta, getSanHallucinationLine, nightSanPressure, locationSanCost, applySanCollapse, noteEventSeen, weatherForDay, getWeather, weatherEncounterDelta, getWeatherEventLine, EXP_CURVE_FACTOR, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
+    getLifestealRatio, getDodgeChance, getIgnoreDefRatio, encodeSave, decodeSave, SAVE_EXPORT_PREFIX, defaultLegacy, updateLegacyOnDeath, legacyStartBonus, applyLegacyToNewState, LEGACY_BONUS_CAP, FACILITY_CELLS, isFacilityCell, relocateFurnitureFromFacilityCells, recordLocationVisit, getVisitMemoryLine, grantNextLore, getLevelUpSummary, threatLeadDays, radarEncounterReduction, radarLevel, noteRecap, resetRecap, buildRecapLine, getCompanionThreatLine, pickHomeCompanion, getCompanionHomeLine, bumpTelemetry, buildReportText, getThreadStatus, threadSummary, BATTLE_HEAVY_DMG_MULT, BATTLE_HEAVY_TAKEN_MULT, BATTLE_GUARD_REDUCTION, BATTLE_CHARGE_MULT, BATTLE_HEAL_AMOUNT, guardedDamage, heavyTakenDamage, battleActionAvailability, SAN_TIERS, SAN_COST_PER_KILL, sanRestRegen, getSanTier, sanEncounterDelta, getSanHallucinationLine, nightSanPressure, locationSanCost, applySanCollapse, noteEventSeen, weatherForDay, getWeather, weatherEncounterDelta, getWeatherEventLine, EXP_CURVE_FACTOR, getFactionDamageMultiplier, getMechanicalDamageMultiplier, getBossFactionCounterMult, combineSpecialDamageMultipliers, SPECIAL_DAMAGE_MULT_CAP,
     getBattleDamageReductionRatio, gaiaCheatDeath, factionTier,
     FACTION_RESONANCE, factionResonanceActive, getActiveFactionResonances, getFactionResonanceBonus,
     instantiateEquipment, getEquipRef, getInstance, isInstanceRef, pixelIconSvg,

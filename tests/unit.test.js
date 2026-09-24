@@ -3104,5 +3104,39 @@ test("因果簿狀態：unknown→passed→waiting→done；分支線索顯示�
 });
 
 
+// ---------- 回報資訊/本機統計/設定/傳承死因 ----------
+test("本機統計與回報資訊：bumpTelemetry累加；buildReportText含版本/進度/最近事件/統計/死亡紀錄/錯誤", () => {
+  const s = L.defaultState();
+  L.bumpTelemetry(s, "actions", "gather"); L.bumpTelemetry(s, "actions", "gather"); L.bumpTelemetry(s, "battles", "won", 3);
+  assert.deepStrictEqual(s.telemetry, { actions: { gather: 2 }, battles: { won: 3 } });
+  s.recentEvents = ["evt_a", "evt_b"]; s.day = 12;
+  const lg = L.updateLegacyOnDeath(null, { day: 30, level: 4 }, "蹣跚的感染者");
+  const text = L.buildReportText(s, lg, "272", ["boom@game.js:1"]);
+  ["餘燼日記 回報資訊", "v272", "第12天", "evt_a, evt_b", "gather:2", "won:3", "蹣跚的感染者", "boom@game.js:1", "因果簿"].forEach(k => assert.ok(text.includes(k), "回報資訊缺少：" + k));
+  assert.ok(L.buildReportText(L.defaultState(), null, "1", []).includes("最近事件：-"));
+});
+
+test("傳承死亡紀錄：記錄死因，只保留最近10筆；舊格式legacy沒有deaths也能運作", () => {
+  let lg = null;
+  for (let i = 1; i <= 12; i++) lg = L.updateLegacyOnDeath(lg, { day: i, level: 1 }, "原因" + i);
+  assert.strictEqual(lg.deaths.length, 10);
+  assert.strictEqual(lg.deaths[9].cause, "原因12"); assert.strictEqual(lg.deaths[0].cause, "原因3");
+  const old = { runs: 2, bestDay: 40, bestLevel: 5, totalDays: 60, lastDay: 20, lastLevel: 3 }; // 沒有deaths的舊格式
+  const upd = L.updateLegacyOnDeath(old, { day: 9, level: 2 });
+  assert.strictEqual(upd.runs, 3); assert.strictEqual(upd.deaths[0].cause, "未知");
+});
+
+test("設定與音效震動與重複採集接線(靜態檢查)：設定面板/回報面板/標題與日記入口/開機載入設定/採集可再來一次/死因記錄", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  ["function showSettings(", "function showReport(", "function loadSettings(", "function haptic(", "function sfx(", "function typewriterStep("].forEach(f => assert.ok(src.includes(f), f));
+  assert.ok(/showSettings\(renderTitle\)/.test(src) && /showSettings\(showDiary\)/.test(src) && /showReport\(showDiary\)/.test(src));
+  assert.ok(/loadSettings\(\);[\s\S]{0,60}renderTitle\(\)/.test(src.slice(src.lastIndexOf("try {"))), "開機要先載入設定");
+  assert.ok(/再採集一次/.test(src));
+  assert.ok(/deathCause/.test(src) && /updateLegacyOnDeath\(legacyBefore, state, deathCause\)/.test(src));
+  assert.ok(/typewriterStep\(text\.length\)/.test(src), "打字機速度要用設定");
+  ["sfx(\"levelup\")", "sfx(\"bloodmoon\")", "haptic("].forEach(k => assert.ok(src.includes(k), k));
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

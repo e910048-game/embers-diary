@@ -46,6 +46,40 @@ function sysLogHtml() {
   return "";
 }
 
+// ---------- 設定 / 音效 / 震動 / 錯誤記錄(2026-09-25) ----------
+const SETTINGS_KEY = "embers_diary_settings_v1";
+const DEFAULT_SETTINGS = { textSpeed: "normal", fontScale: 1, vibrate: true, sound: false };
+let settings = { ...DEFAULT_SETTINGS };
+function loadSettings() {
+  try { settings = { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") }; } catch (_) { settings = { ...DEFAULT_SETTINGS }; }
+  applySettings();
+}
+function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {} }
+function applySettings() {
+  const app = document.getElementById("app");
+  if (app) app.style.zoom = settings.fontScale === 1 ? "" : String(settings.fontScale); // 字體大小：整體縮放
+}
+// 每個字幕幀顯示幾個字：一般1、快3、瞬間全部
+function typewriterStep(total) { return settings.textSpeed === "instant" ? total : settings.textSpeed === "fast" ? 3 : 1; }
+function haptic(pattern) { try { if (settings.vibrate && navigator.vibrate) navigator.vibrate(pattern); } catch (_) {} }
+let _audioCtx = null;
+function sfx(kind) {
+  if (!settings.sound) return;
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const notes = { hit: [[220, 0.06]], crit: [[330, 0.05], [520, 0.08]], hurt: [[110, 0.14]], levelup: [[392, 0.1], [523, 0.1], [784, 0.18]], bloodmoon: [[73, 0.4]], click: [[440, 0.03]] }[kind] || [];
+    let t = _audioCtx.currentTime;
+    notes.forEach(([freq, dur]) => {
+      const o = _audioCtx.createOscillator(), g = _audioCtx.createGain();
+      o.type = kind === "hurt" || kind === "bloodmoon" ? "sawtooth" : "square"; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.04, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(_audioCtx.destination); o.start(t); o.stop(t + dur); t += dur;
+    });
+  } catch (_) {}
+}
+const __errLog = [];
+window.addEventListener("error", e => { __errLog.push(String(e.message || e).slice(0, 80) + "@" + String(e.filename || "").split("/").pop() + ":" + (e.lineno || "?")); if (__errLog.length > 5) __errLog.shift(); });
+
 // ---------- 傳承(跨局，存在獨立的localStorage欄位，死亡刪存檔時不受影響) ----------
 const LEGACY_KEY = "embers_diary_legacy_v1";
 function loadLegacy() {
@@ -383,10 +417,12 @@ function renderText(text, opts = {}) {
   el.className = cls.join(" ");
   screen.innerHTML = "";
   screen.appendChild(el);
-  if (opts.kind === "event" && !text.includes("<")) {
+  if (opts.kind === "event" && !text.includes("<") && settings.textSpeed === "instant") {
+    el.textContent = text; // 文字速度「瞬間」：不跑打字機，直接顯示全文
+  } else if (opts.kind === "event" && !text.includes("<")) {
     let i = 0;
     const step = () => {
-      if (i <= text.length) { el.textContent = text.slice(0, i++) + (i <= text.length ? "█" : ""); _twFrame = requestAnimationFrame(step); }
+      if (i <= text.length) { el.textContent = text.slice(0, i) + (i + typewriterStep(text.length) <= text.length ? "█" : ""); i += typewriterStep(text.length); _twFrame = requestAnimationFrame(step); }
       else { _twFrame = null; }
     };
     el.addEventListener("click", () => { if (_twFrame) { cancelAnimationFrame(_twFrame); _twFrame = null; el.textContent = text; } }, { once: true });
@@ -2304,6 +2340,8 @@ function showDiary() {
     opts.push({ label: "✏️ 写下今日感受", onClick: () => showDiaryWrite() });
   }
   { const sm = threadSummary(state); opts.push({ label: `📖 因果簿（完成${sm.done}／進行${sm.waiting}／共${sm.total}）`, onClick: showThreadBook }); }
+  opts.push({ label: "⚙️ 設定", onClick: () => showSettings(showDiary) });
+  opts.push({ label: "🛠️ 回報資訊", onClick: () => showReport(showDiary) });
   opts.push({ label: "💾 存檔備份", onClick: () => showSaveBackup(showDiary) });
   if ((state.loreFound || []).length > 0) {
     opts.push({ label: `📜 深淵日誌 (${state.loreFound.length}/${LORE_LOGS.length})`, onClick: showLoreArchive });
@@ -2384,6 +2422,7 @@ function showExploreChoice() {
 }
 
 function doExplore() {
+  bumpTelemetry(state, "actions", "search");
   const result = spendStamina(state, "explore_near");
   if (state.hp <= 0) { renderGameOver(); return; }
   const milestone = getMilestoneEvent(state);
@@ -2851,6 +2890,7 @@ function resolveLocationCore(loc) {
   if (state.hp <= 0) { renderGameOver(); return null; }
   const travelText = stResult.overdraw ? overdrawFlavor(stResult.streak) : "";
   const travelChips = staminaCostChip(stResult);
+  bumpTelemetry(state, "actions", loc.distance === "far" ? "far" : "near");
   if (loc.distance === "far") {
     const farCost = { resources: { food: -FAR_TRAVEL_COST.food, water: -FAR_TRAVEL_COST.water } };
     const sanCost = locationSanCost(loc);
@@ -2955,6 +2995,7 @@ function doGather() {
   state.questFlags.repeatGatherCount = (state.questFlags.repeatGatherCount || 0) + 1; // 任務系統：side_repeat_gather計數(2026-07-06)
   const gain = gatherYield(Math.random, state);
   noteRecap(state, "gather");
+  bumpTelemetry(state, "actions", "gather");
   if (result.overdraw) {
     for (const k in gain) gain[k] = Math.floor(gain[k] * result.resourceMultiplier);
   }
@@ -2963,7 +3004,12 @@ function doGather() {
   const flavor = GATHER_TEXTS[Math.floor(Math.random() * GATHER_TEXTS.length)];
   const overdrawText = result.overdraw ? overdrawFlavor(result.streak) : "";
   renderResult(flavor + overdrawText, { resources: gain }, staminaCostChip(result));
-  renderOptions([{ label: "繼續", variant: "ghost", onClick: () => finishAction() }]);
+  // 重複行動：常用的採集可以直接再來一次，不必每次回到主畫面再點兩層
+  const canRepeat = state.stamina >= 1 && (state.hp / state.hpMax) >= 0.25;
+  renderOptions([
+    ...(canRepeat ? [{ label: "🧺 再採集一次", hint: `體力-${actionStaminaCost(state, "gather")}`, onClick: () => { applyActionRegen(state); doGather(); } }] : []),
+    { label: "繼續", variant: "ghost", onClick: () => finishAction() }
+  ]);
 }
 
 function showLounge() {
@@ -3016,6 +3062,7 @@ function doRest() {
   const gain = { hp: 15 + restHealAmount(state), resources: { food: -1, water: -1 } };
   applyEffect(gain);
   // 精神消耗機制(2026-09-25)：夜晚好好睡一覺才能完整恢復精神，白天只是小憩(30%)，精神低於50時睡得更沉(x1.6)
+  bumpTelemetry(state, "actions", "rest");
   const sanRegen = sanRestRegen(state, state.phase);
   state.san = clamp(state.san + sanRegen, 0, getEffectiveSanMax(state));
   // 2026-07-04修正：支線「彼此照顧」(side_companion_care)要求careCompletedCount>=5，但這個計數器
@@ -3168,6 +3215,7 @@ ${formatEffect(surge.reward)}${loreText}`, { kind: "event" });
 }
 
 function showBloodMoonTransition(callback) {
+  sfx("bloodmoon"); haptic([120, 60, 200]);
   const overlay = document.createElement("div");
   overlay.className = "bloodMoonTransition";
   overlay.innerHTML = `
@@ -3248,6 +3296,7 @@ function showDawnTransition(callback, recapLine) {
 }
 
 function showLevelUpPanel(lines, lu, callback) {
+  sfx("levelup"); haptic([40, 40, 80]);
   const overlay = document.createElement("div");
   overlay.className = "phaseTransition levelUpTransition";
   overlay.innerHTML = `
@@ -3330,6 +3379,8 @@ function endPhase(opts = {}) {
     return;
   }
   const sanCollapse = applySanCollapse(state); // SAN歸零：階段結束時精神崩潰(扣HP/物資，SAN回15)
+  if (sanCollapse) bumpTelemetry(state, "sanity", "collapse");
+  if (state.san < 50) bumpTelemetry(state, "sanity", "lowPhases");
   const prevDay = state.day;
   const prevPhase = state.phase;
   advancePhase(state);
@@ -3381,7 +3432,9 @@ function renderGameOver(isPrologue) {
   }
   // 傳承(2026-09-24)：死亡時記錄這一局，並立刻刪掉存檔(避免重整後「繼續旅程」讀到已死亡的存檔、也避免重複記錄)
   const legacyBefore = loadLegacy();
-  const legacyAfter = updateLegacyOnDeath(legacyBefore, state);
+  const deathCause = lastDamageSource || ((state.resources.food <= 0 || state.resources.water <= 0) ? "飢渴" : "意外");
+  lastDamageSource = null;
+  const legacyAfter = updateLegacyOnDeath(legacyBefore, state, deathCause);
   saveLegacy(legacyAfter);
   try { localStorage.removeItem(SAVE_KEY); sessionStorage.removeItem("embers_battle_snap"); } catch (_) {}
   const nextBonus = legacyStartBonus(legacyAfter);
@@ -3474,7 +3527,10 @@ function resolveEnemyHit(b, myStats) {
   return { dmg: Math.max(0, dmg), dodged: false };
 }
 
+let lastDamageSource = null; // 最近一次造成傷害的來源(死亡原因統計用)
 function applyEnemyDamage(rawDmg) {
+  if (pendingBattle && pendingBattle.enemy) lastDamageSource = pendingBattle.enemy.name;
+  if (rawDmg > 0) { haptic(40); sfx("hurt"); }
   maybeGenerateShield(state, rawDmg);
   const dmg = absorbShield(state, rawDmg);
   applyEffect({ hp: -dmg });
@@ -3543,6 +3599,9 @@ function battleAttack(opts) {
 
   if (b.enemy.hpLeft <= 0) {
     noteRecap(state, "win", b.enemy.name);
+    bumpTelemetry(state, "battles", "won");
+    lastDamageSource = null;
+    sfx("crit"); haptic(30);
     if (!b.isPrologue) applyEffect({ san: -SAN_COST_PER_KILL }); // 精神消耗：殺戮會磨損心智
     state.questFlags.totalKills = (state.questFlags.totalKills || 0) + 1; // 任務系統：ach_kills_50計數
     state.questFlags.repeatKillCount = (state.questFlags.repeatKillCount || 0) + 1; // 任務系統：side_repeat_kills計數(2026-07-06)
@@ -3679,6 +3738,8 @@ function battleFlee() {
   const myStats = getEffectiveStats(state);
   if (Math.random() < 0.5) {
     renderStatusBar();
+        bumpTelemetry(state, "battles", "fled");
+    lastDamageSource = null;
         renderText("🏃 你趁機脫離了戰鬥，成功逃跑！", { kind: "event" });
     const onEnd = b.onEnd;
     pendingBattle = null;
@@ -4264,6 +4325,11 @@ function renderTitle() {
   backup.textContent = "💾 存檔備份（匯出／匯入）";
   backup.onclick = () => showSaveBackup(renderTitle);
   box.appendChild(backup);
+  const setBtn = document.createElement("button");
+  setBtn.className = "choiceBtn ghost";
+  setBtn.textContent = "⚙️ 設定";
+  setBtn.onclick = () => showSettings(renderTitle);
+  box.appendChild(setBtn);
   const lg = loadLegacy();
   if (lg.runs > 0) {
     const note = document.createElement("div");
@@ -4271,6 +4337,54 @@ function renderTitle() {
     note.textContent = "🕯️ 曾有 " + lg.runs + " 位倖存者倒下，最遠撐到第 " + lg.bestDay + " 天（最高 Lv." + lg.bestLevel + "）";
     box.appendChild(note);
   }
+  screen.appendChild(box);
+}
+
+// 設定面板(2026-09-25)：文字速度/字體大小/震動/音效，存在本機
+function showSettings(back) {
+  statusBar.innerHTML = "";
+  const speedName = { normal: "一般", fast: "快", instant: "瞬間" }, scaleName = { 1: "標準", 1.15: "大", 1.3: "特大" };
+  screen.innerHTML = `<div class="storyCard"><h1>⚙️ 設定</h1><p style="font-size:13px;color:#8a9099;line-height:1.6">設定只存在這支手機的瀏覽器裡。</p></div>`;
+  const box = document.createElement("div");
+  box.className = "optionBox";
+  const add = (label, hint, fn, cls) => {
+    const b = document.createElement("button");
+    b.className = "choiceBtn " + (cls || "");
+    b.innerHTML = `<span>${label}</span><span class="hint">${hint}</span>`;
+    b.onclick = () => { fn(); saveSettings(); applySettings(); showSettings(back); };
+    box.appendChild(b);
+  };
+  add("📜 文字速度：" + speedName[settings.textSpeed], "點擊切換 一般 → 快 → 瞬間", () => { settings.textSpeed = { normal: "fast", fast: "instant", instant: "normal" }[settings.textSpeed]; });
+  add("🔤 字體大小：" + (scaleName[settings.fontScale] || "標準"), "點擊切換 標準 → 大 → 特大", () => { settings.fontScale = { 1: 1.15, 1.15: 1.3, 1.3: 1 }[settings.fontScale] || 1; });
+  add("📳 震動：" + (settings.vibrate ? "開" : "關"), "受傷、擊殺、升級、血月時輕震", () => { settings.vibrate = !settings.vibrate; if (settings.vibrate) haptic(60); });
+  add("🔊 音效：" + (settings.sound ? "開" : "關"), "簡單的電子音效(預設關閉)", () => { settings.sound = !settings.sound; if (settings.sound) sfx("levelup"); });
+  const back1 = document.createElement("button");
+  back1.className = "choiceBtn ghost"; back1.textContent = "返回"; back1.onclick = () => back();
+  box.appendChild(back1);
+  screen.appendChild(box);
+}
+
+// 回報資訊(2026-09-25)：一鍵產生「版本/進度/最近事件/統計/死亡紀錄」文字，玩家複製後貼給開發者
+function showReport(back) {
+  statusBar.innerHTML = "";
+  const ver = ((document.querySelector('script[src*="game.js"]') || {}).src || "").split("v=")[1] || "?";
+  const rs = (state && state.day) ? state : (hasSave() ? loadGame() : defaultState());
+  const text = buildReportText(rs, loadLegacy(), ver, __errLog);
+  screen.innerHTML = `<div class="storyCard"><h1>🛠️ 回報資訊</h1><p style="font-size:13px;color:#8a9099;line-height:1.6">遇到問題或想回饋時，把下面的文字複製後貼給開發者，就能知道你的進度與最近發生的事。這些資料只存在你的手機，不會自動上傳。</p><textarea id="reportBox" readonly style="width:100%;box-sizing:border-box;min-height:180px;background:#141820;color:#cfd6dc;border:1px solid #2c3440;border-radius:6px;padding:8px;font-size:12px;font-family:monospace;">${text}</textarea><div id="reportMsg" style="margin-top:8px;font-size:13px;min-height:18px"></div></div>`;
+  const box = document.createElement("div");
+  box.className = "optionBox";
+  const copy = document.createElement("button");
+  copy.className = "choiceBtn primary"; copy.textContent = "📋 複製回報資訊";
+  copy.onclick = () => {
+    const done = () => { const m = document.getElementById("reportMsg"); if (m) { m.style.color = "#7fe9a8"; m.textContent = "已複製！請貼給開發者。"; } };
+    const el = document.getElementById("reportBox");
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => { el.select(); try { document.execCommand("copy"); } catch (_) {} done(); });
+    else { el.select(); try { document.execCommand("copy"); } catch (_) {} done(); }
+  };
+  box.appendChild(copy);
+  const bk = document.createElement("button");
+  bk.className = "choiceBtn ghost"; bk.textContent = "返回"; bk.onclick = () => back();
+  box.appendChild(bk);
   screen.appendChild(box);
 }
 
@@ -4375,6 +4489,7 @@ function finishPrologue(endingId) {
 }
 
 try {
+  loadSettings(); // 文字速度/字體大小/震動/音效
   renderTitle();
   if (window.__markBootDone) window.__markBootDone();
 } catch (e) {
