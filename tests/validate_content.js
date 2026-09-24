@@ -12,6 +12,42 @@ let text = fs.readFileSync(path.resolve(file), "utf8").trim();
 text = text.split("\n").filter(l => !l.trim().startsWith("//")).join("\n").trim(); // 去掉整行註解
 text = text.replace(/^(?:export\s+)?(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*/, "").replace(/;\s*$/, "");
 
+// 重複鍵檢查：JS 物件字面量裡重複的 key 不會報錯，但後者會悄悄蓋掉前者——
+// 例如同一個 effect 寫兩個 setFlag，只有最後一個生效，因果鏈就斷了
+function findDuplicateKeys(src) {
+  const isIdStart = ch => (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_" || ch === "$";
+  const isIdChar = ch => isIdStart(ch) || (ch >= "0" && ch <= "9");
+  const dups = [];
+  const stack = [];
+  let line = 1, i = 0, prevSig = "";
+  while (i < src.length) {
+    const c = src[i];
+    if (c === "\n") { line++; i++; continue; }
+    if (c === "/" && src[i + 1] === "/") { while (i < src.length && src[i] !== "\n") i++; continue; }
+    if (c === '"' || c === "'" || c === "`") {
+      const q = c; i++;
+      while (i < src.length && src[i] !== q) { if (src[i] === "\\") i++; if (src[i] === "\n") line++; i++; }
+      i++; prevSig = "s"; continue;
+    }
+    if (c === "{") { stack.push(new Set()); prevSig = "{"; i++; continue; }
+    if (c === "}") { stack.pop(); prevSig = "}"; i++; continue; }
+    if (isIdStart(c)) {
+      let j = i; while (j < src.length && isIdChar(src[j])) j++;
+      const word = src.slice(i, j);
+      let k = j; while (k < src.length && (src[k] === " " || src[k] === "\t")) k++;
+      if (src[k] === ":" && (prevSig === "{" || prevSig === ",") && stack.length) {
+        const keys = stack[stack.length - 1];
+        if (keys.has(word)) dups.push({ key: word, line });
+        keys.add(word);
+      }
+      prevSig = "w"; i = j; continue;
+    }
+    if (c !== " " && c !== "\t" && c !== "\r") prevSig = c;
+    i++;
+  }
+  return dups;
+}
+
 // 事件 condition / showIf 可以用的輔助函式(與 data.js 內同名同義)
 const helpers = {
   daysSinceFlagAtLeast: (state, flag, days) => !!(state.flags && state.flags[flag] && state.day - state.flags[flag] >= days),
@@ -31,6 +67,7 @@ try {
 if (!Array.isArray(events)) { console.log("❌ 檔案內容必須是事件陣列"); process.exit(1); }
 
 const errors = [], warns = [];
+findDuplicateKeys(text).forEach(d => errors.push("[第" + d.line + "行附近] 物件裡重複了欄位「" + d.key + "」（後者會蓋掉前者；一個選項的 effect 只能有一個 setFlag）"));
 const err = (id, m) => errors.push(`[${id}] ${m}`);
 const warn = (id, m) => warns.push(`[${id}] ${m}`);
 

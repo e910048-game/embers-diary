@@ -2842,7 +2842,7 @@ test("內容驗證器：範例批次通過；故意寫錯的批次被擋下且�
   assert.ok(/通過/.test(ok.stdout));
   const bad = run("content_batch_bad.js");
   assert.strictEqual(bad.status, 1);
-  ["options必須有2~3個", "hp=99", "skillPoint", "gold", "gaia_whip", "id與現有事件重複", "phase必須是", "weight必須是", "超過100字", "roll"].forEach(k => assert.ok(bad.stdout.includes(k), "驗證器應報出：" + k));
+  ["options必須有2~3個", "hp=99", "skillPoint", "gold", "gaia_whip", "id與現有事件重複", "phase必須是", "weight必須是", "超過100字", "roll", "重複了欄位"].forEach(k => assert.ok(bad.stdout.includes(k), "驗證器應報出：" + k));
 });
 
 test("內容需求單存在且包含關鍵章節(格式/effect範圍/因果鏈/condition資料/附錄)", () => {
@@ -2900,6 +2900,76 @@ test("Gemini批次1：同伴事件只在該同伴加入後出現；後期事件m
   // 阿卡「支持他試驗」要花1彈藥(修正過：原本是+1，等於白送)
   const aka = ev("evt_comp_aka_wire").options[0];
   assert.strictEqual(aka.effect.resources.ammo, -1);
+});
+
+
+// ---------- 外部AI事件批次2(Gemini)併入後的檢查 ----------
+test("Gemini批次2：24個事件已併入；三段式分支鏈兩條路線都能從起點走到結局，且中段/結局只觸發一次", () => {
+  const D = require("../js/data.js");
+  assert.strictEqual(D.GEMINI_BATCH_2.length, 24);
+  D.GEMINI_BATCH_2.forEach(e => assert.ok(D.EVENTS.includes(e), e.id));
+  const ev = id => D.EVENTS.find(e => e.id === id);
+  const chains = [
+    { start: "evt_chain_watertower_start", startFlag: "chain1_tower_checked", mid: "evt_chain_watertower_mid", midDays: 4,
+      paths: [["chain1_path_repaired", "evt_chain_watertower_end_repaired"], ["chain1_path_scrapped", "evt_chain_watertower_end_scrapped"]], endDone: "chain1_tower_end_done" },
+    { start: "evt_chain_wounded_hunter_start", startFlag: "chain2_hunter_bandaged", mid: "evt_chain_wounded_hunter_mid", midDays: 5,
+      paths: [["chain2_path_healed", "evt_chain_wounded_hunter_end_healed"], ["chain2_path_robbed", "evt_chain_wounded_hunter_end_robbed"]], endDone: "chain2_hunter_end_done" },
+  ];
+  chains.forEach(c => {
+    assert.ok(ev(c.start).options.some(o => o.effect.setFlag === c.startFlag));
+    c.paths.forEach(([pathFlag, endId], idx) => {
+      const s = L.defaultState(); s.day = 20;
+      assert.strictEqual(ev(c.mid).condition(s), false, "沒起點旗標不該出現中段");
+      s.flags[c.startFlag] = 20; s.day = 20 + c.midDays;
+      assert.strictEqual(ev(c.mid).condition(s), true, c.mid + " 應可出現");
+      const opt = ev(c.mid).options[idx];
+      assert.strictEqual(opt.effect.setFlag, pathFlag, "中段第" + (idx + 1) + "個選項應設路線旗標");
+      L.applyEffect(s, { setFlag: opt.effect.setFlag });
+      assert.strictEqual(ev(c.mid).condition(s), false, "選過路線後中段不可重複出現");
+      // 兩個結局：只有走到的那條會在天數夠後出現
+      c.paths.forEach(([pf, eid]) => assert.strictEqual(ev(eid).condition(s), false, "天數未到結局不該出現"));
+      s.day += 15;
+      c.paths.forEach(([pf, eid]) => assert.strictEqual(ev(eid).condition(s), pf === pathFlag, eid));
+      L.applyEffect(s, { setFlag: c.endDone });
+      c.paths.forEach(([pf, eid]) => assert.strictEqual(ev(eid).condition(s), false, "結局完成後不可重複"));
+    });
+  });
+});
+
+test("Gemini批次2：長線鏈(10~20天)、同伴雙人互動需兩人皆已招募、日誌/設施/專案條件正確", () => {
+  const D = require("../js/data.js");
+  const ev = id => D.EVENTS.find(e => e.id === id);
+  [["evt_long_sapling_plant", "sapling_planted_deep", "evt_long_sapling_bloom", "sapling_bloom_done", 15],
+   ["evt_long_wall_code_mark", "wall_code_marked", "evt_long_wall_code_return", "wall_code_return_done", 14],
+   ["evt_long_rail_message_start", "rail_message_signed", "evt_long_rail_message_reply", "rail_message_done", 18]].forEach(([sid, flag, rid, done, days]) => {
+    assert.ok(ev(sid).options.some(o => o.effect && o.effect.setFlag === flag) && ev(sid).options.some(o => !(o.effect && o.effect.setFlag)));
+    assert.ok(ev(rid).options.every(o => o.effect.setFlag === done));
+    const s = L.defaultState(); s.flags[flag] = 10; s.day = 10 + days - 1;
+    assert.strictEqual(ev(rid).condition(s), false); s.day = 10 + days;
+    assert.strictEqual(ev(rid).condition(s), true); s.flags[done] = s.day;
+    assert.strictEqual(ev(rid).condition(s), false);
+  });
+  const pairs = { evt_duo_leien_aka_mine: ["雷恩", "阿卡"], evt_duo_aili_xiaoyu_tea: ["艾莉", "小雨"], evt_duo_laozhou_ahai_cart: ["老周", "阿海"],
+    evt_duo_leien_aili_flower: ["雷恩", "艾莉"], evt_duo_aka_laozhou_gunpowder: ["阿卡", "老周"], evt_duo_xiaoyu_ahai_route: ["小雨", "阿海"] };
+  Object.entries(pairs).forEach(([id, [a, b]]) => {
+    const s = L.defaultState(); Object.keys(s.companions).forEach(k => { s.companions[k] = "locked"; });
+    assert.strictEqual(ev(id).condition(s), false);
+    s.companions[a] = "standby"; assert.strictEqual(ev(id).condition(s), false, id + " 只招募一人不該出現");
+    s.companions[b] = "standby"; assert.strictEqual(ev(id).condition(s), true, id);
+  });
+  const s = L.defaultState();
+  assert.ok(!ev("evt_lore_fragments_reflection").condition(s) && !ev("evt_base_clinic_disinfect").condition(s) && !ev("evt_base_radar_deep_echo").condition(s) && !ev("evt_base_camp_level5_fortress").condition(s));
+  s.loreFound = ["a", "b", "c"]; assert.ok(ev("evt_lore_fragments_reflection").condition(s));
+  s.projects.proj_clinic = { status: "done", startedAtPhaseIndex: 0 }; assert.ok(ev("evt_base_clinic_disinfect").condition(s));
+  s.facilities.radar = 2; assert.ok(ev("evt_base_radar_deep_echo").condition(s));
+  s.campLevelSeen = 5; assert.ok(ev("evt_base_camp_level5_fortress").condition(s));
+  assert.ok(D.GEMINI_BATCH_2.filter(e => e.textPool).length >= 6, "至少6個使用textPool");
+});
+
+test("全部事件：任何選項的effect都不可有重複的setFlag鍵(以原始碼掃描)；醫療來源不可白送", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/data.js"), "utf8");
+  const bad = src.split("\n").map((l, i) => [l, i + 1]).filter(([l]) => (l.match(/setFlag:/g) || []).length > 1);
+  assert.deepStrictEqual(bad.map(b => b[1]), [], "同一行出現兩個setFlag(後者會蓋掉前者)");
 });
 
 

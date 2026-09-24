@@ -7,4 +7,7 @@
   { id: "evt_found_supplies", minDay: 5, phase: ["morning"], weight: 50, text: "x".repeat(150), options: [
     { label: "a", effect: {}, resultText: "id重複、phase錯、weight爆、文字過長。", roll: { chance: 0.5 } },
     { label: "b", effect: {}, resultText: "ok" } ] },
+  ,{ id: "evt_bad_dupflag", minDay: 5, phase: ["day"], weight: 5, text: "重複旗標。", options: [
+    { label: "甲", effect: { san: 1, setFlag: "dup_a", setFlag: "dup_b" }, resultText: "同一個effect兩個setFlag，後者蓋掉前者。" },
+    { label: "乙", effect: { san: 1 }, resultText: "ok" } ] },
 ]
