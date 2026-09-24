@@ -2856,5 +2856,52 @@ test("內容需求單存在且包含關鍵章節(格式/effect範圍/因果鏈/c
 });
 
 
+// ---------- 外部AI事件批次1(Gemini)併入後的檢查 ----------
+test("Gemini批次1：24個事件都已併入EVENTS；4組因果鏈的起點旗標與回饋條件銜接正確", () => {
+  const D = require("../js/data.js");
+  assert.strictEqual(D.GEMINI_BATCH_1.length, 24);
+  D.GEMINI_BATCH_1.forEach(e => assert.ok(D.EVENTS.includes(e), e.id));
+  const chains = [
+    ["evt_chain_fox_carving", "fox_carving_honored", "evt_chain_fox_carving_return", "fox_carving_done", 4],
+    ["evt_chain_music_box", "music_box_repaired", "evt_chain_music_box_return", "music_box_done", 5],
+    ["evt_chain_trapped_gull", "gull_freed", "evt_chain_trapped_gull_return", "gull_return_done", 6],
+    ["evt_chain_nameless_grave", "grave_built", "evt_chain_nameless_grave_return", "grave_tribute_done", 5],
+  ];
+  chains.forEach(([startId, flag, retId, doneFlag, days]) => {
+    const start = D.EVENTS.find(e => e.id === startId), ret = D.EVENTS.find(e => e.id === retId);
+    assert.ok(start.options.some(o => o.effect && o.effect.setFlag === flag), startId + " 起點沒設旗標");
+    assert.ok(start.options.some(o => !(o.effect && o.effect.setFlag === flag)), startId + " 應有一個不設旗標的選項");
+    assert.ok(ret.options.every(o => o.effect && o.effect.setFlag === doneFlag), retId + " 每個選項要設完成旗標");
+    const s = L.defaultState(); s.day = 30;
+    assert.strictEqual(ret.condition(s), false);
+    s.flags[flag] = 30; s.day = 30 + days - 1; assert.strictEqual(ret.condition(s), false);
+    s.day = 30 + days; assert.strictEqual(ret.condition(s), true);
+    s.flags[doneFlag] = s.day; assert.strictEqual(ret.condition(s), false);
+  });
+});
+
+test("Gemini批次1：同伴事件只在該同伴加入後出現；後期事件minDay>=220；基地連動條件符合設施", () => {
+  const D = require("../js/data.js");
+  const ev = id => D.EVENTS.find(e => e.id === id);
+  const s = L.defaultState(); s.day = 100;
+  Object.keys(s.companions).forEach(k => { s.companions[k] = "locked"; });
+  const comps = { "雷恩": "evt_comp_leien_oil", "艾莉": "evt_comp_aili_sprout", "阿卡": "evt_comp_aka_wire", "老周": "evt_comp_laozhou_chisel", "小雨": "evt_comp_xiaoyu_ledger", "阿海": "evt_comp_ahai_boots" };
+  Object.entries(comps).forEach(([name, id]) => {
+    assert.strictEqual(ev(id).condition(s), false, id + " 未招募不該出現");
+    s.companions[name] = "standby";
+    assert.strictEqual(ev(id).condition(s), true, id + " 招募後應可出現");
+  });
+  D.GEMINI_BATCH_1.filter(e => e.id.startsWith("evt_late3_")).forEach(e => assert.ok(e.minDay >= 220, e.id));
+  const s2 = L.defaultState();
+  assert.strictEqual(ev("evt_base_farm_harvest_night").condition(s2), false);
+  assert.strictEqual(ev("evt_base_pen_comfort").condition(s2), false);
+  assert.strictEqual(ev("evt_base_workshop_machining").condition(s2), false);
+  assert.strictEqual(ev("evt_base_camp_morning_soup").condition(s2), false);
+  // 阿卡「支持他試驗」要花1彈藥(修正過：原本是+1，等於白送)
+  const aka = ev("evt_comp_aka_wire").options[0];
+  assert.strictEqual(aka.effect.resources.ammo, -1);
+});
+
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

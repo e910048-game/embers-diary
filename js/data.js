@@ -3499,10 +3499,565 @@ const LATE_EVENTS_2 = [
 ];
 EVENTS.push(...LATE_EVENTS_2);
 
+// ============ 外部AI(Gemini)產出的事件批次1(2026-09-24)：因果鏈4組/同伴日常6/後期6/基地連動4，經 tests/validate_content.js 驗證並人工潤稿後併入 ============
+const GEMINI_BATCH_1 = [
+  // --- 因果鏈 1：路邊的木雕狐狸（起點） ---
+  {
+    id: "evt_chain_fox_carving",
+    title: "路邊的木雕狐狸",
+    minDay: 15,
+    maxDay: null,
+    phase: ["day"],
+    weight: 6,
+    text: "你在傾倒的水泥管下發現一隻巴掌大的木雕狐狸。刻工粗糙但磨得很光滑，底下壓著一張發脆的字條：「給下一個走過這條路的人，願你腳下平坦。」",
+    options: [
+      {
+        label: "將它擦乾淨並擺好",
+        effect: { san: 4, exp: 3, setFlag: "fox_carving_honored" },
+        resultText: "你用袖口擦去狐狸身上的青苔與灰塵，將它穩穩端放在水泥管頂端。\n在灰暗的荒原上，這隻木狐狸像是在替誰守著回家的路。"
+      },
+      {
+        label: "收進背包當木柴",
+        effect: { resources: { scrap: 2 } },
+        resultText: "乾木頭在末日裡是實用的引火物。你收起它時手指摸到腹部細微的刻痕，但你沒有細看，轉身快步離去。"
+      }
+    ]
+  },
+  {
+    id: "evt_chain_fox_carving_return",
+    title: "狐狸旁的石堆",
+    minDay: 1,
+    maxDay: null,
+    phase: ["day", "night"],
+    weight: 8,
+    condition: (state) => daysSinceFlagAtLeast(state, "fox_carving_honored", 4) && !(state.flags && state.flags.fox_carving_done),
+    text: "你再次路過那根水泥管。木狐狸周圍竟然多了一圈整齊的小石子，像是有人特意為它築了個小小的祭壇。狐狸前爪旁，還壓著幾枚用油紙包著的硬糖和草藥。",
+    options: [
+      {
+        label: "收下草藥，留下硬糖",
+        effect: { resources: { medicine: 2 }, san: 5, setFlag: "fox_carving_done" },
+        resultText: "你拿走了能救命的草藥，將那包硬糖留給下一位路人。\n荒野中彼此素未謀面的善意，像黑暗中微弱卻不滅的螢火。"
+      },
+      {
+        label: "全部帶走補貼據點",
+        effect: { resources: { medicine: 2, food: 1 }, san: 2, setFlag: "fox_carving_done" },
+        resultText: "你將供品悉數收起。糖果已經有點融化，帶著淡淡的甜味。\n至少在這個世道，有人替你分擔了一天的飢渴。"
+      }
+    ]
+  },
+  {
+    id: "evt_chain_music_box",
+    title: "卡住的八音盒",
+    minDay: 20,
+    maxDay: null,
+    phase: ["day"],
+    weight: 5,
+    text: "在一間半倒塌的花店櫃檯裡，你翻出一個發條八音盒。外殼鍍金剝落，齒輪被鐵鏽卡死，裡面卡著半首沒播完的舊世兒歌。",
+    options: [
+      {
+        label: "花零件耐心修復",
+        requiresResource: { scrap: 2 },
+        effect: { resources: { scrap: -2 }, san: 3, exp: 5, setFlag: "music_box_repaired" },
+        resultText: "你用銼刀清理齒輪，小心替換掉斷裂的發條。輕微的咬合聲後，八音盒響起了清脆而略帶顫抖的旋律，音色在廢墟間飄出很遠。"
+      },
+      {
+        label: "拆解金屬齒輪",
+        effect: { resources: { scrap: 3 } },
+        resultText: "精密的黃銅小齒輪被你俐落地拆成廢料碎片。舊時代的曲調隨著斷裂的簧片發出一聲悶響，徹底沉寂在塵土裡。"
+      }
+    ]
+  },
+  {
+    id: "evt_chain_music_box_return",
+    title: "尋著旋律的人",
+    minDay: 1,
+    maxDay: null,
+    phase: ["day", "night"],
+    weight: 8,
+    condition: (state) => daysSinceFlagAtLeast(state, "music_box_repaired", 5) && !(state.flags && state.flags.music_box_done),
+    text: "你在花店附近巡邏時，看到廢墟牆上用炭筆寫著新字跡：「謝謝你修好這首歌，那是我妹妹生前最喜歡的曲子。」\n字跡下方，掛著一個盛滿淨水的水壺與少許彈藥。",
+    options: [
+      {
+        label: "收下留下的物資",
+        effect: { resources: { water: 3, ammo: 2 }, san: 4, setFlag: "music_box_done" },
+        resultText: "水壺擦拭得很乾淨，彈藥也是擦得油亮的舊款子彈。\n你收下這份報酬，意識到荒野中哪怕最微弱的一段音樂，也能撫平某顆乾涸的心。"
+      },
+      {
+        label: "在牆上記下祝禱",
+        effect: { san: 6, exp: 4, setFlag: "music_box_done" },
+        resultText: "你在炭筆字旁寫下「願你們安好」，只取走了一口清水，留下其餘物資。\n某些東西比子彈更能讓人撐過下一個漫漫長夜。"
+      }
+    ]
+  },
+  {
+    id: "evt_chain_trapped_gull",
+    title: "鐵絲網上的白翼",
+    minDay: 25,
+    maxDay: null,
+    phase: ["day"],
+    weight: 6,
+    text: "一隻翅膀尖端泛著微弱螢光的變異白鳥被生鏽的防盜鐵絲網死死纏住。牠虛弱地撲騰著，鮮血沿著生鏽的尖刺滴落，喉嚨裡發出嘶啞的悲鳴。",
+    options: [
+      {
+        label: "小心割開鐵絲放生",
+        effect: { hp: -3, san: 4, setFlag: "gull_freed" },
+        resultText: "鐵絲劃破了你的掌心，但你還是耐心地將纏住羽毛的倒鉤剪斷。\n白鳥掙脫後落在幾步外看了你幾秒，隨後振翅飛入翻湧的低空塵霧。"
+      },
+      {
+        label: "捉回去當作獵物",
+        effect: { resources: { food: 2 }, san: -3 },
+        resultText: "末日裡同情心不能果腹。你扭斷了牠的脖子帶回營地。拔毛時螢光粉末沾滿雙手，肉質帶著一股苦澀的鐵鏽味。"
+      }
+    ]
+  },
+  {
+    id: "evt_chain_trapped_gull_return",
+    title: "窗台上的微光",
+    minDay: 1,
+    maxDay: null,
+    phase: ["night"],
+    weight: 8,
+    condition: (state) => daysSinceFlagAtLeast(state, "gull_freed", 6) && !(state.flags && state.flags.gull_return_done),
+    text: "深夜，你被安全屋窗台上的細碎敲擊聲驚醒。窗櫺外，一隻泛著微光的鳥影一閃而逝，窗台上落著一束罕見且無污染的野生植物根莖，以及幾根幽藍的羽毛。",
+    options: [
+      {
+        label: "拾起草根製成草藥",
+        effect: { resources: { medicine: 2 }, san: 4, setFlag: "gull_return_done" },
+        resultText: "未受深淵侵蝕的野生根莖擁有極佳的凝血效果。\n你將羽毛夾進日記本，感受著窗外夜風裡殘存的微弱溫度。"
+      },
+      {
+        label: "當成護身符保存",
+        effect: { san: 6, exp: 4, setFlag: "gull_return_done" },
+        resultText: "那束根莖散發著泥土與朝露的清香，羽毛在黑暗中微微發亮。\n你在殘破的世界裡收穫了一份最純粹的贈禮。"
+      }
+    ]
+  },
+  {
+    id: "evt_chain_nameless_grave",
+    title: "焦黑的防空壕旁",
+    minDay: 30,
+    maxDay: null,
+    phase: ["day"],
+    weight: 5,
+    text: "一個倒在防空壕入口的倖存者遺骸已化作白骨，身旁散落著損壞的防毒面具。野狗和變異鼠正盤桓在骨骸周圍，隨時會將遺骸拖入爛泥。",
+    options: [
+      {
+        label: "搬石塊築起石塚",
+        effect: { hp: -2, san: 3, exp: 4, setFlag: "grave_built" },
+        resultText: "你驅趕走野獸，花了兩個小時搬運水泥磚與石塊，為他堆砌了一座簡單的塚。\n至少在這片荒原上，他不再是無人過問的殘骸。"
+      },
+      {
+        label: "搜刮身上殘留物品",
+        effect: { resources: { scrap: 2, ammo: 1 }, san: -2 },
+        resultText: "你搜出兩顆還能擊發的子彈和幾枚金屬卡扣。\n活人需要物資，死人不再需要。你合上背包，背對廢墟快步離開。"
+      }
+    ]
+  },
+  {
+    id: "evt_chain_nameless_grave_return",
+    title: "石塚旁的守候者",
+    minDay: 1,
+    maxDay: null,
+    phase: ["day"],
+    weight: 8,
+    condition: (state) => daysSinceFlagAtLeast(state, "grave_built", 5) && !(state.flags && state.flags.grave_tribute_done),
+    text: "你再次經過防空壕時，看見一名背著舊獵槍的中年旅人正跪在石塚前低頭默哀。看到你走近，他抹了把臉上的灰土，站起身凝視著你。",
+    options: [
+      {
+        label: "走上前打個招呼",
+        effect: { resources: { ammo: 3 }, san: 4, setFlag: "grave_tribute_done" },
+        resultText: "「這是我兄弟的裝備，我找了他三年。」他聲音哽咽，將腰間的彈藥包分出一半塞給你，向你深深鞠了一躬。"
+      },
+      {
+        label: "默默在遠處點頭致意",
+        effect: { san: 6, exp: 4, setFlag: "grave_tribute_done" },
+        resultText: "你沒有索取任何回報，只是站在廢墟陰影裡朝他點頭。\n對方明白了一切，留下了一袋乾淨的過濾水便轉身踏上歸途。"
+      }
+    ]
+  },
+  {
+    id: "evt_comp_leien_oil",
+    title: "雷恩的磨刀石",
+    minDay: 35,
+    maxDay: null,
+    phase: ["night"],
+    weight: 5,
+    condition: (state) => companionRecruited(state, "雷恩"),
+    text: "深夜哨塔上傳來規律的「沙沙」聲。雷恩借著昏暗的煤油燈，一遍遍打磨著那把豁口的長刃，眼神盯著荒原盡頭的薄霧，一言不發。",
+    options: [
+      {
+        label: "送上一碗熱水聊聊",
+        requiresResource: { water: 1 },
+        effect: { resources: { water: -1 }, san: 4, exp: 3 },
+        resultText: "雷恩接過熱水抿了一口，緊鎖的眉頭稍微舒展。\n「這夜風跟狂潮前一晚很像。」他低聲說，「但我會守住門口，你安心睡吧。」"
+      },
+      {
+        label: "替他換上新的防護板",
+        requiresResource: { scrap: 3 },
+        effect: { resources: { scrap: -3 }, baseDefense: 1, exp: 4 },
+        resultText: "你替他加固了瞭望哨的防風鐵皮。雷恩默默看著你擰緊螺絲，最後用力拍了拍你的肩膀，這是他表達信任的極限。"
+      },
+      {
+        label: "[瞭望台] 共享哨位視野",
+        showIf: (state) => projectBuilt(state, "proj_watchtower"),
+        effect: { san: 3, exp: 6 },
+        resultText: "你們並肩站在高處，夜霧在腳下翻滾。雷恩指出遠方幾個隱蔽的死角，在冷冽的風中，今夜的防線變得更加周密。"
+      }
+    ]
+  },
+  {
+    id: "evt_comp_aili_sprout",
+    title: "艾莉的泥土罐",
+    minDay: 35,
+    maxDay: null,
+    phase: ["day"],
+    weight: 5,
+    condition: (state) => companionRecruited(state, "艾莉"),
+    text: "艾莉正蹲在角落，用小茶匙一點點撥開幾罐泥土。裡面躺著一顆表皮泛著淡紫色的怪異豆子，她有些猶豫，不知道該不該澆水。",
+    options: [
+      {
+        label: "建議用淨水催芽",
+        requiresResource: { water: 1 },
+        effect: { resources: { water: -1, food: 2 }, san: 3 },
+        resultText: "在純淨水的滋潤下，幼芽在半日內破土而出，散發出淡淡的穀香。艾莉擦了擦額頭的汗，臉上露出了久違的笑容。"
+      },
+      {
+        label: "先放進密封箱觀察",
+        effect: { exp: 4, san: 2 },
+        resultText: "「你說得對，不能冒險。」艾莉小心地貼上標籤隔離。雖然沒有立刻收穫，但謹慎的作法讓兩人都安心了不少。"
+      }
+    ]
+  },
+  {
+    id: "evt_comp_aka_wire",
+    title: "阿卡的引信實驗",
+    minDay: 40,
+    maxDay: null,
+    phase: ["day"],
+    weight: 5,
+    condition: (state) => companionRecruited(state, "阿卡"),
+    text: "阿卡嘴裡叼著未點燃的煙卷，手裡拿著兩根剝皮的引信。他滿臉興奮地向你炫耀：「我調整了火藥比例，這批雷管威力能翻倍，就是有點……敏感。」",
+    options: [
+      {
+        label: "支持他試驗，給他火藥",
+        requiresResource: { ammo: 1 },
+        effect: { resources: { ammo: -1 }, hp: -2, exp: 7 },
+        resultText: "「轟」的一聲悶響，安全屋外牆冒起黑煙。阿卡滿臉焦黑地咳個不停，但手裡舉著完好的起爆器哈哈大笑，威力確實大幅提升了。"
+      },
+      {
+        label: "勸他以安全為重",
+        effect: { san: 2, exp: 3 },
+        resultText: "阿卡撓了撓頭，咕噥著「好吧好吧聽你的」，乖乖給引信套上了絕緣套管。雖然少了點刺激，但也省下了一場潛在的火災。"
+      }
+    ]
+  },
+  {
+    id: "evt_comp_laozhou_chisel",
+    title: "老周的鈍銼刀",
+    minDay: 40,
+    maxDay: null,
+    phase: ["day"],
+    weight: 5,
+    condition: (state) => companionRecruited(state, "老周"),
+    text: "老周坐在工作台前，正拿著一把磨平紋路的舊鋼銼嘆氣。旁邊堆著幾件等待校正的槍機零件，金屬粉塵落滿了他龜裂的手背。",
+    options: [
+      {
+        label: "提供優質廢料重鑄",
+        requiresResource: { scrap: 3 },
+        effect: { resources: { scrap: -3, ammo: 2 }, exp: 5 },
+        resultText: "老周眼裡放光，用淬火油槽重新鍛打了一柄鋒利的刮刀。半天功夫，那些卡殼的舊槍機被他修整得如同全新出廠。"
+      },
+      {
+        label: "陪他喝茶歇歇手",
+        effect: { san: 4 },
+        resultText: "老周放下銼刀，敲了敲痠痛的腰背。他跟你講起舊世界車床的轟鳴聲，語氣平靜，眼裡的疲憊被這段閒聊沖淡了不少。"
+      }
+    ]
+  },
+  {
+    id: "evt_comp_xiaoyu_ledger",
+    title: "小雨的發黃帳本",
+    minDay: 45,
+    maxDay: null,
+    phase: ["night"],
+    weight: 5,
+    condition: (state) => companionRecruited(state, "小雨"),
+    text: "油燈下的油煙燻得小雨直揉眼睛。她面前攤著一本厚厚的發黃手帳，上面用工整的字跡記著據點的每一筆收支，但頁角有一處被橡皮反覆擦拭出了破洞。",
+    options: [
+      {
+        label: "幫她核對庫存物資",
+        effect: { resources: { food: 1, water: 1 }, exp: 4, san: 2 },
+        resultText: "你們一起清理了儲物架最底層，意外找回了兩包落在庫存盲區的罐頭。小雨鬆了一口氣，認真在帳本上重新畫上正字標記。"
+      },
+      {
+        label: "吹滅油燈催她睡覺",
+        effect: { san: 4 },
+        resultText: "小雨愣了一下，有些害羞地合上帳本。「知道啦……明天我會起得更早補上的。」她抱著帳本鑽進睡袋，呼吸很快平穩下來。"
+      }
+    ]
+  },
+  {
+    id: "evt_comp_ahai_boots",
+    title: "阿海的磨損地圖",
+    minDay: 45,
+    maxDay: null,
+    phase: ["day"],
+    weight: 5,
+    condition: (state) => companionRecruited(state, "阿海"),
+    text: "阿海剛從外圍哨站摸回來，皮靴底磨穿了個大洞。他指著地圖上一條用紅筆重重圈起的新裂谷，臉色在螢光塵埃的映襯下顯得十分凝重。",
+    options: [
+      {
+        label: "為他包紮並補好靴子",
+        requiresResource: { scrap: 2 },
+        effect: { resources: { scrap: -2 }, exp: 6, san: 2 },
+        resultText: "你用厚橡膠片替他補好了靴底。阿海指著地圖分享了那條避開裂隙巡邏隊的捷徑，未來的探索路徑清晰了許多。"
+      },
+      {
+        label: "給他一劑消炎藥預防",
+        requiresResource: { medicine: 1 },
+        effect: { resources: { medicine: -1 }, san: 5 },
+        resultText: "及時的藥物壓制了他腳踝的紅腫感染。阿海吐出一口濁氣：「欠你一條腿。下次遇到好物資，我第一個通知你。」"
+      }
+    ]
+  },
+  {
+    id: "evt_late3_mother_whisper",
+    title: "電磁脈衝中的低喃",
+    minDay: 220,
+    maxDay: null,
+    phase: ["night"],
+    weight: 4,
+    text: "深夜，所有無電源的銅線圈都在空氣中發出淡淡的微光。收音機喇叭裡沒有播放廣播，卻傳出類似呼吸的節奏，伴隨著像是數萬人同時輕聲哼唱同一支搖籃曲。",
+    options: [
+      {
+        label: "戴上耳機仔細解析",
+        effect: { san: -4, exp: 8, embers: 2 },
+        resultText: "雜音深處不是惡意，而是一種近乎絕望的呼喚——「回家……修正……回到起點」。你頭痛欲裂地摘下耳機，掌心卻凝聚了兩枚冷凝的晶燼。"
+      },
+      {
+        label: "剪斷天線阻隔雜訊",
+        effect: { san: 4 },
+        resultText: "金屬剪切斷了天線，嘈雜的合唱戛然而止。黑暗中只剩下你自己的心跳聲，世界短暫恢復了應有的死寂。"
+      }
+    ]
+  },
+  {
+    id: "evt_late3_crystal_pioneer",
+    title: "岩壁上的結晶人影",
+    minDay: 250,
+    maxDay: null,
+    phase: ["day"],
+    weight: 3,
+    text: "廢棄研究站的氣密門外，立著一具全身被深藍色晶體包裹的先驅軀體。他保持著向門把手伸手叩擊的姿勢，胸口的工作牌依稀可辨，晶體內部隱隱有幽光流轉。",
+    options: [
+      {
+        label: "敲碎外殼取下證件",
+        effect: { hp: -3, exp: 7, embers: 3 },
+        resultText: "結晶崩碎時劃傷了你的防護服。你收回了那枚記錄著未知數據的胸牌與晶燼，死者的姿態隨之瓦解成一地閃爍的粉塵。"
+      },
+      {
+        label: "將殘缺的大衣披在上面",
+        effect: { san: 5, exp: 4 },
+        resultText: "你沒有破壞這具沉睡的雕像，只是默默替他擋住了風沙。在母體的同化洪流裡，他曾如此執著地想要回到門的這一側。"
+      }
+    ]
+  },
+  {
+    id: "evt_late3_luminescent_squall",
+    title: "幽藍色的驟雨",
+    minDay: 280,
+    maxDay: null,
+    phase: ["night"],
+    weight: 4,
+    text: "暴風雨傾盆而下，但雨滴落入泥地時卻不是水聲，而是激起無數幽藍色的冷光火花。安全屋的防護網發出劇烈滋滋聲，空氣中瀰漫著濃烈的臭氧氣味。",
+    options: [
+      {
+        label: "冒險收集發光雨水",
+        effect: { hp: -4, resources: { water: 4, scrap: 2 } },
+        resultText: "刺骨的雨水浸透了外衣，皮膚傳來針刺般的麻木。但經過沉澱後，這些水富含某種奇異能量，甚至能洗淨機械上的油污。"
+      },
+      {
+        label: "拉上鐵閘安靜冥想",
+        effect: { san: 6 },
+        resultText: "你坐在緊閉的防爆門後，聽著雨點打在厚重金屬板上的悶響。你活了三百天，風雨再狂暴，也撕不開這座用血汗築起的壁壘。"
+      }
+    ]
+  },
+  {
+    id: "evt_late3_rusted_piano",
+    title: "穹頂下的斷弦琴",
+    minDay: 300,
+    maxDay: null,
+    phase: ["day"],
+    weight: 3,
+    text: "坍塌的歌劇院中央，一架黑色三角鋼琴半埋在瓦礫中。琴蓋已經朽爛，大半琴弦崩斷捲曲，但空氣中的螢光粉塵像星屑一樣靜靜飄落在黑白琴鍵上。",
+    options: [
+      {
+        label: "按下一記未斷的低音鍵",
+        effect: { san: 5, exp: 4 },
+        resultText: "「咚——」深沉而渾厚的音波在空曠的廢墟穹頂間激盪迴響。幾隻在樑柱築巢的異化雀鳥騰空而起，將寂靜還給這座古老的殿堂。"
+      },
+      {
+        label: "拆下剩餘的琴弦高碳鋼",
+        effect: { resources: { scrap: 3, ammo: 1 } },
+        resultText: "這些高張力的琴鋼絲是製作捕獸夾與拉發引信的頂級材料。你手法熟練地剪下它們，將過去的藝術化作支撐生存的鋒刃。"
+      }
+    ]
+  },
+  {
+    id: "evt_late3_hundredth_dawn",
+    title: "灰燼之上的晨曦",
+    minDay: 330,
+    maxDay: null,
+    phase: ["day"],
+    weight: 4,
+    text: "你站在高坡上眺望遠方。地平線的盡頭，昏黃的太陽正艱難地穿透厚重的塵埃雲層。這座廢墟沒有變好，但你親手搭建的煙囪正裊裊升起柴火的白煙。",
+    options: [
+      {
+        label: "深吸一口微涼的空氣",
+        effect: { san: 6, hp: 4 },
+        resultText: "即使空氣裡依然帶著鐵鏽的甘苦，但你的呼吸堅定平穩。生存不再是一場驚慌失措的逃亡，而是你每天清晨與荒原的沉默約定。"
+      },
+      {
+        label: "轉身檢查陷阱與農作",
+        effect: { resources: { food: 2, scrap: 2 }, exp: 5 },
+        resultText: "感慨屬於舊世界，活命屬於勞作者。你拍了拍身上的灰塵，握緊工具，開始了又一天瑣碎卻無比踏實的勞作。"
+      }
+    ]
+  },
+  {
+    id: "evt_late3_beacon_husk",
+    title: "沈默的引路信標",
+    minDay: 360,
+    maxDay: null,
+    phase: ["night"],
+    weight: 3,
+    text: "那是先驅者們在最初同化浪潮中立起的信標塔，如今晶體化嚴重，像一根直插天際的石筍。它的能量核心早已耗盡，只剩下冷凝的晶霜隨風剝落。",
+    options: [
+      {
+        label: "挖掘核心殘留的精華",
+        effect: { embers: 3, hp: -3, exp: 6 },
+        resultText: "剝離晶殼耗費了大量體力，殘存的意識衝擊令你眼前發黑。但在岩心深處，你挖出了幾塊純度極高的晶燼。"
+      },
+      {
+        label: "在塔底刻下一道刻痕",
+        effect: { san: 5, exp: 5 },
+        resultText: "你在石柱上刻下今天的日子。無數人想在這裡尋找通往未來的答案，但你明白，答案就在你一步步踏實走回安全屋的腳印裡。"
+      }
+    ]
+  },
+  {
+    id: "evt_base_farm_harvest_night",
+    title: "田埂上的窸窣聲",
+    minDay: 30,
+    maxDay: null,
+    phase: ["night"],
+    weight: 5,
+    condition: (state) => farmPlotsUnlocked(state) >= 4,
+    text: "你被農地傳來的細碎啃食聲驚醒。借著月光，幾隻長著長耳、毛皮帶有微光的荒原雪兔正圍在你剛開墾的菜畦旁，小口啃食著落下的菜葉。",
+    options: [
+      {
+        label: "設下套索捕捉",
+        effect: { resources: { food: 3 }, san: -1 },
+        resultText: "你動作俐落地收緊套索，收穫了幾斤新鮮的野味。雖然弄亂了幾根菜苗，但明天的肉湯有了著落。"
+      },
+      {
+        label: "任由牠們吃些殘渣",
+        effect: { san: 4, exp: 3 },
+        resultText: "你沒有驚動牠們。雪兔啃完散落的乾菜葉，在泥地裡留下幾排小巧的腳印後鑽回草叢。看著生機在田埂跳動，心裡莫名平靜。"
+      },
+      {
+        label: "[雨水收集塔] 灑水驅趕牠們",
+        showIf: (state) => projectBuilt(state, "proj_rain_tower"),
+        effect: { resources: { food: 1 }, san: 3 },
+        resultText: "你拉開管線噴灑出一陣細密水霧。兔子受驚逃散，農作物沒有受到絲毫破壞，還順便完成了一次夜間灌溉。"
+      }
+    ]
+  },
+  {
+    id: "evt_base_pen_comfort",
+    title: "牲口棚的焦躁",
+    minDay: 35,
+    maxDay: null,
+    phase: ["night"],
+    weight: 5,
+    condition: (state) => penAnimalCount(state) >= 2,
+    text: "牧欄裡的動物突然騷動起來，低沉的嘶鳴此起彼伏，蹄子不安地刨著泥土。空氣中飄散著若有似無的電離焦味，狂潮的餘波似乎在遠方激盪。",
+    options: [
+      {
+        label: "添乾草並溫和安撫",
+        requiresResource: { food: 1 },
+        effect: { resources: { food: -1 }, san: 5, exp: 3 },
+        resultText: "你抱來乾燥的枯草料，一一撫摸牠們緊繃的脊背。熟悉的氣味與體溫讓動物們漸漸安靜下來，棚屋裡重新響起均勻的咀嚼聲。"
+      },
+      {
+        label: "加固木欄以防脫逃",
+        requiresResource: { scrap: 2 },
+        effect: { resources: { scrap: -2 }, baseDefense: 1 },
+        resultText: "你拿起鐵錘敲死鬆動的木條，用厚鐵皮加固了門栓。即使今夜有危險靠近，牲口棚也不會被輕易撞碎。"
+      }
+    ]
+  },
+  {
+    id: "evt_base_workshop_machining",
+    title: "工坊的傳動皮帶",
+    minDay: 40,
+    maxDay: null,
+    phase: ["day"],
+    weight: 5,
+    condition: (state) => workshopStations(state) >= 2,
+    text: "工坊內的幾座工作台連軸運轉，皮帶與齒輪發出沉悶有力的轉動聲。經過連日的整修，工具架上的鑿刀與台鉗泛著黑油的光澤，隨時能應付重型維修。",
+    options: [
+      {
+        label: "全力趕製儲備彈藥",
+        requiresResource: { scrap: 3 },
+        effect: { resources: { scrap: -3, ammo: 4 }, exp: 5 },
+        resultText: "沖壓模具上下翻飛，底火精準壓入黃銅彈殼。你擦了一把滿是機油的汗水，看著整齊碼進鐵盒的子彈，安全感油然而生。"
+      },
+      {
+        label: "保養刀具與防護裝甲",
+        effect: { hp: 4, exp: 4 },
+        resultText: "你細緻地替防護外衣換上新柳釘，並將隨身刀具研磨至吹毛斷髮。齊全的工坊讓你隨時能以最佳狀態應對荒野。"
+      },
+      {
+        label: "[改裝越野車] 調校引擎火星塞",
+        showIf: (state) => projectBuilt(state, "proj_vehicle"),
+        effect: { exp: 6, san: 3 },
+        resultText: "你借助工坊的滑輪吊架校準了越野車的化油器。引擎點火的轟鳴渾厚低沉，有了這頭鋼鐵猛獸，遠方的危險不再令人畏懼。"
+      }
+    ]
+  },
+  {
+    id: "evt_base_camp_morning_soup",
+    title: "圍欄內的炊煙",
+    minDay: 50,
+    maxDay: null,
+    phase: ["day"],
+    weight: 5,
+    condition: (state) => state.campLevelSeen >= 3,
+    text: "晨光越過加固的圍牆照進院子。鍋裡正煮著野菜與乾肉混合的雜燴湯，白色的蒸氣伴隨香氣在安全屋上方散開，同伴們的腳步聲在院裡輕快地響起。",
+    options: [
+      {
+        label: "盛一碗熱湯給大家分食",
+        requiresResource: { food: 1, water: 1 },
+        effect: { resources: { food: -1, water: -1 }, san: 6, hp: 3 },
+        resultText: "大家圍坐在木箱邊端著熱湯，連最寡言的守衛臉上也掛著笑意。在殘破的世界深處，這座據點已經真正成為了遮風擋雨的家。"
+      },
+      {
+        label: "將乾糧打包準備遠行",
+        effect: { resources: { food: 2 }, exp: 4 },
+        resultText: "豐沛的營地產出讓你有了充足的後盾。你裝滿行囊，步伐比起剛來到這片廢墟時更加沉穩堅定。"
+      }
+    ]
+  }
+];
+EVENTS.push(...GEMINI_BATCH_1);
+
 if (typeof module !== "undefined") {
-  module.exports = { BASE_LINKED_EVENTS, LATE_EVENTS_2, WEATHER_TYPES, WEATHER_EVENT_LINES, SECOND_OPTIONS, LATE_EVENTS, LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
+  module.exports = { GEMINI_BATCH_1, BASE_LINKED_EVENTS, LATE_EVENTS_2, WEATHER_TYPES, WEATHER_EVENT_LINES, SECOND_OPTIONS, LATE_EVENTS, LEVEL_UP_LINES, LORE_LOGS, RECAP_LINES, LOCATION_MEMORY_LINES, CONSEQUENCE_EVENTS_2, VISIT_MEMORY_LINES, COMPANION_THREAT_LINES, COMPANION_HOME_LINES, BASE_REACTION_OPTIONS, CONSEQUENCE_EVENTS, PROJECTS, CAMP_LEVELS, ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS, PREFIX_POOL, QUESTS, ACHIEVEMENTS, CROPS, SPECIES, BLOOD_MOON_INTRO_TEXTS, BLOOD_MOON_VICTORY_TEXTS, BLOOD_MOON_MODIFIERS, LOCATION_MODIFIERS, ABYSS_SURGE_INTRO_TEXTS, ABYSS_SURGE_VICTORY_TEXTS, COMPANIONS_REGISTRY };
 } else {
   // 瀏覽器環境：top-level const 不會自動成為 window 屬性，需手動掛載
+  window.GEMINI_BATCH_1 = GEMINI_BATCH_1;
   window.BASE_LINKED_EVENTS = BASE_LINKED_EVENTS;
   window.LATE_EVENTS_2 = LATE_EVENTS_2;
   window.WEATHER_TYPES = WEATHER_TYPES;
