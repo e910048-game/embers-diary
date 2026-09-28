@@ -15,14 +15,19 @@
 // 本檔案本來就每步呼叫，不用額外處理。chooseAction()也補了SAN見底時優先rest(cautious/balanced)，
 // 否則bot會一路探索到SAN歸零反覆崩潰，死亡率被打爆到60~92%(不是SAN系統的問題，是bot不會看警示)。
 //
-// ⚠️ 血月夜補進來後意外曝光一個更大、跟這次改動無關的既有問題：deathRate整批飆到95~100%，
-// 根因不是SAN，是本檔案的reinforce()均分四座設施、不會在血月倒數期特別優先指揮中心(command)，
-// 而command單獨最高只能到baseDefense=6(defenseRatio=0.2)，離「擋下第一波」門檻(defenseRatio>=0.5，
-// 約需baseDefense 15+，得靠家具/專案疊加)還很遠——實測(node -e，未寫成腳本)顯示即使等級10、裝備
-// 普通防具、defense拉到6，第一場血月(brute+cyborg_nemesis兩隻extraTier:1)幾乎必死。這暴露的是
-// **血月戰鬥本身的難度/資源門檻**，不是模擬器的SAN機制沒接好，也不是這次改動造成的——只是血月夜
-// 以前從沒被這支模擬器打過，現在才第一次被看見。這件事我沒有動手調整(敵人數值/防禦公式屬於難度
-// 設計決策，不是SAN機制的補完範圍)，已回報給使用者定奪要不要進一步調查或調整。
+// 2026-09-28後續：血月夜補進來後deathRate一度整批飆到95~100%，查根因後發現**不是SAN、也不是血月
+// 戰鬥數值本身太強**，是game.js裡一個更嚴重的既有bug：battleAttack(擊敗)跟battleFlee(逃跑成功)
+// 呼叫的是同一個onEnd()、不分勝負——runBloodMoonWave/onTierZoneWon/onAbyssSurgeWon完全沒檢查
+// 「這仗到底打贏了沒」，逃跑一路逃到底照樣領完整血月獎勵、插Tier收復旗標，等於不用打就能過血月夜。
+// 這個bug已經在game.js修好(onEnd現在帶true/false，見git log「逃跑等同擊敗」)，但也代表：一個
+// 打不贏血月的角色，真實玩家原本就能靠逃跑活下來(只是不會被貼「已守住」的標籤、沒有獎勵)——這件
+// 事本檔案完全沒模擬(runBattle以前只會硬打到一方死亡，沒有flee)。所以這裡也對應補上「打不贏就跑」
+// 的邏輯(見runBattle內的roundsToKill/roundsISurvive判斷，50%逃跑成功率比照game.js)，並修正
+// clearUpcomingThreat只在打贏分支才呼叫的疏漏(比照game.js在血月夜一開始就清，不然逃跑或打輸會讓
+// isThreatDue卡著true，下次rest()立刻又觸發一次血月夜)。修完後cautious/balanced的deathRate回到
+// 0~19%(接近歷史基準)，aggressive仍是100%死亡——這是aggressive人設「不顧一切、只探索」刻意的結果，
+// 不是bug。結論：**血月戰鬥數值本身沒有問題，先前的死亡率飆升是「逃跑等同擊敗」那個bug造成模擬器
+// 誤判(bot沒有flee邏輯所以只能站著死)，已在game.js與本檔案一併修正、跑過驗證**。
 
 const L = require("../js/logic.js");
 
@@ -60,18 +65,31 @@ function rest(state) {
 // 2026-09-28：血月夜——依resolveBloodMoonDefense決定防禦是否擋下第一波(擋下只打cyborg_nemesis，
 // 沒擋下打brute+cyborg_nemesis兩場，兩場都用extraTier:1貼近game.js的waves設定)。贏了才會拿到
 // bloodMoonRewards(含固定SAN relief，見logic.js BLOOD_MOON_VICTORY_SAN_RELIEF)；死在血月夜由
-// runBattle內部的state.hp<=0直接反映，外層迴圈的die檢查會抓到
+// runBattle內部的state.hp<=0直接反映，外層迴圈的die檢查會抓到。
+//
+// ⚠️ 2026-09-28重要修正：clearUpcomingThreat比照game.js的startBloodMoonNight()「一開始就清」，
+// 不能只在打贏那個分支才清——之前漏了這個，只要逃跑或打輸，isThreatDue會一直卡著true，
+// 下次rest()會立刻又觸發一次血月夜，等於同一個晚上打到死為止，這也是死亡率一度被打到95~100%
+// 的一部分原因(另一部分是game.js本體「逃跑=白撿血月獎勵」那個bug，已在game.js修好，見git log)。
 function runBloodMoonNight(state) {
   state._bloodMoons = (state._bloodMoons || 0) + 1;
+  L.clearUpcomingThreat(state);
   const defense = L.resolveBloodMoonDefense(state);
   if (defense.wavesBlocked === 0) {
-    runBattle(state, "enemy_walker_brute", { extraTier: 1 });
+    const r1 = runBattle(state, "enemy_walker_brute", { extraTier: 1 });
     if (state.hp <= 0) return;
+    if (r1 === "fled") { onBloodMoonFleeSim(state); return; }
   }
-  runBattle(state, "enemy_cyborg_nemesis", { extraTier: 1 });
+  const r2 = runBattle(state, "enemy_cyborg_nemesis", { extraTier: 1 });
   if (state.hp <= 0) return;
+  if (r2 === "fled") { onBloodMoonFleeSim(state); return; }
   L.bloodMoonRewards(state);
-  L.clearUpcomingThreat(state);
+}
+
+// 逃跑收尾：比照game.js的onBloodMoonFlee()——活下來但沒守住，沒有血月獎勵，資源被翻找損失一些
+function onBloodMoonFleeSim(state) {
+  state._bloodMoonFlees = (state._bloodMoonFlees || 0) + 1;
+  ["food", "water", "scrap"].forEach(k => { const l = Math.min(3, state.resources[k] || 0); if (l > 0) state.resources[k] -= l; });
 }
 
 function reinforce(state) {
@@ -86,13 +104,28 @@ function facilitiesTotal(state) {
 }
 
 // 戰鬥：依26.1 getScaledEnemy依玩家等級疊加敵人數值；勝利時依27.1掉落rare+裝備自動實例化。
-// opts可傳extraTier(血月夜用，貼近game.js的waves設定)
+// opts可傳extraTier(血月夜用，貼近game.js的waves設定)。回傳"fled"代表逃跑成功(活著但沒打贏)，
+// 其他情況呼叫端靠state.hp<=0(死亡)或函式正常返回(打贏)分辨——跟game.js的battleAttack/battleFlee對齊。
+//
+// 2026-09-28新增「打不贏就跑」：原本這裡是硬打到一方死亡，沒有flee概念，導致血月夜這類強制遭遇
+// 對低等角色是死亡率100%的無腦互殺(見git log「把SAN機制接進模擬器」)。真實玩家遇到打不贏的仗
+// 會按🏃逃跑，這裡用「照現在的傷害比，我方會先死」當判斷依據，50%成功率跟game.js battleFlee一致，
+// 失敗只挨一下(不會因為嘗試逃跑而額外受罰)
 function runBattle(state, enemyId, opts) {
   const scaled = L.getScaledEnemy(enemyId, state, opts);
   let hpLeft = scaled.hp;
   while (hpLeft > 0 && state.hp > 0) {
-    L.consumeAmmoForAttack(state);
     const myStats = L.getEffectiveStats(state);
+    const myDmg = Math.max(1, L.battleDamage(myStats.atk, L.getShreddedDef(scaled)));
+    const enemyDmg = Math.max(1, scaled.atk - myStats.def);
+    const roundsToKill = Math.ceil(hpLeft / myDmg);
+    const roundsISurvive = Math.floor(state.hp / enemyDmg);
+    if (roundsToKill > roundsISurvive) {
+      if (Math.random() < 0.5) return "fled";
+      L.applyEffect(state, { hp: -enemyDmg }); // 逃跑失敗，白挨一下，下一輪再試
+      continue;
+    }
+    L.consumeAmmoForAttack(state);
     const dmgToEnemy = L.battleDamage(myStats.atk, L.getShreddedDef(scaled));
     hpLeft -= dmgToEnemy;
     L.applyDefShred(scaled, state); // 27.4

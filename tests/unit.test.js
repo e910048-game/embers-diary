@@ -3201,5 +3201,20 @@ test("逃跑不等於擊敗：onEnd現在帶true/false區分勝負，血月/Tier
   ["() => finishAction()", "() => endPhase()"].forEach(pattern => assert.ok(src.includes(pattern), "一般探索的onEnd不應被這次改動動到: " + pattern));
 });
 
+// 追查這個bug時，順手把tests/simulate.js(經濟模擬器)也補上「打不贏就跑」邏輯與clearUpcomingThreat
+// 時機修正(原本只在打贏分支才清，逃跑/打輸會讓isThreatDue卡著true)。simulate.js不走test()框架、
+// 函式也沒export，這裡只做靜態結構檢查，實際數值驗證見「node tests/simulate.js」人工跑過的結果
+// (cautious/balanced死亡率回到0~19%，接近歷史基準；aggressive仍100%是人設刻意，不是bug)
+test("tests/simulate.js：血月夜clearUpcomingThreat在最前面呼叫(不只打贏分支)，runBattle有flee判斷", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "simulate.js"), "utf8");
+  const fnStart = src.indexOf("function runBloodMoonNight(");
+  const fnBody = src.slice(fnStart, src.indexOf("\nfunction ", fnStart + 10));
+  const clearIdx = fnBody.indexOf("L.clearUpcomingThreat(state)");
+  const firstBattleIdx = fnBody.indexOf("runBattle(state,");
+  assert.ok(clearIdx >= 0 && clearIdx < firstBattleIdx, "clearUpcomingThreat要在任何runBattle呼叫之前");
+  assert.ok(/roundsToKill > roundsISurvive/.test(src), "runBattle要有打不贏就跑的判斷");
+  assert.ok(/function onBloodMoonFleeSim\(/.test(src), "要有逃跑收尾處理(不給血月獎勵)");
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
