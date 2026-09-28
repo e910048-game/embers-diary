@@ -46,6 +46,10 @@ function sysLogHtml() {
   return "";
 }
 
+// 家具欄位的顯示名稱(背包與佈置面板共用)。2026-09-25由隨機自動玩家測試發現：原本只是某個函式內的區域常數，
+// 背包裡有「未擺放的家具」時開背包會直接丟ReferenceError整個面板打不開
+const FURNITURE_SLOT_LABEL = { table: "桌面", floor: "地板", rug: "地毯" };
+
 // ---------- 設定 / 音效 / 震動 / 錯誤記錄(2026-09-25) ----------
 const SETTINGS_KEY = "embers_diary_settings_v1";
 const DEFAULT_SETTINGS = { textSpeed: "normal", fontScale: 1, vibrate: true, sound: false };
@@ -1583,7 +1587,7 @@ function showComfortDetail() {
   renderStatusBar();
   const RARITY_COMFORT = { common: 1, rare: 2, epic: 3, legendary: 3 };
   const RARITY_LABEL = { common: "普通", rare: "稀有", epic: "史詩", legendary: "傳說" };
-  const FURNITURE_SLOT_LABEL = { table: "桌面", floor: "地板", rug: "地毯" };
+  // FURNITURE_SLOT_LABEL 已提升為全域常數(見檔案上方)
   let rows = "";
   let total = 0;
   ["wall", "wall2"].forEach(slot => {

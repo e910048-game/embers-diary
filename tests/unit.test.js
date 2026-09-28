@@ -3137,6 +3137,26 @@ test("設定與音效震動與重複採集接線(靜態檢查)：設定面板/�
   ["sfx(\"levelup\")", "sfx(\"bloodmoon\")", "haptic("].forEach(k => assert.ok(src.includes(k), k));
 });
 
+// ---------- 隨機自動玩家(browser_fuzz.js)抓到的迴歸：FURNITURE_SLOT_LABEL 作用域 ----------
+test("FURNITURE_SLOT_LABEL：只宣告一次、宣告在函式外層(全域)，showInventory才讀得到", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  const decls = [...src.matchAll(/const FURNITURE_SLOT_LABEL\s*=/g)];
+  assert.strictEqual(decls.length, 1, "FURNITURE_SLOT_LABEL 應只宣告一次(曾經重複宣告在函式內，showInventory讀不到而ReferenceError)");
+  const before = src.slice(0, decls[0].index);
+  const openBraces = (before.match(/\{/g) || []).length, closeBraces = (before.match(/\}/g) || []).length;
+  assert.strictEqual(openBraces, closeBraces, "FURNITURE_SLOT_LABEL 必須宣告在最外層，不能巢狀在函式/區塊內");
+  assert.ok(src.includes("function showInventory(") && src.indexOf("function showInventory(") > decls[0].index, "宣告要在 showInventory 之前");
+});
+
+test("browser_fuzz.js：隨機自動玩家測試工具存在，且用法/選項有寫在檔案開頭註解", () => {
+  const fs = require("fs"), path = require("path");
+  const p = path.join(__dirname, "browser_fuzz.js");
+  assert.ok(fs.existsSync(p), "缺少 tests/browser_fuzz.js");
+  const src = fs.readFileSync(p, "utf8");
+  assert.ok(/window\.__runFuzz\s*=/.test(src), "要掛在 window.__runFuzz 供瀏覽器console呼叫");
+  ["steps", "god", "warp", "seed"].forEach(opt => assert.ok(src.includes(opt), "選項說明缺 " + opt));
+  assert.ok(/checkInvariants|invariant/.test(src), "要有基本不變量檢查(hp/san/資源不可越界等)");
+});
 
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
