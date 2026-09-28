@@ -3176,13 +3176,31 @@ function runBloodMoonWave(waves, idx, modifier) {
     return;
   }
   const w = waves[idx];
-  startBattle(w.enemyId, () => runBloodMoonWave(waves, idx + 1, modifier), false, { extraTier: w.extraTier, bloodMoon: true });
+  // 2026-09-28修正：原本onEnd不分勝負，逃跑(battleFlee成功)也會被當成「打贏這一波」直接進下一波，
+  // 逃到最後idx>=waves.length照樣領血月獎勵、插Tier收復旗標——等於完全不用打就能過血月夜。
+  // 現在onEnd帶true=真的擊敗、false=逃跑，逃跑一律視為「這一夜沒守住」，見onBloodMoonFlee()
+  startBattle(w.enemyId, (won) => { if (won) runBloodMoonWave(waves, idx + 1, modifier); else onBloodMoonFlee(); }, false, { extraTier: w.extraTier, bloodMoon: true });
+}
+
+// 2026-09-28：血月夜中途逃跑——你活下來了，但沒有真的打退狂潮：沒有血月獎勵、不插Tier收復旗標、
+// 不觸發深淵擴散，據點被翻找走一些物資(呼應「沒守住」的代價，但不像死亡那麼重)。噪音照常歸零、
+// 下一輪血月照常在checkUpcomingThreat重新排程(clearUpcomingThreat已在startBloodMoonNight開頭做過)
+function onBloodMoonFlee() {
+  document.body.classList.remove("blood-moon");
+  state.noiseLevel = 0;
+  const lost = {};
+  ["food", "water", "scrap"].forEach(k => { const l = Math.min(3, state.resources[k]); if (l > 0) lost[k] = -l; });
+  if (Object.keys(lost).length) applyEffect({ resources: lost });
+  renderStatusBar();
+  renderText(`🏃 你沒能守住這一夜——趁著混亂逃出了正面戰場，狂潮從你身邊呼嘯而過，闖進了據點翻找了一番。${formatEffect({ resources: lost })}\n\n至少，你還活著。`, { kind: "event" });
+  renderOptions([{ label: "繼續", variant: "ghost", onClick: () => endPhase() }]);
 }
 
 function startTierZoneBattle(zone) {
   renderText(`🔓 偵測到行政區「${zone.name}」的防禦核心，擊敗指揮官即可徹底解放此區域
 ${zone.psychicNote}`, { kind: "event" });
-    renderOptions([{ label: "⚔️ 開戰", variant: "danger", onClick: () => startBattle(zone.bossEnemyId, () => onTierZoneWon(zone), false, { extraTier: zone.extraTier }) }]);
+    // 2026-09-28：逃跑不算擊敗，zone維持未解放，下次血月獲勝時getTierZoneForBloodMoonWin還會抓到同一個zone再給一次機會
+    renderOptions([{ label: "⚔️ 開戰", variant: "danger", onClick: () => startBattle(zone.bossEnemyId, (won) => { if (won) onTierZoneWon(zone); else endPhase(); }, false, { extraTier: zone.extraTier }) }]);
 }
 
 function onTierZoneWon(zone) {
@@ -3199,7 +3217,8 @@ ${formatEffect(zone.reward)}`, { kind: "event" });
 function startAbyssSurgeBattle(surge) {
   const introText = ABYSS_SURGE_INTRO_TEXTS[Math.floor(Math.random() * ABYSS_SURGE_INTRO_TEXTS.length)];
   renderText(`👁️ ${introText}`, { kind: "event" });
-  renderOptions([{ label: "⚔️ 迎戰深淵擴散", variant: "danger", onClick: () => startBattle(surge.bossEnemyId, () => onAbyssSurgeWon(surge), false, { extraTier: surge.extraTier }) }]);
+  // 2026-09-28：逃跑不算擊敗，深淵擴散不會被清掉，下次血月獲勝時getAbyssSurgeBattle還會再抓到同一場
+  renderOptions([{ label: "⚔️ 迎戰深淵擴散", variant: "danger", onClick: () => startBattle(surge.bossEnemyId, (won) => { if (won) onAbyssSurgeWon(surge); else endPhase(); }, false, { extraTier: surge.extraTier }) }]);
 }
 
 function onAbyssSurgeWon(surge) {
@@ -3661,7 +3680,10 @@ let lootText = "";
     const onEnd = b.onEnd;
     pendingBattle = null;
     sessionStorage.removeItem("embers_battle_snap");
-    renderOptions([{ label: "繼續", variant: "ghost", onClick: onEnd }]);
+    // 2026-09-28：onEnd帶true(=擊敗)，讓血月/Tier收復戰/深淵擴散能分辨「真的打贏」跟「逃跑」(見battleFlee)，
+    // 不然runBloodMoonWave/onTierZoneWon/onAbyssSurgeWon原本不管勝負都照樣發獎勵——其他呼叫端(finishAction/
+    // endPhase等)是()=>X()的箭頭函式，多傳一個參數會被忽略，不受影響
+    renderOptions([{ label: "繼續", variant: "ghost", onClick: () => onEnd(true) }]);
     return;
   }
 
@@ -3748,7 +3770,8 @@ function battleFlee() {
     const onEnd = b.onEnd;
     pendingBattle = null;
     sessionStorage.removeItem("embers_battle_snap");
-    renderOptions([{ label: "繼續", variant: "ghost", onClick: onEnd }]);
+    // 2026-09-28：onEnd帶false(=逃跑，不是擊敗)——修正逃跑等同擊敗、照樣拿血月/Tier收復/深淵擴散獎勵的bug
+    renderOptions([{ label: "繼續", variant: "ghost", onClick: () => onEnd(false) }]);
   } else {
     const hit = resolveEnemyHit(b, myStats);
     const reviveText = hit.dmg > 0 ? applyEnemyDamage(hit.dmg) : "";

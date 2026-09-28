@@ -3174,5 +3174,32 @@ test("血月勝利SAN relief：bloodMoonRewards固定含san，且會與modifier�
   assert.ok(L.BLOOD_MOON_VICTORY_SAN_RELIEF > 0 && L.BLOOD_MOON_VICTORY_SAN_RELIEF <= L.SAN_COST_PER_KILL * 2, "relief數值應該接近但不完全抵銷典型1~2場戰鬥的SAN消耗");
 });
 
+// ---------- bug修正(2026-09-28)：逃跑等同擊敗，能不戰而拿血月/Tier收復/深淵擴散獎勵 ----------
+// 起因：把SAN機制接進tests/simulate.js後，血月夜死亡率被打到95~100%，追查發現不是SAN系統的問題，
+// 是battleAttack(擊敗)與battleFlee(逃跑成功)都直接呼叫同一個onEnd()、不帶任何區別——runBloodMoonWave/
+// onTierZoneWon/onAbyssSurgeWon原本完全沒檢查「這一戰到底是打贏還是跑了」，逃跑一樣被當成「守住了」，
+// 一路逃到底照樣領完整血月獎勵(晶燼/技能點/SAN relief)、插旗Tier收復進度。已在瀏覽器實測驗證：
+// 兩波都逃(HP幾乎無損)vs 兩波都打贏，只有打贏那次state.bloodMoonWins才會變成1、才會拿到晶燼獎勵。
+test("逃跑不等於擊敗：onEnd現在帶true/false區分勝負，血月/Tier收復/深淵擴散只在真的擊敗(true)時發獎勵", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../js/game.js"), "utf8");
+  // battleAttack勝利分支要傳true，battleFlee成功分支要傳false
+  const atkWin = src.slice(src.indexOf("你擊敗了${b.enemy.name}"), src.indexOf("你擊敗了${b.enemy.name}") + 700);
+  assert.ok(/onClick: \(\) => onEnd\(true\)/.test(atkWin), "battleAttack擊敗分支要傳onEnd(true)");
+  const fleeSuccess = src.slice(src.indexOf("你趁機脫離了戰鬥"), src.indexOf("你趁機脫離了戰鬥") + 300);
+  assert.ok(/onClick: \(\) => onEnd\(false\)/.test(fleeSuccess), "battleFlee成功分支要傳onEnd(false)");
+  // runBloodMoonWave：只有won才繼續下一波，否則進onBloodMoonFlee()
+  assert.ok(/\(won\) => \{ if \(won\) runBloodMoonWave\(waves, idx \+ 1, modifier\); else onBloodMoonFlee\(\); \}/.test(src), "runBloodMoonWave的onEnd要依won分流");
+  assert.ok(/function onBloodMoonFlee\(\)/.test(src), "要有onBloodMoonFlee()處理逃跑收尾");
+  const fleeFnStart = src.indexOf("function onBloodMoonFlee(");
+  const fleeFn = src.slice(fleeFnStart, src.indexOf("\nfunction ", fleeFnStart + 10));
+  assert.ok(!/bloodMoonRewards/.test(fleeFn), "逃跑收尾不可呼叫bloodMoonRewards(不該有血月獎勵)");
+  assert.ok(!/getTierZoneForBloodMoonWin|getAbyssSurgeBattle/.test(fleeFn), "逃跑不可觸發Tier收復/深淵擴散的後續戰");
+  // Tier收復戰、深淵擴散戰同樣要依won分流，不能逃跑也算贏
+  assert.ok(/\(won\) => \{ if \(won\) onTierZoneWon\(zone\); else endPhase\(\); \}/.test(src), "Tier收復戰逃跑不該觸發onTierZoneWon");
+  assert.ok(/\(won\) => \{ if \(won\) onAbyssSurgeWon\(surge\); else endPhase\(\); \}/.test(src), "深淵擴散戰逃跑不該觸發onAbyssSurgeWon");
+  // 其他呼叫端(finishAction/endPhase等)的onEnd是()=>X()箭頭函式，不接參數，多傳true/false不影響它們
+  ["() => finishAction()", "() => endPhase()"].forEach(pattern => assert.ok(src.includes(pattern), "一般探索的onEnd不應被這次改動動到: " + pattern));
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
