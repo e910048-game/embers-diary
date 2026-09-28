@@ -895,9 +895,12 @@
   // bonusEffect：血月模組化(2026-07-06)的模板`rewardBonus`(例如{resources:{scrap:8}}或{skillPoint:1})，
   // 跟基礎reward「相加」後一起套用/回傳(不是覆蓋)——embers/skillPoint兩者都可能跟基礎值重疊，
   // 若用簡單spread合併會讓bonus覆蓋掉基礎值而不是疊加，故逐欄位相加
+  const BLOOD_MOON_VICTORY_SAN_RELIEF = 8; // 2026-09-28調整：血月夜戰鬥會扣SAN(每殺一隻-4)且當晚沒有睡眠回復，
+  // 模擬200天後發現硬核玩家(常遠征、無家具)平均每13天崩潰一次——「熬過血月」理應是鬆一口氣，不該是雪上加霜，
+  // 故勝利時給固定SAN relief，大致抵銷戰鬥消耗，殘留的「這晚沒睡好」壓力則保留(不完全免費)
   function bloodMoonRewards(state, bonusEffect) {
     const mult = bloodMoonRewardMultiplier(state);
-    const reward = { embers: Math.round(40 * mult), skillPoint: Math.max(1, Math.round(1 * mult)) };
+    const reward = { embers: Math.round(40 * mult), skillPoint: Math.max(1, Math.round(1 * mult)), san: BLOOD_MOON_VICTORY_SAN_RELIEF };
     if (bonusEffect) {
       if (typeof bonusEffect.embers === "number") reward.embers += bonusEffect.embers;
       if (typeof bonusEffect.skillPoint === "number") reward.skillPoint += bonusEffect.skillPoint;
@@ -2870,7 +2873,7 @@
     triggerAwakening, chooseFaction, AWAKENING_DAY_THRESHOLDS, nextAwakeningAvailable, chooseNextFaction, allUnlockedFactionsMaxed,
     spendSkillPoint, convertSkillPointToEmbers, SKILL_POINT_EMBERS_VALUE, enemyTier, getScaledEnemy, TIER_PREFIXES, getLocationOverpower,
     checkUpcomingThreat, isThreatDue, clearUpcomingThreat, THREAT_LEAD_DAYS, BLOOD_MOON_CYCLE_MIN, BLOOD_MOON_CYCLE_MAX,
-    resolveBloodMoonDefense, bloodMoonRewards, bloodMoonRewardMultiplier, pickBloodMoonModifier, TIER_ZONES, getTierZoneForBloodMoonWin,
+    resolveBloodMoonDefense, bloodMoonRewards, bloodMoonRewardMultiplier, BLOOD_MOON_VICTORY_SAN_RELIEF, pickBloodMoonModifier, TIER_ZONES, getTierZoneForBloodMoonWin,
     getAbyssSurgeBattle, ABYSS_SURGE_EQUIPMENT_POOL,
     ITEMS, ENEMIES, EVENTS, LOCATIONS, AWAKENING_TRAITS, SKILLS_TREE, FACTION_IDS,
     replacePlayerNameTag, dailyMoodCheckin, depositToFridge, withdrawFromFridge, generateSyncCode, applySyncCode,

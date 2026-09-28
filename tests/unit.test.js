@@ -3158,5 +3158,21 @@ test("browser_fuzz.js：隨機自動玩家測試工具存在，且用法/選項�
   assert.ok(/checkInvariants|invariant/.test(src), "要有基本不變量檢查(hp/san/資源不可越界等)");
 });
 
+// ---------- 平衡調整(2026-09-28)：血月勝利SAN relief ----------
+// 起因：用更貼近真實玩法的node模擬(含血月夜"無法睡覺+連續擊殺扣SAN")重新驗證SAN系統後，
+// 發現硬核玩家(常遠征、無家具)200天內平均每13天精神崩潰一次，血月夜是主因——當晚沒有sanRestRegen、
+// 又要靠戰鬥扣SAN，形同雪上加霜。修正：血月勝利給固定relief，大致抵銷戰鬥消耗(殘留"這晚沒睡好"的壓力)
+test("血月勝利SAN relief：bloodMoonRewards固定含san，且會與modifier的rewardBonus.san疊加而非覆蓋", () => {
+  const s = L.defaultState();
+  s.san = 50;
+  const r1 = L.bloodMoonRewards(s);
+  assert.strictEqual(r1.san, L.BLOOD_MOON_VICTORY_SAN_RELIEF);
+  assert.strictEqual(s.san, 50 + L.BLOOD_MOON_VICTORY_SAN_RELIEF);
+  const s2 = L.defaultState(); s2.san = 50;
+  const r2 = L.bloodMoonRewards(s2, { san: 5 });
+  assert.strictEqual(r2.san, L.BLOOD_MOON_VICTORY_SAN_RELIEF + 5, "modifier的san加成應疊加在relief之上，不是覆蓋掉");
+  assert.ok(L.BLOOD_MOON_VICTORY_SAN_RELIEF > 0 && L.BLOOD_MOON_VICTORY_SAN_RELIEF <= L.SAN_COST_PER_KILL * 2, "relief數值應該接近但不完全抵銷典型1~2場戰鬥的SAN消耗");
+});
+
 console.log(`\n結果：${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
